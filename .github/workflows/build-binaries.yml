@@ -1,0 +1,45 @@
+name: Build Release Binaries
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-binaries-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      release: true
+
+  publish:
+    name: Upload to GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.tar.gz
+            *.zip
+            *.sha256
+
+  packaging:
+    name: Update package managers
+    needs: publish
+    uses: ./.github/workflows/packaging.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

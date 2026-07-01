@@ -1,0 +1,119 @@
+name: Update Package Managers
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (e.g. v0.3.0-alpha.3)
+        required: true
+        type: string
+
+jobs:
+  homebrew:
+    name: Update Homebrew Tap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::GitHub release $TAG not found. Run the release workflow first."
+            exit 1
+          fi
+          mkdir -p /tmp/void-assets
+          gh release download "$TAG" \
+            --repo "${{ github.repository }}" \
+            --dir /tmp/void-assets \
+            --pattern 'void-*.tar.gz'
+          test -f /tmp/void-assets/void-linux-amd64.tar.gz
+          test -f /tmp/void-assets/void-macos-amd64.tar.gz
+          test -f /tmp/void-assets/void-macos-arm64.tar.gz
+
+      - name: Update Homebrew tap
+        env:
+          TAG: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+
+          SHA_LINUX=$(sha256sum /tmp/void-assets/void-linux-amd64.tar.gz | cut -d' ' -f1)
+          SHA_MAC_AMD64=$(sha256sum /tmp/void-assets/void-macos-amd64.tar.gz | cut -d' ' -f1)
+          SHA_MAC_ARM64=$(sha256sum /tmp/void-assets/void-macos-arm64.tar.gz | cut -d' ' -f1)
+
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/p6laris/homebrew-tap.git" tap
+          cd tap
+
+          mkdir -p Formula
+          sed \
+            -e "s|@VERSION@|${VERSION}|g" \
+            -e "s|@TAG@|${TAG}|g" \
+            -e "s|@SHA_LINUX@|${SHA_LINUX}|g" \
+            -e "s|@SHA_MAC_AMD64@|${SHA_MAC_AMD64}|g" \
+            -e "s|@SHA_MAC_ARM64@|${SHA_MAC_ARM64}|g" \
+            ../packaging/homebrew/void.rb > Formula/void.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/void.rb
+
+          if git diff --staged --quiet; then
+            echo "Homebrew formula already up to date."
+            exit 0
+          fi
+
+          git commit -m "Update void to ${TAG}"
+          git push origin HEAD:main
+
+  winget:
+    name: Submit to Winget
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Submit manifest
+        env:
+          TAG: ${{ inputs.tag }}
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = $env:TAG -replace '^v',''
+          $url = "https://github.com/p6laris/Void/releases/download/$env:TAG/void-windows-amd64.zip"
+
+          if (-not (gh release view $env:TAG --repo "${{ github.repository }}" 2>$null)) {
+            throw "GitHub release $env:TAG not found. Run the release workflow first."
+          }
+
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+          Write-Host "Trying wingetcreate update..."
+          & .\wingetcreate.exe update p6laris.Void `
+            --version $version `
+            --urls $url `
+            --token $env:WINGET_CREATE_GITHUB_TOKEN `
+            --submit `
+            --no-open
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Package not in winget-pkgs yet; creating initial manifest from installer URL..."
+            & .\wingetcreate.exe new $url `
+              --token $env:WINGET_CREATE_GITHUB_TOKEN `
+              --submit `
+              --no-open
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "wingetcreate failed with exit code $LASTEXITCODE"
+          }

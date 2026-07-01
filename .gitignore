@@ -1,0 +1,12 @@
+﻿/target/
+/Cargo.lock
+
+# IDEs
+.idea/
+.vscode/
+.cursor/
+
+# Temp files
+*.rs.bk
+*.swp
+*~
