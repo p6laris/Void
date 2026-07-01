@@ -1,0 +1,2 @@
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-LC:\\Users\\PC123\\AppData\\Local\\Programs\\CLion\\bin\\mingw\\bin"]

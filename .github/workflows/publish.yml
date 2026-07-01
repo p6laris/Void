@@ -1,0 +1,81 @@
+name: Publish Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 0.4.0, major, minor, patch)"
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: Prepare and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.TAP_GITHUB_TOKEN || secrets.GITHUB_TOKEN }} # Needed to trigger build-binaries on push
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-edit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
+      - name: Install dependencies (Linux)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Bump Version
+        run: |
+          cargo set-version ${{ inputs.version }}
+          # Update Cargo.lock
+          cargo check
+          # Extract the new version
+          NEW_VERSION=$(cargo read-manifest | jq -r .version)
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+
+      - name: Generate Changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag v${{ env.NEW_VERSION }}
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Commit, Tag, and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock CHANGELOG.md
+          git diff --staged --quiet || git commit -m "chore(release): prepare for v${{ env.NEW_VERSION }}"
+          git tag v${{ env.NEW_VERSION }}
+          git push origin main
+          git push origin v${{ env.NEW_VERSION }}
+
+      - name: Generate Release Notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.NEW_VERSION }}
+          name: v${{ env.NEW_VERSION }}
+          body_path: RELEASE_NOTES.md
+
+      - name: Publish to Crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --allow-dirty

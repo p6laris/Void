@@ -1,0 +1,11 @@
+/target/
+
+# IDEs
+.idea/
+.vscode/
+.cursor/
+
+# Temp files
+*.rs.bk
+*.swp
+*~

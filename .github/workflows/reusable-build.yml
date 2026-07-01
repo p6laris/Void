@@ -1,0 +1,72 @@
+name: Reusable Build
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Package and upload release artifacts
+        type: boolean
+        default: false
+
+env:
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: void-linux-amd64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: void-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: void-macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: void-windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: inputs.release && runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../${{ matrix.artifact }}.tar.gz void
+          cd ../../..
+          sha256sum ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+
+      - name: Package (Windows)
+        if: inputs.release && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path target/${{ matrix.target }}/release/void.exe `
+            -DestinationPath ${{ matrix.artifact }}.zip
+          (Get-FileHash ${{ matrix.artifact }}.zip -Algorithm SHA256).Hash | `
+            Out-File -FilePath ${{ matrix.artifact }}.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.release
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            *.tar.gz
+            *.zip
+            *.sha256
