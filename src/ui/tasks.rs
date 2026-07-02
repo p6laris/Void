@@ -11,7 +11,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
 
     let indices = &app.cached_filtered_tasks;
     let filtered_count = indices.len();
-    let total_count = app.data.tasks.len();
+
     let selected_idx = app.task_state.selected();
     let title_max = chunks[0].width.saturating_sub(22) as usize;
     let items: Vec<ListItem> = indices
@@ -161,8 +161,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(vec![
             Span::styled(
                 format!(
-                    " {} Tasks [{}] ({}/{}){} ",
-                    icons.tasks, filter_label, filtered_count, total_count, bulk_hint
+                    " {} Tasks [{}] ({}){} ",
+                    icons.tasks, filter_label, filtered_count, bulk_hint
                 ),
                 Style::default()
                     .fg(if app.bulk_mode {

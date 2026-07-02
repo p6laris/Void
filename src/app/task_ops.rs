@@ -86,7 +86,7 @@ impl App {
             }
         }
         match self.task_filter {
-            TaskFilter::All => !t.archived,
+            TaskFilter::All => true,
             TaskFilter::Pending => t.status != crate::model::TaskStatus::Done && !t.archived,
             TaskFilter::Done => t.status == crate::model::TaskStatus::Done && !t.archived,
             TaskFilter::Today => {
