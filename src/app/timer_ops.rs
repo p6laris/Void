@@ -32,7 +32,7 @@ impl App {
                     self.data.active_task_id = None;
                     self.persist(|db| db.persist_active_task(None));
                 }
-                self.bump_data();
+                self.bump_tasks();
                 if self.data.sound_enabled {
                     sound::play_task_complete();
                 }

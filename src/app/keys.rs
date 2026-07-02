@@ -123,7 +123,7 @@ impl App {
                 if let Some(id) = self.dashboard_selected_task_id() {
                     self.reordering_task = Some(id);
                     self.persist_data(|db, data| storage::move_task(db, data, id, 1));
-                    self.bump_data();
+                    self.bump_tasks();
                     self.reordering_task = None;
                     self.move_dashboard_task_selection(1);
                 }
@@ -132,7 +132,7 @@ impl App {
                 if let Some(id) = self.dashboard_selected_task_id() {
                     self.reordering_task = Some(id);
                     self.persist_data(|db, data| storage::move_task(db, data, id, -1));
-                    self.bump_data();
+                    self.bump_tasks();
                     self.reordering_task = None;
                     self.move_dashboard_task_selection(-1);
                 }
@@ -156,7 +156,7 @@ impl App {
                         self.persist(|db| db.persist_active_task(None));
                         self.maybe_advance_task();
                     }
-                    self.bump_data();
+                    self.bump_tasks();
                     if self.data.sound_enabled {
                         sound::play_task_complete();
                     }
@@ -185,7 +185,7 @@ impl App {
                         }
                         Ok(())
                     });
-                    self.bump_data();
+                    self.bump_tasks();
                 }
             }
             _ => {}
@@ -274,7 +274,7 @@ impl App {
                         self.cursor_sessions =
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
-                    self.bump_data();
+                    self.bump_sessions();
                     self.set_status("Session deleted.", false);
                     self.stats_session_selected = 0;
                 }
@@ -296,7 +296,7 @@ impl App {
                         self.cursor_sessions =
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
-                    self.bump_data();
+                    self.bump_sessions();
                 }
             }
             KeyCode::Char('-') => {
@@ -316,7 +316,7 @@ impl App {
                         self.cursor_sessions =
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
-                    self.bump_data();
+                    self.bump_sessions();
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),
@@ -387,7 +387,7 @@ impl App {
             KeyCode::Char('t') => {
                 if let Some(id) = self.selected_task_id() {
                     self.persist_data(|db, data| storage::toggle_today(db, data, id));
-                    self.bump_data();
+                    self.bump_tasks();
                 }
             }
             KeyCode::Char('a') => self.open_add_task(),
@@ -425,7 +425,7 @@ impl App {
                         .map(|t| t.recurrence.next())
                         .unwrap_or(crate::model::TaskRecurrence::None);
                     self.persist_data(|db, data| storage::set_task_recurrence(db, data, id, next));
-                    self.bump_data();
+                    self.bump_tasks();
                     self.set_status(format!("Recurrence: {}", next.label()), false);
                 }
             }
@@ -450,7 +450,7 @@ impl App {
                     self.persist_data(|db, data| {
                         storage::set_priority(db, data, id, Priority::Low)
                     });
-                    self.bump_data();
+                    self.bump_tasks();
                 }
             }
             KeyCode::Char('2') => {
@@ -458,7 +458,7 @@ impl App {
                     self.persist_data(|db, data| {
                         storage::set_priority(db, data, id, Priority::Medium)
                     });
-                    self.bump_data();
+                    self.bump_tasks();
                 }
             }
             KeyCode::Char('3') => {
@@ -466,7 +466,7 @@ impl App {
                     self.persist_data(|db, data| {
                         storage::set_priority(db, data, id, Priority::High)
                     });
-                    self.bump_data();
+                    self.bump_tasks();
                 }
             }
             KeyCode::Down | KeyCode::Char('j') if !ctrl && self.subtask_focus => {
@@ -481,7 +481,7 @@ impl App {
                 if let Some(id) = self.selected_task_id() {
                     self.reordering_task = Some(id);
                     self.persist_data(|db, data| storage::move_task(db, data, id, 1));
-                    self.bump_data();
+                    self.bump_tasks();
                     self.reordering_task = None;
                 }
             }
@@ -489,7 +489,7 @@ impl App {
                 if let Some(id) = self.selected_task_id() {
                     self.reordering_task = Some(id);
                     self.persist_data(|db, data| storage::move_task(db, data, id, -1));
-                    self.bump_data();
+                    self.bump_tasks();
                     self.reordering_task = None;
                 }
             }

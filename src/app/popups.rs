@@ -51,7 +51,7 @@ impl App {
                     self.set_status(format!("Save error: {e}"), true);
                     return;
                 }
-                self.bump_data();
+                self.bump_tasks();
                 let indices = self.filtered_task_indices();
                 let sel = indices.len().saturating_sub(1);
                 self.task_state
@@ -92,7 +92,7 @@ impl App {
                     self.set_status(format!("Save error: {e}"), true);
                     return;
                 }
-                self.bump_data();
+                self.bump_tasks();
                 self.close_popup();
                 self.set_status("Task updated.", false);
             }
@@ -102,7 +102,7 @@ impl App {
                         if self.active_task == Some(id) {
                             self.set_active_task(None);
                         }
-                        self.bump_data();
+                        self.bump_tasks();
                         self.clamp_task_selection_after_mutation();
                         self.set_status("Task deleted.", false);
                         self.check_queue_empty();
@@ -123,7 +123,7 @@ impl App {
                     self.set_status(format!("Save error: {e}"), true);
                     return;
                 }
-                self.bump_data();
+                self.bump_tasks();
                 if let Some(t) = self.data.tasks.iter().find(|t| t.id == id) {
                     self.subtask_selected = t.subtasks.len().saturating_sub(1);
                 }
@@ -145,7 +145,7 @@ impl App {
                     Ok(n) => {
                         self.bulk_selected.clear();
                         self.bulk_mode = false;
-                        self.bump_data();
+                        self.bump_tasks();
                         self.clamp_task_selection_after_mutation();
                         self.set_status(format!("Bulk action applied to {n} tasks."), false);
                     }
@@ -164,7 +164,7 @@ impl App {
                     if self.active_task == Some(id) {
                         self.set_active_task(None);
                     }
-                    self.bump_data();
+                    self.bump_tasks();
                     self.clamp_task_selection_after_mutation();
                     self.set_status("Task deleted.", false);
                     self.check_queue_empty();

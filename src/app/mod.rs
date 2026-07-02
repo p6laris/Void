@@ -390,12 +390,22 @@ impl App {
         )
     }
 
-    pub fn bump_data(&mut self) {
+    pub(crate) fn bump_tasks(&mut self) {
+        self.data_version = self.data_version.wrapping_add(1);
+        self.recompute_task_caches();
+        self.clamp_dashboard_task_selection();
+    }
+
+    pub(crate) fn bump_sessions(&mut self) {
         self.data_version = self.data_version.wrapping_add(1);
         self.chart_dirty = true;
-        self.recompute_task_caches();
         self.refresh_recent_sessions();
-        self.clamp_dashboard_task_selection();
+    }
+
+    pub fn bump_data(&mut self) {
+        self.bump_tasks();
+        self.chart_dirty = true;
+        self.refresh_recent_sessions();
     }
 
     fn persist<F>(&mut self, op: F)
@@ -413,8 +423,6 @@ impl App {
     {
         if let Err(e) = op(&self.db, &mut self.data) {
             self.set_status(format!("Save error: {e}"), true);
-        } else {
-            self.recompute_task_caches();
         }
     }
 

@@ -196,7 +196,7 @@ impl App {
             }
             self.maybe_advance_task();
         }
-        self.bump_data();
+        self.bump_tasks();
         self.set_status(format!("Task status: {}", status.label()), false);
         if status == crate::model::TaskStatus::Done {
             self.check_queue_empty();
@@ -212,7 +212,7 @@ impl App {
         self.active_task = None;
         self.data.active_task_id = None;
         self.persist(|db| db.persist_active_task(None));
-        self.bump_data();
+        self.bump_tasks();
         self.maybe_advance_task();
         if self.data.sound_enabled {
             sound::play_task_complete();
@@ -459,7 +459,7 @@ impl App {
             .map(|s| s.title.clone())
             .unwrap_or_default();
         self.persist_data(|db, data| storage::delete_subtask(db, data, id, sub_id));
-        self.bump_data();
+        self.bump_tasks();
         self.reset_subtask_selection();
         self.set_status(format!("Removed subtask \"{title}\""), false);
     }
@@ -490,7 +490,7 @@ impl App {
             return;
         };
         self.persist_data(|db, data| storage::toggle_subtask(db, data, id, sub_id));
-        self.bump_data();
+        self.bump_tasks();
         self.clamp_subtask_selection();
         if let Some(t) = self.data.tasks.iter().find(|t| t.id == id) {
             if let Some(s) = t.subtasks.iter().find(|s| s.id == sub_id) {
@@ -506,7 +506,7 @@ impl App {
             return;
         };
         self.persist_data(|db, data| storage::archive_task(db, data, id));
-        self.bump_data();
+        self.bump_tasks();
         self.clamp_task_selection_after_mutation();
         self.set_status("Task archived.", false);
     }
