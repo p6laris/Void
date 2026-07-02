@@ -93,15 +93,16 @@ pub fn add_task_full(db: &Database, data: &mut AppData, payload: TaskPayload) ->
 }
 
 pub fn update_task(db: &Database, data: &mut AppData, id: u64, payload: TaskPayload) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
-        t.title = payload.title;
-        t.notes = payload.notes;
-        t.estimated_minutes = payload.estimated_minutes.clamp(1, 480);
-        t.priority = payload.priority;
-        t.tags = payload.tags;
-        t.due_date = payload.due_date;
-        db.upsert_task(t)?;
-    }
+    let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) else {
+        return Err(anyhow::anyhow!("task {id} not found"));
+    };
+    t.title = payload.title;
+    t.notes = payload.notes;
+    t.estimated_minutes = payload.estimated_minutes.clamp(1, 480);
+    t.priority = payload.priority;
+    t.tags = payload.tags;
+    t.due_date = payload.due_date;
+    db.upsert_task(t)?;
     Ok(())
 }
 
@@ -907,6 +908,27 @@ mod tests {
         assert_eq!(sorted.len(), 2);
         assert_eq!(sorted[0].id, 2); // High priority first
         assert_eq!(sorted[1].id, 1);
+    }
+
+    #[test]
+    fn update_task_errors_on_unknown_id() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let err = update_task(
+            &db,
+            &mut data,
+            99,
+            TaskPayload {
+                title: "nope".into(),
+                notes: String::new(),
+                estimated_minutes: 25,
+                priority: Priority::Medium,
+                tags: vec![],
+                due_date: None,
+            },
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not found"));
     }
 
     #[test]
