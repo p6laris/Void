@@ -1,6 +1,7 @@
 mod import_export;
 mod schema;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -629,23 +630,75 @@ pub(crate) fn load_tasks(conn: &Connection) -> Result<Vec<Task>> {
         })
     })?;
 
+    let tags_by_task = load_all_task_tags(conn)?;
+    let subtasks_by_task = load_all_subtasks(conn)?;
+    let blocked_by_task = load_all_blocked_by(conn)?;
+
     let mut tasks = Vec::new();
     for row in rows {
         let mut task = row?;
-        task.tags = load_task_tags(conn, task.id)?;
-        task.subtasks = load_subtasks(conn, task.id)?;
-        task.blocked_by = load_blocked_by(conn, task.id)?;
+        task.tags = tags_by_task
+            .get(&task.id)
+            .cloned()
+            .unwrap_or_default();
+        task.subtasks = subtasks_by_task
+            .get(&task.id)
+            .cloned()
+            .unwrap_or_default();
+        task.blocked_by = blocked_by_task
+            .get(&task.id)
+            .cloned()
+            .unwrap_or_default();
         tasks.push(task);
     }
     Ok(tasks)
 }
 
-fn load_task_tags(conn: &Connection, task_id: u64) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT tag FROM task_tags WHERE task_id = ?1 ORDER BY tag ASC")?;
-    let tags = stmt
-        .query_map(params![task_id as i64], |row| row.get(0))?
-        .collect::<Result<Vec<String>, _>>()?;
-    Ok(tags)
+fn load_all_task_tags(conn: &Connection) -> Result<HashMap<u64, Vec<String>>> {
+    let mut stmt =
+        conn.prepare("SELECT task_id, tag FROM task_tags ORDER BY task_id ASC, tag ASC")?;
+    let rows = stmt.query_map([], |row| Ok((read_u64(row, 0)?, row.get::<_, String>(1)?)))?;
+    let mut map: HashMap<u64, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (task_id, tag) = row?;
+        map.entry(task_id).or_default().push(tag);
+    }
+    Ok(map)
+}
+
+fn load_all_subtasks(conn: &Connection) -> Result<HashMap<u64, Vec<Subtask>>> {
+    let mut stmt = conn.prepare(
+        "SELECT task_id, id, title, done FROM subtasks ORDER BY task_id ASC, sort_order ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            read_u64(row, 0)?,
+            Subtask {
+                id: read_u64(row, 1)?,
+                title: row.get(2)?,
+                done: row.get::<_, i32>(3)? != 0,
+            },
+        ))
+    })?;
+    let mut map: HashMap<u64, Vec<Subtask>> = HashMap::new();
+    for row in rows {
+        let (task_id, subtask) = row?;
+        map.entry(task_id).or_default().push(subtask);
+    }
+    Ok(map)
+}
+
+fn load_all_blocked_by(conn: &Connection) -> Result<HashMap<u64, Vec<u64>>> {
+    let mut stmt = conn.prepare(
+        "SELECT task_id, blocker_id FROM task_blocked_by ORDER BY task_id ASC, blocker_id ASC",
+    )?;
+    let rows = stmt.query_map([], |row| Ok((read_u64(row, 0)?, read_u64(row, 1)?)))?;
+    let mut map: HashMap<u64, Vec<u64>> = HashMap::new();
+    for row in rows {
+        let (task_id, blocker_id) = row?;
+        map.entry(task_id).or_default().push(blocker_id);
+    }
+    Ok(map)
 }
 
 fn sync_tasks(conn: &Connection, tasks: &[Task]) -> Result<()> {
@@ -736,29 +789,6 @@ fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
         )?;
     }
     Ok(())
-}
-
-fn load_subtasks(conn: &Connection, task_id: u64) -> Result<Vec<Subtask>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, title, done FROM subtasks WHERE task_id = ?1 ORDER BY sort_order ASC",
-    )?;
-    let rows = stmt.query_map(params![task_id as i64], |row| {
-        Ok(Subtask {
-            id: read_u64(row, 0)?,
-            title: row.get(1)?,
-            done: row.get::<_, i32>(2)? != 0,
-        })
-    })?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .context("loading subtasks")
-}
-
-fn load_blocked_by(conn: &Connection, task_id: u64) -> Result<Vec<u64>> {
-    let mut stmt = conn
-        .prepare("SELECT blocker_id FROM task_blocked_by WHERE task_id = ?1 ORDER BY blocker_id")?;
-    let rows = stmt.query_map(params![task_id as i64], |row| read_u64(row, 0))?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .context("loading task blockers")
 }
 
 fn insert_focus_session_conn(conn: &Connection, record: &FocusSessionRecord) -> Result<i64> {
@@ -953,7 +983,7 @@ fn opt_string(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Task;
+    use crate::model::{Subtask, Task};
 
     #[test]
     fn test_db_in_memory_initialization() {
@@ -976,6 +1006,42 @@ mod tests {
         assert_eq!(loaded.tasks.len(), 1);
         assert_eq!(loaded.tasks[0].title, "Test Task");
         assert_eq!(loaded.tasks[0].priority, Priority::High);
+    }
+
+    #[test]
+    fn load_tasks_round_trips_tags_subtasks_and_blockers() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+
+        let mut blocked = Task::new(1, "Blocker".into());
+        blocked.status = TaskStatus::Pending;
+        let mut task = Task::new(2, "Main".into());
+        task.tags = vec!["focus".into(), "work".into()];
+        task.subtasks = vec![
+            Subtask {
+                id: 201,
+                title: "Step one".into(),
+                done: false,
+            },
+            Subtask {
+                id: 202,
+                title: "Step two".into(),
+                done: true,
+            },
+        ];
+        task.blocked_by = vec![1];
+        data.tasks = vec![blocked, task];
+
+        db.save_app_data(&data).unwrap();
+        let loaded = db.load_app_data().unwrap();
+
+        assert_eq!(loaded.tasks.len(), 2);
+        let main = loaded.tasks.iter().find(|t| t.id == 2).expect("main task");
+        assert_eq!(main.tags, vec!["focus", "work"]);
+        assert_eq!(main.subtasks.len(), 2);
+        assert_eq!(main.subtasks[0].title, "Step one");
+        assert!(main.subtasks[1].done);
+        assert_eq!(main.blocked_by, vec![1]);
     }
 
     #[test]
