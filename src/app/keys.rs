@@ -115,12 +115,7 @@ impl App {
                     self.set_status("Task set as active.", false);
                 }
             }
-            KeyCode::Char('g') => {
-                self.cycle_task_filter();
-            }
-            KeyCode::Char('t') => {
-                self.cycle_tag_filter();
-            }
+
             KeyCode::Char('z') => {
                 self.zen_mode = !self.zen_mode;
                 self.set_status(
