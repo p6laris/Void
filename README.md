@@ -119,6 +119,36 @@ active_fg = "neon_blue"
 
 ---
 
+## 💾 Data Import & Export
+
+Your data is always yours. Void makes it easy to back up, restore, or migrate your entire database.
+
+### Export
+You can export your tasks, settings, and focus history to a JSON file at any time:
+
+**From the CLI:**
+```bash
+# Export to the default location
+void --export
+
+# Export to a specific file
+void --export ~/my_backup.json
+```
+
+**From the app:**
+* Press `Ctrl-S` at any time, or
+* Press `e` in the Settings tab
+
+### Import (Restore)
+To restore a previous backup or migrate your data to a new machine:
+```bash
+void --import ~/my_backup.json
+```
+
+> ⚠️ **Heads up:** Importing will completely replace your current data with the contents of the backup file. You'll be asked to confirm before anything changes.
+
+---
+
 ## 🛠 Development
 
 Want to hack on it?
