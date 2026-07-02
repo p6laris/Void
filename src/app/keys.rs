@@ -58,10 +58,10 @@ impl App {
     pub(crate) fn handle_about_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.help_scroll = self.help_scroll.saturating_add(1);
+                self.about_scroll = self.about_scroll.saturating_add(1);
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.help_scroll = self.help_scroll.saturating_sub(1);
+                self.about_scroll = self.about_scroll.saturating_sub(1);
             }
             _ => {}
         }
@@ -536,6 +536,8 @@ impl App {
             MouseEventKind::ScrollUp => {
                 if self.tab == FocusTab::Help {
                     self.help_scroll = self.help_scroll.saturating_sub(3);
+                } else if self.tab == FocusTab::About {
+                    self.about_scroll = self.about_scroll.saturating_sub(3);
                 } else if self.tab == FocusTab::Tasks || self.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::empty()));
                 }
@@ -543,6 +545,8 @@ impl App {
             MouseEventKind::ScrollDown => {
                 if self.tab == FocusTab::Help {
                     self.help_scroll = self.help_scroll.saturating_add(3);
+                } else if self.tab == FocusTab::About {
+                    self.about_scroll = self.about_scroll.saturating_add(3);
                 } else if self.tab == FocusTab::Tasks || self.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::empty()));
                 }
