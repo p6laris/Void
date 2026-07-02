@@ -53,28 +53,7 @@ impl Database {
     }
 
     pub fn insert_focus_session(&self, record: &FocusSessionRecord) -> Result<i64> {
-        self.conn.execute(
-            "INSERT INTO focus_sessions (date, minutes, task_id, mode, completed_at, note, pause_count, pause_seconds)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                record.date,
-                record.minutes,
-                record.task_id.map(|id| id as i64),
-                encode_timer_mode(record.mode),
-                record.completed_at.to_rfc3339(),
-                record.note,
-                record.pause_count,
-                record.pause_seconds,
-            ],
-        )?;
-        let id = self.conn.last_insert_rowid();
-        for tag in &record.tags {
-            self.conn.execute(
-                "INSERT INTO session_tags (session_id, tag) VALUES (?1, ?2)",
-                params![id, tag],
-            )?;
-        }
-        Ok(id)
+        insert_focus_session_conn(&self.conn, record)
     }
 
     pub fn get_session(&self, id: i64) -> Result<StoredSession> {
@@ -777,6 +756,31 @@ fn load_blocked_by(conn: &Connection, task_id: u64) -> Result<Vec<u64>> {
     let rows = stmt.query_map(params![task_id as i64], |row| read_u64(row, 0))?;
     rows.collect::<Result<Vec<_>, _>>()
         .context("loading task blockers")
+}
+
+fn insert_focus_session_conn(conn: &Connection, record: &FocusSessionRecord) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO focus_sessions (date, minutes, task_id, mode, completed_at, note, pause_count, pause_seconds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            record.date,
+            record.minutes,
+            record.task_id.map(|id| id as i64),
+            encode_timer_mode(record.mode),
+            record.completed_at.to_rfc3339(),
+            record.note,
+            record.pause_count,
+            record.pause_seconds,
+        ],
+    )?;
+    let id = conn.last_insert_rowid();
+    for tag in &record.tags {
+        conn.execute(
+            "INSERT INTO session_tags (session_id, tag) VALUES (?1, ?2)",
+            params![id, tag],
+        )?;
+    }
+    Ok(id)
 }
 
 fn load_session_tags(conn: &Connection, session_id: i64) -> Result<Vec<String>> {

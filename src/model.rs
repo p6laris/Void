@@ -232,14 +232,26 @@ pub struct FocusSessionRecord {
     pub task_id: Option<u64>,
     pub mode: TimerMode,
     pub completed_at: DateTime<Utc>,
-    #[serde(default)]
     pub note: String,
-    #[serde(default)]
     pub tags: Vec<String>,
-    #[serde(default)]
     pub pause_count: u32,
-    #[serde(default)]
     pub pause_seconds: u32,
+}
+
+impl Default for FocusSessionRecord {
+    fn default() -> Self {
+        Self {
+            date: String::new(),
+            minutes: 0,
+            task_id: None,
+            mode: TimerMode::Focus,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: Vec::new(),
+            pause_count: 0,
+            pause_seconds: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
