@@ -79,6 +79,46 @@ Everything is stored locally in `~/.local/share/void/void.db` (or your OS equiva
 
 ---
 
+## 🎨 Custom Themes
+
+Void supports completely custom themes via TOML files. Just drop a `.toml` file into your themes directory:
+* **Linux:** `~/.config/void/themes/`
+* **macOS:** `~/Library/Application Support/void/themes/`
+* **Windows:** `%APPDATA%\void\themes\`
+
+Here is an example `cyber.toml` theme:
+
+```toml
+name = "Cyberpunk"
+
+[palette]
+neon_pink = "#FF00FF"
+neon_blue = "#00FFFF"
+dark_bg = "#0B0B1A"
+gray = "#333333"
+
+[tokens]
+bg = "dark_bg"
+text = "#FFFFFF"
+dim = "gray"
+accent = "neon_pink"
+on_accent = "#000000"
+success = "neon_blue"
+warning = "#FFFF00"
+error = "#FF0033"
+info = "neon_blue"
+progress_dim = "gray"
+task_track = "gray"
+panel = "dark_bg"
+panel_border = "neon_pink"
+select_bg = "gray"
+select_fg = "neon_pink"
+active_bg = "gray"
+active_fg = "neon_blue"
+```
+
+---
+
 ## 🛠 Development
 
 Want to hack on it?
