@@ -193,17 +193,14 @@ impl App {
     }
 
     pub(crate) fn handle_stats_key(&mut self, key: KeyEvent) {
-        if self.recent_sessions.is_empty() {
+        if self.recent_sessions.is_empty() && self.heatmap_cursor.is_none() {
             if matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E')) {
                 self.end_session();
             }
             return;
         }
-        let n = if self.heatmap_cursor.is_some() {
-            self.cursor_sessions.len()
-        } else {
-            self.recent_sessions.len()
-        };
+        self.clamp_stats_session_selection();
+        let n = self.active_stats_sessions().len();
 
         match key.code {
             KeyCode::Char('v') => {
@@ -246,6 +243,7 @@ impl App {
                 let date_str = next.format("%Y-%m-%d").to_string();
                 self.cursor_sessions = self.db.sessions_on_date(&date_str).unwrap_or_default();
                 self.stats_session_selected = 0;
+                self.clamp_stats_session_selection();
             }
             KeyCode::Char('j') => {
                 if n > 0 {
@@ -262,12 +260,8 @@ impl App {
                 }
             }
             KeyCode::Char('d') => {
-                if n > 0 {
-                    let id = if self.heatmap_cursor.is_some() {
-                        self.cursor_sessions[self.stats_session_selected].id
-                    } else {
-                        self.recent_sessions[self.stats_session_selected].id
-                    };
+                if let Some(entry) = self.selected_stats_session() {
+                    let id = entry.id;
                     self.persist_data(|db, data| storage::delete_session(db, data, id));
                     if let Some(cursor) = self.heatmap_cursor {
                         let date_str = cursor.format("%Y-%m-%d").to_string();
@@ -275,17 +269,12 @@ impl App {
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
                     self.bump_sessions();
+                    self.clamp_stats_session_selection();
                     self.set_status("Session deleted.", false);
-                    self.stats_session_selected = 0;
                 }
             }
             KeyCode::Char('+') | KeyCode::Char('=') => {
-                if n > 0 {
-                    let entry = if self.heatmap_cursor.is_some() {
-                        &self.cursor_sessions[self.stats_session_selected]
-                    } else {
-                        &self.recent_sessions[self.stats_session_selected]
-                    };
+                if let Some(entry) = self.selected_stats_session() {
                     let new_mins = entry.record.minutes.saturating_add(5);
                     let id = entry.id;
                     self.persist_data(|db, data| {
@@ -297,15 +286,11 @@ impl App {
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
                     self.bump_sessions();
+                    self.clamp_stats_session_selection();
                 }
             }
             KeyCode::Char('-') => {
-                if n > 0 {
-                    let entry = if self.heatmap_cursor.is_some() {
-                        &self.cursor_sessions[self.stats_session_selected]
-                    } else {
-                        &self.recent_sessions[self.stats_session_selected]
-                    };
+                if let Some(entry) = self.selected_stats_session() {
                     let new_mins = entry.record.minutes.saturating_sub(5).max(1);
                     let id = entry.id;
                     self.persist_data(|db, data| {
@@ -317,6 +302,7 @@ impl App {
                             self.db.sessions_on_date(&date_str).unwrap_or_default();
                     }
                     self.bump_sessions();
+                    self.clamp_stats_session_selection();
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),

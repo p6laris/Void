@@ -344,6 +344,28 @@ impl App {
         self.persist(|db| db.persist_timer_state(completed, mode));
     }
 
+    pub(crate) fn active_stats_sessions(&self) -> &[StoredSession] {
+        if self.heatmap_cursor.is_some() {
+            &self.cursor_sessions
+        } else {
+            &self.recent_sessions
+        }
+    }
+
+    pub(crate) fn clamp_stats_session_selection(&mut self) {
+        let n = self.active_stats_sessions().len();
+        if n == 0 {
+            self.stats_session_selected = 0;
+        } else if self.stats_session_selected >= n {
+            self.stats_session_selected = n - 1;
+        }
+    }
+
+    pub(crate) fn selected_stats_session(&self) -> Option<&StoredSession> {
+        self.active_stats_sessions()
+            .get(self.stats_session_selected)
+    }
+
     pub(crate) fn refresh_recent_sessions(&mut self) {
         let offset = self.stats_session_page * Self::SESSIONS_PER_PAGE;
         match self
@@ -354,9 +376,7 @@ impl App {
             Err(e) => self.set_status(format!("Error loading sessions: {e}"), true),
         }
         self.stats_session_total = self.db.session_count().unwrap_or(0);
-        if self.stats_session_selected >= self.recent_sessions.len() {
-            self.stats_session_selected = self.recent_sessions.len().saturating_sub(1);
-        }
+        self.clamp_stats_session_selection();
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         self.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
     }
