@@ -302,7 +302,7 @@ pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Resu
 pub fn pick_best_task(data: &AppData) -> Option<u64> {
     data.tasks
         .iter()
-        .filter(|t| t.status != TaskStatus::Done)
+        .filter(|t| t.status != TaskStatus::Done && !t.archived)
         .max_by(|a, b| {
             a.priority
                 .rank()
@@ -317,7 +317,7 @@ pub fn advance_to_next_task(data: &AppData, current: Option<u64>) -> Option<u64>
     let pending: Vec<&Task> = data
         .tasks
         .iter()
-        .filter(|t| t.status != TaskStatus::Done)
+        .filter(|t| t.status != TaskStatus::Done && !t.archived)
         .collect();
     if pending.is_empty() {
         return None;
@@ -892,6 +892,14 @@ mod tests {
         let mut t = Task::new(1, "Task 1".into());
         t.status = TaskStatus::Pending;
         data.tasks.push(t);
+
+        assert_eq!(pick_best_task(&data), Some(1));
+
+        let mut archived = Task::new(2, "Archived".into());
+        archived.status = TaskStatus::Pending;
+        archived.priority = Priority::High;
+        archived.archived = true;
+        data.tasks.push(archived);
 
         assert_eq!(pick_best_task(&data), Some(1));
     }

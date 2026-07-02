@@ -249,8 +249,9 @@ impl App {
             .tasks
             .iter()
             .filter(|t| {
-                t.status == crate::model::TaskStatus::Pending
-                    || t.status == crate::model::TaskStatus::InProgress
+                !t.archived
+                    && (t.status == crate::model::TaskStatus::Pending
+                        || t.status == crate::model::TaskStatus::InProgress)
             })
             .map(|t| t.id)
             .collect();
