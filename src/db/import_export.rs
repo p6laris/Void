@@ -54,3 +54,41 @@ fn decode_timer_mode(s: &str) -> TimerMode {
         _ => TimerMode::Focus,
     }
 }
+
+fn encode_timer_mode(mode: TimerMode) -> &'static str {
+    match mode {
+        TimerMode::Focus => "focus",
+        TimerMode::ShortBreak => "shortbreak",
+        TimerMode::LongBreak => "longbreak",
+        TimerMode::Custom => "custom",
+    }
+}
+
+pub fn import_json(conn: &Connection, path: &std::path::Path) -> Result<()> {
+    let raw = fs::read_to_string(path).context("reading import file")?;
+    let data: AppData = serde_json::from_str(&raw).context("parsing import file")?;
+
+    // Clear existing data and sync tasks
+    super::sync_tasks(conn, &data.tasks).context("syncing tasks during import")?;
+
+    // Save settings
+    super::save_settings(conn, &data).context("saving settings during import")?;
+
+    // Restore focus session history
+    conn.execute("DELETE FROM focus_sessions", [])?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO focus_sessions (date, minutes, task_id, mode, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+
+    for record in &data.session_history {
+        stmt.execute(rusqlite::params![
+            record.date,
+            record.minutes,
+            record.task_id.map(|id| id as i64),
+            encode_timer_mode(record.mode),
+            record.completed_at.to_rfc3339(),
+        ])?;
+    }
+    Ok(())
+}

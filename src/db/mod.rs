@@ -1,4 +1,4 @@
-mod export;
+mod import_export;
 mod schema;
 
 use std::path::PathBuf;
@@ -317,7 +317,14 @@ impl Database {
     }
 
     pub fn export_json(&self) -> Result<PathBuf> {
-        export::export_json(&self.conn)
+        import_export::export_json(&self.conn)
+    }
+
+    pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
+        let conn = self.conn.unchecked_transaction()?;
+        import_export::import_json(&conn, path)?;
+        conn.commit()?;
+        Ok(())
     }
 
     pub fn minutes_by_date(&self, days: usize) -> Result<Vec<(String, u32)>> {

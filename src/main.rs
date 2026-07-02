@@ -1,4 +1,4 @@
-use std::io::{self, Stdout};
+use std::io::{self, Stdout, Write};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -162,6 +162,8 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             println!("  done <task_id>    (Marks task as complete)");
             println!("  start <task_id>   (Sets task active and launches the GUI)");
             println!("  archive list      (Lists archived tasks)");
+            println!("  --export [path]   (Exports database to JSON)");
+            println!("  --import <path>   (Imports database from JSON, OVERWRITING current data)");
             println!("  help              (Shows this message)");
             println!("\nRun without arguments to launch the GUI interface.");
             Ok(true)
@@ -180,6 +182,48 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 for t in archived {
                     println!("{} | {}", t.id, t.title);
                 }
+            }
+            Ok(true)
+        }
+        "export" | "--export" => {
+            let db = void::db::Database::open()?;
+            let path = if args.len() >= 3 {
+                let dest = std::path::PathBuf::from(&args[2]);
+                let data = db.load_app_data().unwrap_or_default();
+                let raw = serde_json::to_string_pretty(&data)?;
+                std::fs::write(&dest, raw)?;
+                dest
+            } else {
+                db.export_json()?
+            };
+            println!("Exported backup to {}", path.display());
+            Ok(true)
+        }
+        "import" | "--import" => {
+            if args.len() < 3 {
+                eprintln!("Usage: void --import <path_to_json>");
+                return Ok(true);
+            }
+            let path = std::path::PathBuf::from(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: File not found at {}", path.display());
+                return Ok(true);
+            }
+
+            print!("WARNING: This will completely overwrite your current tasks and focus history.\nAre you sure you want to proceed? (y/N): ");
+            std::io::stdout().flush().unwrap();
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if input.trim().to_lowercase() != "y" {
+                println!("Import cancelled.");
+                return Ok(true);
+            }
+
+            let db = void::db::Database::open()?;
+            if let Err(e) = db.import_json(&path) {
+                eprintln!("Import failed: {e:#}");
+            } else {
+                println!("Successfully imported database from {}", path.display());
             }
             Ok(true)
         }
