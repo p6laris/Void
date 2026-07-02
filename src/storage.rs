@@ -1,5 +1,5 @@
 use anyhow::Result;
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, NaiveDate, Utc, Weekday};
 
 use crate::db::Database;
 use crate::model::{
@@ -823,25 +823,42 @@ fn update_period_streaks(data: &mut AppData, today: &str) -> Result<()> {
 }
 
 fn is_consecutive_week(prev: &str, cur: &str) -> bool {
-    week_offset(prev)
-        .zip(week_offset(cur))
-        .is_some_and(|(a, b)| b == a + 1)
+    parse_week_key(prev)
+        .and_then(|(year, week)| week_start(year, week))
+        .zip(
+            parse_week_key(cur)
+                .and_then(|(year, week)| week_start(year, week)),
+        )
+        .is_some_and(|(prev_start, cur_start)| {
+            prev_start.checked_add_signed(chrono::TimeDelta::days(7)) == Some(cur_start)
+        })
 }
 
 fn is_consecutive_month(prev: &str, cur: &str) -> bool {
-    month_offset(prev)
-        .zip(month_offset(cur))
-        .is_some_and(|(a, b)| b == a + 1)
+    parse_month_key(prev)
+        .zip(parse_month_key(cur))
+        .is_some_and(|((prev_year, prev_month), (cur_year, cur_month))| {
+            let (next_year, next_month) = if prev_month == 12 {
+                (prev_year + 1, 1)
+            } else {
+                (prev_year, prev_month + 1)
+            };
+            next_year == cur_year && next_month == cur_month
+        })
 }
 
-fn week_offset(key: &str) -> Option<i32> {
-    let (y, w) = key.split_once("-W")?;
-    Some(y.parse::<i32>().ok()? * 100 + w.parse::<i32>().ok()?)
+fn parse_week_key(key: &str) -> Option<(i32, u32)> {
+    let (year, week) = key.split_once("-W")?;
+    Some((year.parse().ok()?, week.parse().ok()?))
 }
 
-fn month_offset(key: &str) -> Option<i32> {
-    let (y, m) = key.split_once('-')?;
-    Some(y.parse::<i32>().ok()? * 100 + m.parse::<i32>().ok()?)
+fn parse_month_key(key: &str) -> Option<(i32, u32)> {
+    let (year, month) = key.split_once('-')?;
+    Some((year.parse().ok()?, month.parse().ok()?))
+}
+
+fn week_start(year: i32, week: u32) -> Option<NaiveDate> {
+    NaiveDate::from_isoywd_opt(year, week, Weekday::Mon)
 }
 
 pub fn apply_timer_preset(data: &mut AppData, preset: &TimerPreset) {
@@ -953,5 +970,30 @@ mod tests {
 
         assert_eq!(data.today_focus_minutes, 50);
         assert_eq!(data.total_focus_minutes, 105);
+    }
+
+    #[test]
+    fn consecutive_week_across_year_boundary() {
+        assert!(is_consecutive_week("2025-W52", "2026-W01"));
+    }
+
+    #[test]
+    fn consecutive_month_across_year_boundary() {
+        assert!(is_consecutive_month("2025-12", "2026-01"));
+    }
+
+    #[test]
+    fn non_consecutive_week_gap() {
+        assert!(!is_consecutive_week("2025-W50", "2026-W01"));
+    }
+
+    #[test]
+    fn non_consecutive_month_gap() {
+        assert!(!is_consecutive_month("2025-10", "2026-01"));
+    }
+
+    #[test]
+    fn consecutive_month_within_year() {
+        assert!(is_consecutive_month("2025-06", "2025-07"));
     }
 }
