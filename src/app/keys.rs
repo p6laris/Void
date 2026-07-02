@@ -16,10 +16,6 @@ impl App {
             self.toggle_bulk_mode();
             return;
         }
-        if key.code == KeyCode::Esc && self.bulk_mode && self.tab == FocusTab::Tasks {
-            self.toggle_bulk_mode();
-            return;
-        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Char('q') if self.subtask_focus && self.tab == FocusTab::Tasks => {
