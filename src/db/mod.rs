@@ -188,24 +188,31 @@ impl Database {
     }
 
     pub fn session_counts_by_mode(&self) -> Result<(u32, u32, u32)> {
-        let focus: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM focus_sessions WHERE mode = ?1",
-            params![encode_timer_mode(TimerMode::Focus)],
-            |row| row.get(0),
-        )?;
-        let custom: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM focus_sessions WHERE mode = ?1",
-            params![encode_timer_mode(TimerMode::Custom)],
-            |row| row.get(0),
-        )?;
-        let breaks: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM focus_sessions WHERE mode IN (?1, ?2)",
-            params![
-                encode_timer_mode(TimerMode::ShortBreak),
-                encode_timer_mode(TimerMode::LongBreak),
-            ],
-            |row| row.get(0),
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT mode, COUNT(*) FROM focus_sessions GROUP BY mode")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+
+        let focus_mode = encode_timer_mode(TimerMode::Focus);
+        let custom_mode = encode_timer_mode(TimerMode::Custom);
+        let short_break_mode = encode_timer_mode(TimerMode::ShortBreak);
+        let long_break_mode = encode_timer_mode(TimerMode::LongBreak);
+
+        let mut focus = 0;
+        let mut custom = 0;
+        let mut breaks = 0;
+        for row in rows {
+            let (mode, count) = row?;
+            if mode == focus_mode {
+                focus = count;
+            } else if mode == custom_mode {
+                custom = count;
+            } else if mode == short_break_mode || mode == long_break_mode {
+                breaks += count;
+            }
+        }
         Ok((focus, custom, breaks))
     }
 
@@ -1167,6 +1174,48 @@ mod tests {
             series.iter().find(|(key, _)| key == &today_key).map(|(_, m)| *m),
             Some(0)
         );
+    }
+
+    #[test]
+    fn session_counts_by_mode_aggregates_in_one_query() {
+        let db = Database::open_in_memory().unwrap();
+        let base = FocusSessionRecord {
+            date: "2026-07-02".into(),
+            minutes: 25,
+            task_id: None,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: Vec::new(),
+            pause_count: 0,
+            pause_seconds: 0,
+            mode: TimerMode::Focus,
+        };
+
+        for _ in 0..3 {
+            db.insert_focus_session(&base).unwrap();
+        }
+        db.insert_focus_session(&FocusSessionRecord {
+            mode: TimerMode::Custom,
+            ..base.clone()
+        })
+        .unwrap();
+        db.insert_focus_session(&FocusSessionRecord {
+            mode: TimerMode::Custom,
+            ..base.clone()
+        })
+        .unwrap();
+        db.insert_focus_session(&FocusSessionRecord {
+            mode: TimerMode::ShortBreak,
+            ..base.clone()
+        })
+        .unwrap();
+        db.insert_focus_session(&FocusSessionRecord {
+            mode: TimerMode::LongBreak,
+            ..base
+        })
+        .unwrap();
+
+        assert_eq!(db.session_counts_by_mode().unwrap(), (3, 2, 2));
     }
 
     #[test]
