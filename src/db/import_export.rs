@@ -8,7 +8,7 @@ use crate::model::{AppData, FocusSessionRecord};
 
 use super::{
     data_dir, decode_timer_mode, insert_focus_session_conn, load_session_tags, load_settings,
-    load_tasks, parse_datetime, read_opt_u64,
+    load_tasks, read_opt_u64,
 };
 
 pub fn export_json(conn: &Connection) -> Result<PathBuf> {
@@ -41,7 +41,7 @@ fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
                 minutes: row.get(2)?,
                 task_id: read_opt_u64(row, 3)?,
                 mode: decode_timer_mode(&mode_str),
-                completed_at: parse_datetime(&row.get::<_, String>(5)?),
+                completed_at: super::parse_datetime_sql(&row.get::<_, String>(5)?)?,
                 note: row.get(6)?,
                 pause_count: row.get(7)?,
                 pause_seconds: row.get(8)?,

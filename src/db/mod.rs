@@ -68,7 +68,7 @@ impl Database {
                     minutes: row.get(1)?,
                     task_id: read_opt_u64(row, 2)?,
                     mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime(&row.get::<_, String>(4)?),
+                    completed_at: parse_datetime_sql(&row.get::<_, String>(4)?)?,
                     note: row.get(5)?,
                     pause_count: row.get(6)?,
                     pause_seconds: row.get(7)?,
@@ -120,7 +120,7 @@ impl Database {
                     minutes: row.get(2)?,
                     task_id: read_opt_u64(row, 3)?,
                     mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime(&row.get::<_, String>(5)?),
+                    completed_at: parse_datetime_sql(&row.get::<_, String>(5)?)?,
                     note: row.get(6)?,
                     pause_count: row.get(7)?,
                     pause_seconds: row.get(8)?,
@@ -161,7 +161,7 @@ impl Database {
                     minutes: row.get(2)?,
                     task_id: read_opt_u64(row, 3)?,
                     mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime(&row.get::<_, String>(5)?),
+                    completed_at: parse_datetime_sql(&row.get::<_, String>(5)?)?,
                     note: row.get(6)?,
                     pause_count: row.get(7)?,
                     pause_seconds: row.get(8)?,
@@ -613,8 +613,11 @@ pub(crate) fn load_tasks(conn: &Connection) -> Result<Vec<Task>> {
             estimated_minutes: row.get(5)?,
             actual_minutes: row.get(6)?,
             sessions: row.get(7)?,
-            created_at: parse_datetime(&row.get::<_, String>(8)?),
-            completed_at: row.get::<_, Option<String>>(9)?.map(|s| parse_datetime(&s)),
+            created_at: parse_datetime_sql(&row.get::<_, String>(8)?)?,
+            completed_at: row
+                .get::<_, Option<String>>(9)?
+                .map(|s| parse_datetime_sql(&s))
+                .transpose()?,
             due_date: row.get::<_, Option<String>>(10)?,
             today: row.get::<_, i32>(11)? != 0,
             sort_order: row.get(12)?,
@@ -894,10 +897,20 @@ fn decode_estimate_complete(s: &str) -> Option<EstimateCompleteBehavior> {
     })
 }
 
-pub(crate) fn parse_datetime(s: &str) -> DateTime<Utc> {
+pub(crate) fn parse_datetime(s: &str) -> Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now())
+        .with_context(|| format!("invalid RFC3339 timestamp: {s:?}"))
+}
+
+fn parse_datetime_sql(s: &str) -> rusqlite::Result<DateTime<Utc>> {
+    parse_datetime(s).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            0,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+        )
+    })
 }
 
 fn bool_str(v: bool) -> String {
@@ -963,5 +976,28 @@ mod tests {
         assert_eq!(loaded.tasks.len(), 1);
         assert_eq!(loaded.tasks[0].title, "Test Task");
         assert_eq!(loaded.tasks[0].priority, Priority::High);
+    }
+
+    #[test]
+    fn parse_datetime_rejects_invalid_input() {
+        let err = parse_datetime("not-a-timestamp").unwrap_err();
+        assert!(err.to_string().contains("invalid RFC3339 timestamp"));
+    }
+
+    #[test]
+    fn load_tasks_fails_on_corrupt_created_at() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema::migrate(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (
+                id, title, notes, priority, status, estimated_minutes, actual_minutes,
+                sessions, created_at, completed_at, due_date, today, sort_order, archived, recurrence
+             ) VALUES (1, 't', '', 'medium', 'pending', 25, 0, 0, 'bad', NULL, NULL, 0, 0, 0, 'none')",
+            [],
+        )
+        .unwrap();
+
+        let err = load_tasks(&conn).unwrap_err();
+        assert!(err.to_string().contains("invalid RFC3339 timestamp"));
     }
 }
