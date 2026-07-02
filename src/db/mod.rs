@@ -316,12 +316,20 @@ impl Database {
     }
 
     pub fn minutes_by_date(&self, days: usize) -> Result<Vec<(String, u32)>> {
+        if days == 0 {
+            return Ok(Vec::new());
+        }
         let today = chrono::Local::now().date_naive();
+        let start = today - chrono::Duration::days((days - 1) as i64);
+        let by_date = self.focus_minutes_in_range(
+            &start.format("%Y-%m-%d").to_string(),
+            &today.format("%Y-%m-%d").to_string(),
+        )?;
         let mut out = Vec::with_capacity(days);
         for offset in (0..days).rev() {
             let date = today - chrono::Duration::days(offset as i64);
             let key = date.format("%Y-%m-%d").to_string();
-            let mins = self.focus_minutes_on_date(&key)?;
+            let mins = by_date.get(&key).copied().unwrap_or(0);
             let label = date.format("%a").to_string();
             out.push((label, mins));
         }
@@ -330,12 +338,20 @@ impl Database {
 
     /// Daily focus minutes keyed by `YYYY-MM-DD` (oldest first).
     pub fn focus_minutes_series(&self, days: usize) -> Result<Vec<(String, u32)>> {
+        if days == 0 {
+            return Ok(Vec::new());
+        }
         let today = chrono::Local::now().date_naive();
+        let start = today - chrono::Duration::days((days - 1) as i64);
+        let by_date = self.focus_minutes_in_range(
+            &start.format("%Y-%m-%d").to_string(),
+            &today.format("%Y-%m-%d").to_string(),
+        )?;
         let mut out = Vec::with_capacity(days);
         for offset in (0..days).rev() {
             let date = today - chrono::Duration::days(offset as i64);
             let key = date.format("%Y-%m-%d").to_string();
-            let mins = self.focus_minutes_on_date(&key)?;
+            let mins = by_date.get(&key).copied().unwrap_or(0);
             out.push((key, mins));
         }
         Ok(out)
@@ -407,19 +423,32 @@ impl Database {
         Ok(out)
     }
 
-    fn focus_minutes_on_date(&self, key: &str) -> Result<u32> {
-        self.conn
-            .query_row(
-                "SELECT COALESCE(SUM(minutes), 0) FROM focus_sessions
-                 WHERE date = ?1 AND mode IN (?2, ?3)",
-                params![
-                    key,
-                    encode_timer_mode(TimerMode::Focus),
-                    encode_timer_mode(TimerMode::Custom),
-                ],
-                |row| row.get(0),
-            )
-            .map_err(Into::into)
+    fn focus_minutes_in_range(
+        &self,
+        start: &str,
+        end: &str,
+    ) -> Result<HashMap<String, u32>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT date, COALESCE(SUM(minutes), 0) AS mins
+             FROM focus_sessions
+             WHERE date >= ?1 AND date <= ?2 AND mode IN (?3, ?4)
+             GROUP BY date",
+        )?;
+        let rows = stmt.query_map(
+            params![
+                start,
+                end,
+                encode_timer_mode(TimerMode::Focus),
+                encode_timer_mode(TimerMode::Custom),
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?)),
+        )?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let (date, mins) = row?;
+            map.insert(date, mins);
+        }
+        Ok(map)
     }
 }
 
@@ -1089,6 +1118,55 @@ mod tests {
         let on_date = db.sessions_on_date("2026-07-02").unwrap();
         assert_eq!(on_date.len(), 1);
         assert_eq!(on_date[0].record.tags, vec!["deep", "work"]);
+    }
+
+    #[test]
+    fn minutes_by_date_aggregates_focus_minutes_in_one_query() {
+        let db = Database::open_in_memory().unwrap();
+        let today = chrono::Local::now().date_naive();
+        let yesterday = today - chrono::TimeDelta::days(1);
+        let yesterday_key = yesterday.format("%Y-%m-%d").to_string();
+
+        db.insert_focus_session(&FocusSessionRecord {
+            date: yesterday_key.clone(),
+            minutes: 25,
+            task_id: None,
+            mode: TimerMode::Focus,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: Vec::new(),
+            pause_count: 0,
+            pause_seconds: 0,
+        })
+        .unwrap();
+        db.insert_focus_session(&FocusSessionRecord {
+            date: yesterday_key,
+            minutes: 10,
+            task_id: None,
+            mode: TimerMode::ShortBreak,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: Vec::new(),
+            pause_count: 0,
+            pause_seconds: 0,
+        })
+        .unwrap();
+
+        let chart = db.minutes_by_date(7).unwrap();
+        assert_eq!(chart.len(), 7);
+        let yesterday_label = yesterday.format("%a").to_string();
+        let yesterday_mins = chart
+            .iter()
+            .find(|(label, _)| label == &yesterday_label)
+            .map(|(_, mins)| *mins);
+        assert_eq!(yesterday_mins, Some(25));
+
+        let series = db.focus_minutes_series(7).unwrap();
+        let today_key = today.format("%Y-%m-%d").to_string();
+        assert_eq!(
+            series.iter().find(|(key, _)| key == &today_key).map(|(_, m)| *m),
+            Some(0)
+        );
     }
 
     #[test]
