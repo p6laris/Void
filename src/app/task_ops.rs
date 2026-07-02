@@ -106,7 +106,14 @@ impl App {
             .map(|(i, _)| i)
             .collect();
 
-        let mut dash = self.cached_filtered_tasks.clone();
+        let mut dash: Vec<usize> = self
+            .data
+            .tasks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.status != crate::model::TaskStatus::Done && !t.archived)
+            .map(|(i, _)| i)
+            .collect();
         dash.sort_by(|&a, &b| {
             let ta = &self.data.tasks[a];
             let tb = &self.data.tasks[b];
