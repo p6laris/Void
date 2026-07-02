@@ -175,7 +175,10 @@ fn collect_month_marks(grid_start: NaiveDate, weeks: usize) -> Vec<(usize, &'sta
 
 #[inline]
 fn month_abbr(month: u32) -> &'static str {
-    MONTH_ABBR[month as usize - 1]
+    match month {
+        1..=12 => MONTH_ABBR[(month - 1) as usize],
+        _ => "?",
+    }
 }
 
 #[inline]
@@ -435,5 +438,13 @@ mod tests {
         let stride = UnicodeWidthStr::width(CELL).max(1) + GAP;
         assert_eq!(calc_weeks(0, stride), 1); // Minimum width 1
         assert_eq!(calc_weeks(5000, stride), 2498);
+    }
+
+    #[test]
+    fn month_abbr_handles_invalid_month() {
+        assert_eq!(month_abbr(1), "Jan");
+        assert_eq!(month_abbr(12), "Dec");
+        assert_eq!(month_abbr(0), "?");
+        assert_eq!(month_abbr(13), "?");
     }
 }

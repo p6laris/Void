@@ -257,6 +257,16 @@ fn render_week_chart(
     data: &[(String, u32)],
     inner: Rect,
 ) {
+    if data.is_empty() {
+        f.render_widget(
+            Paragraph::new("No focus data yet")
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(theme.dim)),
+            inner,
+        );
+        return;
+    }
+
     let max_mins = data.iter().map(|(_, m)| *m).max().unwrap_or(1).max(1);
     let last_idx = data.len() - 1;
     let total_mins: u32 = data.iter().map(|(_, m)| *m).sum();
