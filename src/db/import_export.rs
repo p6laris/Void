@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use crate::model::{AppData, FocusSessionRecord};
 
 use super::{
-    data_dir, decode_timer_mode, insert_focus_session_conn, load_session_tags, load_settings,
+    data_dir, decode_timer_mode, insert_focus_session_conn, load_all_session_tags, load_settings,
     load_tasks, read_opt_u64,
 };
 
@@ -49,10 +49,14 @@ fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
             },
         ))
     })?;
+    let tags_by_session = load_all_session_tags(conn)?;
     let mut out = Vec::new();
     for row in rows {
         let (id, mut record) = row?;
-        record.tags = load_session_tags(conn, id)?;
+        record.tags = tags_by_session
+            .get(&id)
+            .cloned()
+            .unwrap_or_default();
         out.push(record);
     }
     Ok(out)

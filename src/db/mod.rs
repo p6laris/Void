@@ -129,10 +129,14 @@ impl Database {
                 },
             ))
         })?;
+        let tags_by_session = load_all_session_tags(&self.conn)?;
         let mut out = Vec::new();
         for row in rows {
             let (id, mut record) = row?;
-            record.tags = load_session_tags(&self.conn, id)?;
+            record.tags = tags_by_session
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
             out.push(StoredSession { id, record });
         }
         Ok(out)
@@ -170,10 +174,14 @@ impl Database {
                 },
             ))
         })?;
+        let tags_by_session = load_all_session_tags(&self.conn)?;
         let mut out = Vec::new();
         for row in rows {
             let (id, mut record) = row?;
-            record.tags = load_session_tags(&self.conn, id)?;
+            record.tags = tags_by_session
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
             out.push(StoredSession { id, record });
         }
         Ok(out)
@@ -825,6 +833,19 @@ fn load_session_tags(conn: &Connection, session_id: i64) -> Result<Vec<String>> 
     Ok(tags)
 }
 
+fn load_all_session_tags(conn: &Connection) -> Result<HashMap<i64, Vec<String>>> {
+    let mut stmt = conn.prepare(
+        "SELECT session_id, tag FROM session_tags ORDER BY session_id ASC, tag ASC",
+    )?;
+    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+    let mut map: HashMap<i64, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (session_id, tag) = row?;
+        map.entry(session_id).or_default().push(tag);
+    }
+    Ok(map)
+}
+
 fn encode_recurrence(r: TaskRecurrence) -> &'static str {
     match r {
         TaskRecurrence::None => "none",
@@ -983,7 +1004,8 @@ fn opt_string(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Subtask, Task};
+    use crate::model::{FocusSessionRecord, Subtask, Task, TimerMode};
+    use chrono::Utc;
 
     #[test]
     fn test_db_in_memory_initialization() {
@@ -1042,6 +1064,31 @@ mod tests {
         assert_eq!(main.subtasks[0].title, "Step one");
         assert!(main.subtasks[1].done);
         assert_eq!(main.blocked_by, vec![1]);
+    }
+
+    #[test]
+    fn session_loaders_round_trip_tags() {
+        let db = Database::open_in_memory().unwrap();
+        let record = FocusSessionRecord {
+            date: "2026-07-02".into(),
+            minutes: 25,
+            task_id: None,
+            mode: TimerMode::Focus,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: vec!["deep".into(), "work".into()],
+            pause_count: 0,
+            pause_seconds: 0,
+        };
+        db.insert_focus_session(&record).unwrap();
+
+        let recent = db.recent_sessions_paged(0, 10).unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].record.tags, vec!["deep", "work"]);
+
+        let on_date = db.sessions_on_date("2026-07-02").unwrap();
+        assert_eq!(on_date.len(), 1);
+        assert_eq!(on_date[0].record.tags, vec!["deep", "work"]);
     }
 
     #[test]
