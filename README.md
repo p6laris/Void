@@ -23,6 +23,9 @@ Void is a simple, no-nonsense terminal focus timer and task manager. Keyboard-dr
 **Stats** — Track your focus time, streaks, and recent activity.
 ![Stats](./assets/stats.png)
 
+**Zen Mode** — Hide the noise. Focus only on the timer and your active task.
+![Zen Mode](./assets/zen_mode.png)
+
 ---
 
 ## ✨ What's inside?
