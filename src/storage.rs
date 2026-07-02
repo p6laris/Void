@@ -535,9 +535,12 @@ pub fn record_break_session(
 pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> {
     let stored = db.get_session(id)?;
     let r = &stored.record;
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     if matches!(r.mode, TimerMode::Focus | TimerMode::Custom) {
         data.total_focus_minutes = data.total_focus_minutes.saturating_sub(r.minutes);
-        data.today_focus_minutes = data.today_focus_minutes.saturating_sub(r.minutes);
+        if r.date == today {
+            data.today_focus_minutes = data.today_focus_minutes.saturating_sub(r.minutes);
+        }
     }
     data.total_sessions = data.total_sessions.saturating_sub(1);
     if let Some(tid) = r.task_id {
@@ -564,14 +567,19 @@ pub fn adjust_session_minutes(
     if old == new_minutes {
         return Ok(());
     }
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     if matches!(stored.record.mode, TimerMode::Focus | TimerMode::Custom) {
         let delta = new_minutes as i32 - old as i32;
         if delta > 0 {
             data.total_focus_minutes = data.total_focus_minutes.saturating_add(delta as u32);
-            data.today_focus_minutes = data.today_focus_minutes.saturating_add(delta as u32);
+            if stored.record.date == today {
+                data.today_focus_minutes = data.today_focus_minutes.saturating_add(delta as u32);
+            }
         } else {
             data.total_focus_minutes = data.total_focus_minutes.saturating_sub((-delta) as u32);
-            data.today_focus_minutes = data.today_focus_minutes.saturating_sub((-delta) as u32);
+            if stored.record.date == today {
+                data.today_focus_minutes = data.today_focus_minutes.saturating_sub((-delta) as u32);
+            }
         }
     }
     if let Some(tid) = stored.record.task_id {
@@ -902,5 +910,48 @@ mod tests {
         data.tasks.push(archived);
 
         assert_eq!(pick_best_task(&data), Some(1));
+    }
+
+    fn sample_old_session() -> FocusSessionRecord {
+        FocusSessionRecord {
+            date: "2020-01-01".into(),
+            minutes: 25,
+            task_id: None,
+            mode: TimerMode::Focus,
+            completed_at: Utc::now(),
+            ..FocusSessionRecord::default()
+        }
+    }
+
+    #[test]
+    fn delete_session_does_not_adjust_today_focus_for_old_sessions() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        data.today_date = Some(today);
+        data.today_focus_minutes = 50;
+        data.total_focus_minutes = 100;
+
+        let id = db.insert_focus_session(&sample_old_session()).unwrap();
+        delete_session(&db, &mut data, id).unwrap();
+
+        assert_eq!(data.today_focus_minutes, 50);
+        assert_eq!(data.total_focus_minutes, 75);
+    }
+
+    #[test]
+    fn adjust_session_minutes_does_not_adjust_today_focus_for_old_sessions() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        data.today_date = Some(today);
+        data.today_focus_minutes = 50;
+        data.total_focus_minutes = 100;
+
+        let id = db.insert_focus_session(&sample_old_session()).unwrap();
+        adjust_session_minutes(&db, &mut data, id, 30).unwrap();
+
+        assert_eq!(data.today_focus_minutes, 50);
+        assert_eq!(data.total_focus_minutes, 105);
     }
 }
