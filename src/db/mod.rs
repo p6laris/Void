@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use rusqlite::{params, Connection};
 
 use crate::model::{
@@ -41,7 +41,6 @@ impl Database {
         let mut data = AppData::default();
         load_settings(&self.conn, &mut data)?;
         data.tasks = load_tasks(&self.conn)?;
-        data.session_history = Vec::new();
         Ok(data)
     }
 
@@ -147,6 +146,27 @@ impl Database {
             .conn
             .query_row("SELECT COUNT(*) FROM focus_sessions", [], |row| row.get(0))?;
         Ok(count as usize)
+    }
+
+    pub fn session_minutes_by_local_hour(&self) -> Result<[u32; 24]> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT completed_at, minutes FROM focus_sessions")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u32>(1)?,
+            ))
+        })?;
+
+        let mut hours = [0u32; 24];
+        for row in rows {
+            let (completed_at, minutes) = row?;
+            let completed_at = parse_datetime_sql(&completed_at)?;
+            let hour = completed_at.with_timezone(&chrono::Local).hour();
+            hours[hour as usize] = hours[hour as usize].saturating_add(minutes);
+        }
+        Ok(hours)
     }
 
     pub fn sessions_on_date(&self, date: &str) -> Result<Vec<StoredSession>> {

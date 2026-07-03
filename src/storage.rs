@@ -447,16 +447,11 @@ pub fn completed_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
     data.tasks.iter().filter(|t| t.status == TaskStatus::Done)
 }
 
-pub fn most_productive_hour_label(data: &AppData) -> String {
-    if data.session_history.is_empty() {
-        return "N/A".into();
-    }
-    let mut hours = [0u32; 24];
-    for session in &data.session_history {
-        use chrono::Timelike;
-        let hour = session.completed_at.with_timezone(&chrono::Local).hour();
-        hours[hour as usize] += session.minutes;
-    }
+pub fn most_productive_hour_label(db: &Database) -> String {
+    let hours = match db.session_minutes_by_local_hour() {
+        Ok(hours) => hours,
+        Err(_) => return "N/A".into(),
+    };
 
     if let Some((hour, &mins)) = hours.iter().enumerate().max_by_key(|&(_, &c)| c) {
         if mins > 0 {

@@ -401,8 +401,6 @@ pub struct AppData {
     pub long_break_minutes: u32,
     #[serde(default = "default_long_every")]
     pub long_break_every: u32,
-    #[serde(default)]
-    pub session_history: Vec<FocusSessionRecord>,
     #[serde(default = "default_true")]
     pub auto_pick_task: bool,
     #[serde(default)]
@@ -482,7 +480,6 @@ impl Default for AppData {
             short_break_minutes: 5,
             long_break_minutes: 15,
             long_break_every: 4,
-            session_history: Vec::new(),
             auto_pick_task: true,
             auto_advance_task: true,
             theme: default_theme_id(),

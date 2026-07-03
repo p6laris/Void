@@ -138,7 +138,7 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
         (
             icons.star,
             "Peak Time",
-            crate::storage::most_productive_hour_label(&app.data),
+            crate::storage::most_productive_hour_label(&app.db),
         ),
         (
             icons.heart,
