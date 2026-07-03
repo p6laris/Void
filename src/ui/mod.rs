@@ -1,3 +1,4 @@
+mod calendar;
 mod chrome;
 mod heatmap;
 mod icons;

@@ -146,30 +146,12 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             f.render_widget(p, left_area);
 
             if let Some(r) = right_area {
-                let d = app.stats.calendar_date;
-                if let Ok(time_date) = time::Date::from_calendar_date(
-                    d.year(),
-                    time::Month::try_from(d.month() as u8).unwrap_or(time::Month::January),
-                    d.day() as u8,
-                ) {
-                    let mut store = ratatui::widgets::calendar::CalendarEventStore::default();
-                    store.add(
-                        time_date,
-                        Style::default()
-                            .bg(theme.accent)
-                            .fg(theme.on_accent)
-                            .add_modifier(Modifier::BOLD),
-                    );
-
-                    let monthly = ratatui::widgets::calendar::Monthly::new(time_date, store)
-                        .show_month_header(
-                            Style::default()
-                                .fg(theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        )
-                        .show_weekdays_header(Style::default().fg(theme.dim));
-                    f.render_widget(monthly, r);
-                }
+                super::calendar::render_due_date_calendar(
+                    f,
+                    r,
+                    app.stats.calendar_date,
+                    theme,
+                );
             }
             let hint = if matches!(app.input.input_field, InputField::DueDate) {
                 "←→ day · ↑↓ week · Tab field · Enter save · Esc cancel"
