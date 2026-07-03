@@ -362,6 +362,26 @@ impl App {
             .get(self.stats.stats_session_selected)
     }
 
+    pub(crate) fn refresh_cursor_sessions(&mut self) {
+        if let Some(cursor) = self.stats.heatmap_cursor {
+            let date_str = cursor.format("%Y-%m-%d").to_string();
+            self.stats.cursor_sessions = self.db.sessions_on_date(&date_str).unwrap_or_default();
+        }
+    }
+
+    pub(crate) fn focus_heatmap_date(&mut self, date: chrono::NaiveDate) {
+        self.stats.heatmap_cursor = Some(date);
+        self.stats.stats_session_selected = 0;
+        self.refresh_cursor_sessions();
+        self.clamp_stats_session_selection();
+    }
+
+    pub(crate) fn after_stats_session_edit(&mut self) {
+        self.refresh_cursor_sessions();
+        self.bump_sessions();
+        self.clamp_stats_session_selection();
+    }
+
     pub(crate) fn refresh_recent_sessions(&mut self) {
         let offset = self.stats.stats_session_page * Self::SESSIONS_PER_PAGE;
         match self

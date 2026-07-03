@@ -239,11 +239,7 @@ impl App {
                     next = earliest;
                 }
 
-                self.stats.heatmap_cursor = Some(next);
-                let date_str = next.format("%Y-%m-%d").to_string();
-                self.stats.cursor_sessions = self.db.sessions_on_date(&date_str).unwrap_or_default();
-                self.stats.stats_session_selected = 0;
-                self.clamp_stats_session_selection();
+                self.focus_heatmap_date(next);
             }
             KeyCode::Char('j') => {
                 if n > 0 {
@@ -263,13 +259,7 @@ impl App {
                 if let Some(entry) = self.selected_stats_session() {
                     let id = entry.id;
                     self.persist_data(|db, data| storage::delete_session(db, data, id));
-                    if let Some(cursor) = self.stats.heatmap_cursor {
-                        let date_str = cursor.format("%Y-%m-%d").to_string();
-                        self.stats.cursor_sessions =
-                            self.db.sessions_on_date(&date_str).unwrap_or_default();
-                    }
-                    self.bump_sessions();
-                    self.clamp_stats_session_selection();
+                    self.after_stats_session_edit();
                     self.set_status("Session deleted.", false);
                 }
             }
@@ -280,13 +270,7 @@ impl App {
                     self.persist_data(|db, data| {
                         storage::adjust_session_minutes(db, data, id, new_mins)
                     });
-                    if let Some(cursor) = self.stats.heatmap_cursor {
-                        let date_str = cursor.format("%Y-%m-%d").to_string();
-                        self.stats.cursor_sessions =
-                            self.db.sessions_on_date(&date_str).unwrap_or_default();
-                    }
-                    self.bump_sessions();
-                    self.clamp_stats_session_selection();
+                    self.after_stats_session_edit();
                 }
             }
             KeyCode::Char('-') => {
@@ -296,13 +280,7 @@ impl App {
                     self.persist_data(|db, data| {
                         storage::adjust_session_minutes(db, data, id, new_mins)
                     });
-                    if let Some(cursor) = self.stats.heatmap_cursor {
-                        let date_str = cursor.format("%Y-%m-%d").to_string();
-                        self.stats.cursor_sessions =
-                            self.db.sessions_on_date(&date_str).unwrap_or_default();
-                    }
-                    self.bump_sessions();
-                    self.clamp_stats_session_selection();
+                    self.after_stats_session_edit();
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),
