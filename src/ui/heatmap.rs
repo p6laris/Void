@@ -126,7 +126,7 @@ fn build_grid(
     let month_marks = collect_month_marks(grid_start, weeks);
     let mut max_mins = goal.max(1);
     let mut total_logged: u32 = 0;
-    let today_key = date_key(today);
+    let mut date_key_buf = String::with_capacity(10);
 
     for (col, grid_col) in grid.iter_mut().enumerate().take(weeks) {
         let week_monday = grid_start + Duration::days(col as i64 * 7);
@@ -137,9 +137,9 @@ fn build_grid(
             if date > today {
                 *cell = GridCell::Future;
             } else {
-                let key = date_key(date);
-                let mut mins = lookup_minutes(data, &key);
-                if key == today_key {
+                write_date_key(&mut date_key_buf, date);
+                let mut mins = lookup_minutes(data, &date_key_buf);
+                if date == today {
                     mins = mins.max(today_live_mins);
                 }
                 max_mins = max_mins.max(mins);
@@ -411,8 +411,10 @@ fn monday_of(date: NaiveDate) -> NaiveDate {
 }
 
 #[inline]
-fn date_key(d: NaiveDate) -> String {
-    format!("{:04}-{:02}-{:02}", d.year(), d.month(), d.day())
+fn write_date_key(buf: &mut String, d: NaiveDate) {
+    use std::fmt::Write;
+    buf.clear();
+    let _ = write!(buf, "{:04}-{:02}-{:02}", d.year(), d.month(), d.day());
 }
 
 #[cfg(test)]
