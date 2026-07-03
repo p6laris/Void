@@ -1,8 +1,10 @@
 mod encoding;
 mod import_export;
 mod schema;
+mod sessions;
 
 use encoding::{decode_timer_mode, encode_timer_mode};
+use sessions::{focus_session_from_row, focus_session_id_and_record};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -65,20 +67,7 @@ impl Database {
             "SELECT date, minutes, task_id, mode, completed_at, note, pause_count, pause_seconds
              FROM focus_sessions WHERE id = ?1",
             params![id],
-            |row| {
-                let mode_str: String = row.get(3)?;
-                Ok(FocusSessionRecord {
-                    date: row.get(0)?,
-                    minutes: row.get(1)?,
-                    task_id: read_opt_u64(row, 2)?,
-                    mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime_sql(&row.get::<_, String>(4)?)?,
-                    note: row.get(5)?,
-                    pause_count: row.get(6)?,
-                    pause_seconds: row.get(7)?,
-                    tags: Vec::new(),
-                })
-            },
+            |row| focus_session_from_row(row, 0),
         )?;
         Ok(StoredSession {
             id,
@@ -114,24 +103,7 @@ impl Database {
              ORDER BY completed_at DESC
              LIMIT ?1 OFFSET ?2",
         )?;
-        let rows = stmt.query_map(params![limit as i64, offset as i64], |row| {
-            let id: i64 = row.get(0)?;
-            let mode_str: String = row.get(4)?;
-            Ok((
-                id,
-                FocusSessionRecord {
-                    date: row.get(1)?,
-                    minutes: row.get(2)?,
-                    task_id: read_opt_u64(row, 3)?,
-                    mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime_sql(&row.get::<_, String>(5)?)?,
-                    note: row.get(6)?,
-                    pause_count: row.get(7)?,
-                    pause_seconds: row.get(8)?,
-                    tags: Vec::new(),
-                },
-            ))
-        })?;
+        let rows = stmt.query_map(params![limit as i64, offset as i64], focus_session_id_and_record)?;
         let tags_by_session = load_all_session_tags(&self.conn)?;
         let mut out = Vec::new();
         for row in rows {
@@ -180,24 +152,7 @@ impl Database {
              WHERE date = ?1
              ORDER BY completed_at ASC",
         )?;
-        let rows = stmt.query_map(params![date], |row| {
-            let id: i64 = row.get(0)?;
-            let mode_str: String = row.get(4)?;
-            Ok((
-                id,
-                FocusSessionRecord {
-                    date: row.get(1)?,
-                    minutes: row.get(2)?,
-                    task_id: read_opt_u64(row, 3)?,
-                    mode: decode_timer_mode(&mode_str),
-                    completed_at: parse_datetime_sql(&row.get::<_, String>(5)?)?,
-                    note: row.get(6)?,
-                    pause_count: row.get(7)?,
-                    pause_seconds: row.get(8)?,
-                    tags: Vec::new(),
-                },
-            ))
-        })?;
+        let rows = stmt.query_map(params![date], focus_session_id_and_record)?;
         let tags_by_session = load_all_session_tags(&self.conn)?;
         let mut out = Vec::new();
         for row in rows {

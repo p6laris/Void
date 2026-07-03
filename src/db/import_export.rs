@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::{AppData, FocusSessionRecord};
 
 use super::{
-    data_dir, encoding::decode_timer_mode, insert_focus_session_conn, load_all_session_tags,
-    load_settings, load_tasks, read_opt_u64,
+    data_dir, insert_focus_session_conn, load_all_session_tags, load_settings, load_tasks,
+    sessions::focus_session_id_and_record,
 };
 
 #[derive(Serialize)]
@@ -50,24 +50,7 @@ fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
          FROM focus_sessions
          ORDER BY completed_at ASC",
     )?;
-    let rows = stmt.query_map([], |row| {
-        let id: i64 = row.get(0)?;
-        let mode_str: String = row.get(4)?;
-        Ok((
-            id,
-            FocusSessionRecord {
-                date: row.get(1)?,
-                minutes: row.get(2)?,
-                task_id: read_opt_u64(row, 3)?,
-                mode: decode_timer_mode(&mode_str),
-                completed_at: super::parse_datetime_sql(&row.get::<_, String>(5)?)?,
-                note: row.get(6)?,
-                pause_count: row.get(7)?,
-                pause_seconds: row.get(8)?,
-                tags: Vec::new(),
-            },
-        ))
-    })?;
+    let rows = stmt.query_map([], focus_session_id_and_record)?;
     let tags_by_session = load_all_session_tags(conn)?;
     let mut out = Vec::new();
     for row in rows {
