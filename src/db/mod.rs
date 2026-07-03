@@ -478,12 +478,11 @@ fn data_dir() -> Result<PathBuf> {
 
 // ── settings ─────────────────────────────────────────────────────────────────
 
+const UPSERT_SETTING_SQL: &str = "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+
 fn set_setting_conn(conn: &Connection, key: &str, value: impl AsRef<str>) -> Result<()> {
-    conn.execute(
-        "INSERT INTO settings (key, value) VALUES (?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![key, value.as_ref()],
-    )?;
+    conn.execute(UPSERT_SETTING_SQL, params![key, value.as_ref()])?;
     Ok(())
 }
 
@@ -573,12 +572,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ),
     ];
 
+    let mut stmt = conn.prepare(UPSERT_SETTING_SQL)?;
     for (key, value) in pairs {
-        conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value],
-        )?;
+        stmt.execute(params![key, value])?;
     }
     Ok(())
 }
