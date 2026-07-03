@@ -1,5 +1,8 @@
+mod encoding;
 mod import_export;
 mod schema;
+
+use encoding::{decode_timer_mode, encode_timer_mode};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -969,24 +972,6 @@ fn decode_task_status(s: &str) -> TaskStatus {
         "done" => TaskStatus::Done,
         "inprogress" | "in_progress" => TaskStatus::InProgress,
         _ => TaskStatus::Pending,
-    }
-}
-
-fn encode_timer_mode(m: TimerMode) -> &'static str {
-    match m {
-        TimerMode::Focus => "focus",
-        TimerMode::ShortBreak => "shortbreak",
-        TimerMode::LongBreak => "longbreak",
-        TimerMode::Custom => "custom",
-    }
-}
-
-fn decode_timer_mode(s: &str) -> TimerMode {
-    match s {
-        "shortbreak" | "short_break" => TimerMode::ShortBreak,
-        "longbreak" | "long_break" => TimerMode::LongBreak,
-        "custom" => TimerMode::Custom,
-        _ => TimerMode::Focus,
     }
 }
 

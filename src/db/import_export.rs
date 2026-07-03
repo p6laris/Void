@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::model::{AppData, FocusSessionRecord};
 
 use super::{
-    data_dir, decode_timer_mode, insert_focus_session_conn, load_all_session_tags, load_settings,
-    load_tasks, read_opt_u64,
+    data_dir, encoding::decode_timer_mode, insert_focus_session_conn, load_all_session_tags,
+    load_settings, load_tasks, read_opt_u64,
 };
 
 #[derive(Serialize)]
