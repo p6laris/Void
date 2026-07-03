@@ -14,60 +14,6 @@ pub fn format_minutes(mins: u32) -> String {
     }
 }
 
-#[allow(dead_code)]
-pub const GRID_LABEL_W: usize = 3;
-
-#[allow(dead_code)]
-pub fn push_sized_slot(
-    spans: &mut Vec<Span<'_>>,
-    text: &str,
-    style: Style,
-    col_w: usize,
-    gap: usize,
-    last_col: bool,
-) {
-    spans.push(Span::styled(center_display(text, col_w), style));
-    if !last_col {
-        spans.push(Span::raw(" ".repeat(gap)));
-    }
-}
-
-#[allow(dead_code)]
-pub fn pad_display(text: &str, width: usize) -> String {
-    let w = unicode_width::UnicodeWidthStr::width(text);
-    if w > width {
-        truncate_display(text, width)
-    } else {
-        format!("{text}{}", " ".repeat(width - w))
-    }
-}
-
-#[allow(dead_code)]
-pub fn center_display(text: &str, width: usize) -> String {
-    let w = unicode_width::UnicodeWidthStr::width(text);
-    if w > width {
-        truncate_display(text, width)
-    } else {
-        let left = (width - w) / 2;
-        let right = width - w - left;
-        format!("{}{}{}", " ".repeat(left), text, " ".repeat(right))
-    }
-}
-
-fn truncate_display(text: &str, max_width: usize) -> String {
-    let mut out = String::new();
-    let mut used = 0;
-    for ch in text.chars() {
-        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-        if used + cw > max_width {
-            break;
-        }
-        out.push(ch);
-        used += cw;
-    }
-    out
-}
-
 pub fn themed_panel<'a>(theme: &Theme, title: Line<'a>) -> Block<'a> {
     dense_panel(theme, title)
 }
