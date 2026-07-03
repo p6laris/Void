@@ -6,7 +6,6 @@ use ratatui::Frame;
 
 use crate::app::{App, FocusTab};
 use crate::model::TimerState;
-use crate::storage;
 use crate::ui::IconSet;
 
 use super::widgets::{active_task_spans, chip, format_minutes};
@@ -29,7 +28,7 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         app.timer.format_remaining()
     };
 
-    let today = storage::today_focus_minutes(&app.data);
+    let today = app.today_focus_mins();
     let goal = app.data.daily_goal_minutes;
     let goal_met = app.daily_goal_met();
 
@@ -208,7 +207,7 @@ pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let today = storage::today_focus_minutes(&app.data);
+    let today = app.today_focus_mins();
     let goal = app.data.daily_goal_minutes;
     let goal_met = app.daily_goal_met();
 

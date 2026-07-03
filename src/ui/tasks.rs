@@ -3,6 +3,7 @@ use super::*;
 pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     let theme = app.theme.clone();
     let icons = app.icons;
+    let frame_today = app.frame_today();
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .margin(1)
@@ -63,12 +64,12 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                     .bg(theme.active_bg)
                     .fg(theme.active_fg)
                     .add_modifier(Modifier::BOLD)
-            } else if t.is_overdue() && !is_cursor {
+            } else if t.is_overdue_on(frame_today) && !is_cursor {
                 Style::default().fg(theme.error)
             } else {
                 Style::default().fg(theme.text)
             };
-            let overdue_mark = if t.is_overdue() { icons.alert } else { " " };
+            let overdue_mark = if t.is_overdue_on(frame_today) { icons.alert } else { " " };
             let today_mark = if t.today { icons.star } else { " " };
             let active_mark = if is_active { icons.task_active } else { " " };
             let active_style = if is_active {
@@ -304,6 +305,7 @@ pub(crate) fn build_task_detail(app: &App) -> Vec<Line<'_>> {
 
 fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
     let theme = &app.theme;
+    let frame_today = app.frame_today();
     let indices = &app.cached_filtered_tasks;
     if indices.is_empty() {
         let msg = match app.task_filter {
@@ -325,7 +327,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         .min(indices.len() - 1);
     let t = &app.data.tasks[indices[sel]];
     let mut lines = Vec::new();
-    if t.is_overdue() {
+    if t.is_overdue_on(frame_today) {
         lines.push(Line::from(Span::styled(
             "OVERDUE",
             Style::default()
@@ -411,7 +413,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         ]));
     }
     if let Some(ref due) = t.due_date {
-        let overdue = t.is_overdue();
+        let overdue = t.is_overdue_on(frame_today);
         lines.push(Line::from(vec![
             Span::styled("Due:       ", Style::default().fg(theme.dim)),
             Span::styled(

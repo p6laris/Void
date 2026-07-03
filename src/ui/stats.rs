@@ -90,7 +90,7 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let today_mins = crate::storage::today_focus_minutes(&app.data);
+    let today_mins = app.today_focus_mins();
     heatmap::draw_focus_heatmap(
         f,
         inner,
@@ -111,7 +111,7 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
     let (focus_n, custom_n, break_n) = app.session_counts;
-    let today = crate::storage::today_focus_minutes(&app.data);
+    let today = app.today_focus_mins();
 
     let dim_style = Style::default().fg(theme.dim);
     let val_style = Style::default().fg(theme.text).add_modifier(Modifier::BOLD);

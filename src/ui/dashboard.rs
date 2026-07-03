@@ -10,7 +10,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
 
     draw_compact_timer_block(f, app, chunks[0]);
 
-    let today = crate::storage::today_focus_minutes(&app.data);
+    let today = app.today_focus_mins();
     let goal = app.data.daily_goal_minutes.max(1);
     let progress_ratio = (today as f64 / goal as f64).min(1.0);
 
@@ -268,7 +268,7 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
     draw_dashboard_canvas(f, layout[0], t, &style, &options);
 
     let (main_time, tenths, _) = format_time_stack(t);
-    let today_logged = crate::storage::today_focus_minutes(&app.data);
+    let today_logged = app.today_focus_mins();
 
     let mut lines = vec![
         Line::from(vec![

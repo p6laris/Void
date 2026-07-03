@@ -179,6 +179,8 @@ pub struct App {
     pub cursor_sessions: Vec<StoredSession>,
     pub stats_view_mode: StatsViewMode,
     pub tag_analytics: Vec<(String, u32)>,
+    frame_today: String,
+    frame_today_focus_mins: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -311,9 +313,30 @@ impl App {
             cursor_sessions: Vec::new(),
             stats_view_mode: StatsViewMode::Overview,
             tag_analytics,
+            frame_today: String::new(),
+            frame_today_focus_mins: 0,
         };
         app.recompute_task_caches();
+        app.refresh_frame_today_cache();
         Ok(app)
+    }
+
+    pub(crate) fn refresh_frame_today_cache(&mut self) {
+        self.frame_today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.frame_today_focus_mins = if self.data.today_date.as_deref() == Some(self.frame_today.as_str())
+        {
+            self.data.today_focus_minutes
+        } else {
+            0
+        };
+    }
+
+    pub fn frame_today(&self) -> &str {
+        &self.frame_today
+    }
+
+    pub fn today_focus_mins(&self) -> u32 {
+        self.frame_today_focus_mins
     }
 
     pub const SESSIONS_PER_PAGE: usize = 15;
@@ -337,7 +360,7 @@ impl App {
     }
 
     pub fn daily_goal_met(&self) -> bool {
-        storage::today_focus_minutes(&self.data) >= self.data.daily_goal_minutes
+        self.frame_today_focus_mins >= self.data.daily_goal_minutes
     }
 
     fn persist_timer_state(&mut self) {

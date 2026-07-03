@@ -178,15 +178,19 @@ impl Task {
         Some((done, self.subtasks.len()))
     }
 
-    pub fn is_overdue(&self) -> bool {
+    pub fn is_overdue_on(&self, today: &str) -> bool {
         if self.status == TaskStatus::Done {
             return false;
         }
         let Some(ref due) = self.due_date else {
             return false;
         };
+        due.as_str() < today
+    }
+
+    pub fn is_overdue(&self) -> bool {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        due.as_str() < today.as_str()
+        self.is_overdue_on(&today)
     }
 
     pub fn progress_ratio(&self) -> f64 {

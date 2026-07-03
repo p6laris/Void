@@ -46,6 +46,7 @@ use widgets::{
 };
 
 pub fn render(f: &mut Frame, app: &mut App) {
+    app.refresh_frame_today_cache();
     let area = f.area();
     f.render_widget(
         Block::default().style(Style::default().bg(app.theme.bg)),
