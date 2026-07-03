@@ -232,13 +232,12 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 .wrap(Wrap { trim: false }),
             sub_chunks[0],
         );
-        if let Some(sel) = app
+        if let Some(task_idx) = app
             .task_state
             .selected()
             .and_then(|s| indices.get(s).copied())
         {
-            let task = app.data.tasks[sel].clone();
-            draw_subtask_panel(f, app, sub_chunks[1], &task);
+            draw_subtask_panel(f, app, sub_chunks[1], task_idx);
         }
     } else {
         let detail_block = themed_panel(
@@ -469,9 +468,10 @@ fn draw_subtask_panel(
     f: &mut Frame,
     app: &mut App,
     area: Rect,
-    task: &crate::model::Task,
+    task_idx: usize,
 ) {
     let theme = &app.theme;
+    let task = &app.data.tasks[task_idx];
     let (done, total) = task.subtask_progress().unwrap_or((0, 0));
     let focus_label = if app.subtask_focus { " · FOCUS" } else { "" };
     let border_color = if app.subtask_focus {
