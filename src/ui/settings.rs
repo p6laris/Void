@@ -115,7 +115,7 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Min(10),
         ],
     )
-    .block(themed_panel(
+    .block(dense_panel(
         theme,
         Line::from(Span::styled(
             format!(" {} Settings ", icons.settings),

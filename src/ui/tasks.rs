@@ -156,7 +156,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let bulk_hint = if app.task_ui.bulk_mode { " · BULK" } else { "" };
-    let block = themed_panel(
+    let block = dense_panel(
         &app.theme,
         Line::from(vec![
             Span::styled(
@@ -201,7 +201,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.dim))
             .ratio(progress_ratio)
             .label(format!("Progress {}%", (progress_ratio * 100.0) as u32))
-            .block(themed_panel(
+            .block(dense_panel(
                 &app.theme,
                 Line::from(Span::styled(
                     " Progress ",
@@ -222,7 +222,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
             .split(detail_layout[1]);
-        let meta_block = themed_panel(
+        let meta_block = dense_panel(
             &app.theme,
             Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
         );
@@ -240,7 +240,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             draw_subtask_panel(f, app, sub_chunks[1], task_idx);
         }
     } else {
-        let detail_block = themed_panel(
+        let detail_block = dense_panel(
             &app.theme,
             Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
         );
@@ -334,11 +334,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         )));
         lines.push(Line::from(""));
     }
-    let status_color = match t.status {
-        crate::model::TaskStatus::Done => app.theme.success,
-        crate::model::TaskStatus::InProgress => app.theme.warning,
-        crate::model::TaskStatus::Pending => app.theme.dim,
-    };
+    let status_color = task_status_color(&app.theme, t.status);
     lines.push(Line::from(Span::styled(
         t.title.clone(),
         Style::default().fg(app.theme.text).add_modifier(Modifier::BOLD),

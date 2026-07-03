@@ -14,10 +14,6 @@ pub fn format_minutes(mins: u32) -> String {
     }
 }
 
-pub fn themed_panel<'a>(theme: &Theme, title: Line<'a>) -> Block<'a> {
-    dense_panel(theme, title)
-}
-
 pub fn dense_panel<'a>(theme: &Theme, title: Line<'a>) -> Block<'a> {
     Block::default()
         .title(title)

@@ -149,20 +149,8 @@ impl App {
             }
             KeyCode::Char('x') => {
                 if let Some(id) = self.dashboard_selected_task_id() {
-                    self.persist_data(|db, data| storage::mark_task_done(db, data, id));
-                    if self.task_ui.active_task == Some(id) {
-                        self.task_ui.active_task = None;
-                        self.data.active_task_id = None;
-                        self.persist(|db| db.persist_active_task(None));
-                        self.maybe_advance_task();
-                    }
-                    self.bump_tasks();
-                    if self.data.sound_enabled {
-                        sound::play_task_complete();
-                    }
+                    self.mark_task_done_by_id(id);
                     self.clamp_dashboard_task_selection();
-                    self.check_queue_empty();
-                    self.set_status("Task marked done.", false);
                 } else {
                     self.mark_active_task_done();
                 }

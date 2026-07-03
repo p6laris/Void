@@ -237,22 +237,28 @@ impl App {
         }
     }
 
-    pub fn mark_active_task_done(&mut self) {
-        let Some(id) = self.task_ui.active_task else {
-            self.set_status("No active task — set one on Tasks (Space).", true);
-            return;
-        };
+    pub(crate) fn mark_task_done_by_id(&mut self, id: u64) {
         self.persist_data(|db, data| storage::mark_task_done(db, data, id));
-        self.task_ui.active_task = None;
-        self.data.active_task_id = None;
-        self.persist(|db| db.persist_active_task(None));
+        if self.task_ui.active_task == Some(id) {
+            self.task_ui.active_task = None;
+            self.data.active_task_id = None;
+            self.persist(|db| db.persist_active_task(None));
+            self.maybe_advance_task();
+        }
         self.bump_tasks();
-        self.maybe_advance_task();
         if self.data.sound_enabled {
             sound::play_task_complete();
         }
         self.set_status("Task marked done.", false);
         self.check_queue_empty();
+    }
+
+    pub fn mark_active_task_done(&mut self) {
+        let Some(id) = self.task_ui.active_task else {
+            self.set_status("No active task — set one on Tasks (Space).", true);
+            return;
+        };
+        self.mark_task_done_by_id(id);
     }
 
     pub(crate) fn auto_pick_task_if_needed(&mut self) {

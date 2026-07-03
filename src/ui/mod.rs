@@ -42,7 +42,7 @@ use chrome::{draw_footer, draw_header, draw_tabs};
 use stats::draw_stats;
 use widgets::{
     active_task_spans, centered_rect, dense_panel, format_minutes, task_status_color,
-    task_status_icon, themed_panel, timer_panel, truncate,
+    task_status_icon, timer_panel, truncate,
 };
 
 pub fn render(f: &mut Frame, app: &mut App) {
