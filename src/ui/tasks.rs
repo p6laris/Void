@@ -1,7 +1,6 @@
 use super::*;
 
 pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
-    let theme = app.theme.clone();
     let icons = app.icons;
     let frame_today = app.frame_today();
     let chunks = Layout::default()
@@ -22,9 +21,9 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             let t = &app.data.tasks[idx];
             let marker = task_status_icon(icons, t.status);
             let prio_color = match t.priority {
-                crate::model::Priority::High => theme.warning,
-                crate::model::Priority::Medium => theme.info,
-                crate::model::Priority::Low => theme.dim,
+                crate::model::Priority::High => app.theme.warning,
+                crate::model::Priority::Medium => app.theme.info,
+                crate::model::Priority::Low => app.theme.dim,
             };
             let is_active = app.active_task == Some(t.id);
             let subtask_mark = t
@@ -45,36 +44,36 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::styled(
                         icons.check,
                         Style::default()
-                            .fg(theme.on_accent)
+                            .fg(app.theme.on_accent)
                             .add_modifier(Modifier::BOLD),
                     )
                 } else {
-                    Span::styled("○", Style::default().fg(theme.dim))
+                    Span::styled("○", Style::default().fg(app.theme.dim))
                 }
             } else {
                 Span::raw("")
             };
             let style = if bulk_selected {
                 Style::default()
-                    .bg(theme.info)
-                    .fg(theme.on_accent)
+                    .bg(app.theme.info)
+                    .fg(app.theme.on_accent)
                     .add_modifier(Modifier::BOLD)
             } else if is_active && !is_cursor {
                 Style::default()
-                    .bg(theme.active_bg)
-                    .fg(theme.active_fg)
+                    .bg(app.theme.active_bg)
+                    .fg(app.theme.active_fg)
                     .add_modifier(Modifier::BOLD)
             } else if t.is_overdue_on(frame_today) && !is_cursor {
-                Style::default().fg(theme.error)
+                Style::default().fg(app.theme.error)
             } else {
-                Style::default().fg(theme.text)
+                Style::default().fg(app.theme.text)
             };
             let overdue_mark = if t.is_overdue_on(frame_today) { icons.alert } else { " " };
             let today_mark = if t.today { icons.star } else { " " };
             let active_mark = if is_active { icons.task_active } else { " " };
             let active_style = if is_active {
                 Style::default()
-                    .fg(theme.accent)
+                    .fg(app.theme.accent)
                     .add_modifier(Modifier::BOLD)
             } else {
                 style
@@ -88,7 +87,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 format!("{} ", active_mark),
                 if is_active && is_cursor {
                     Style::default()
-                        .fg(theme.accent)
+                        .fg(app.theme.accent)
                         .add_modifier(Modifier::BOLD)
                 } else if is_active {
                     active_style
@@ -104,7 +103,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 format!("{}{}{}{} ", overdue_mark, today_mark, marker, reorder_mark),
                 if is_active && is_cursor {
                     Style::default()
-                        .fg(theme.accent)
+                        .fg(app.theme.accent)
                         .add_modifier(Modifier::BOLD)
                 } else if is_active {
                     active_style
@@ -115,7 +114,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             if !blocked_mark.is_empty() {
                 spans.push(Span::styled(
                     blocked_mark,
-                    Style::default().fg(theme.warning),
+                    Style::default().fg(app.theme.warning),
                 ));
             }
             spans.extend([
@@ -124,14 +123,14 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                     Style::default().fg(prio_color),
                 ),
                 Span::styled(format!("{} ", truncate(&t.title, title_max.max(8))), style),
-                Span::styled(subtask_mark, Style::default().fg(theme.dim)),
+                Span::styled(subtask_mark, Style::default().fg(app.theme.dim)),
                 Span::styled(
                     format!("{:>3}/{:<3}m", t.actual_minutes, t.estimated_minutes),
-                    Style::default().fg(theme.dim),
+                    Style::default().fg(app.theme.dim),
                 ),
             ]);
             if !tags_label.is_empty() {
-                spans.push(Span::styled(tags_label, Style::default().fg(theme.info)));
+                spans.push(Span::styled(tags_label, Style::default().fg(app.theme.info)));
             }
             ListItem::new(Line::from(spans))
         })
@@ -158,7 +157,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
 
     let bulk_hint = if app.bulk_mode { " · BULK" } else { "" };
     let block = themed_panel(
-        &theme,
+        &app.theme,
         Line::from(vec![
             Span::styled(
                 format!(
@@ -167,21 +166,21 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 ),
                 Style::default()
                     .fg(if app.bulk_mode {
-                        theme.info
+                        app.theme.info
                     } else {
-                        theme.accent
+                        app.theme.accent
                     })
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(more_indicator, Style::default().fg(theme.dim)),
+            Span::styled(more_indicator, Style::default().fg(app.theme.dim)),
         ]),
     );
     let list = List::new(items)
         .block(block)
         .highlight_style(
             Style::default()
-                .bg(theme.select_bg)
-                .fg(theme.select_fg)
+                .bg(app.theme.select_bg)
+                .fg(app.theme.select_fg)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▸ ");
@@ -199,14 +198,14 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(0.0);
     f.render_widget(
         Gauge::default()
-            .gauge_style(Style::default().fg(theme.accent).bg(theme.dim))
+            .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.dim))
             .ratio(progress_ratio)
             .label(format!("Progress {}%", (progress_ratio * 100.0) as u32))
             .block(themed_panel(
-                &theme,
+                &app.theme,
                 Line::from(Span::styled(
                     " Progress ",
-                    Style::default().fg(theme.accent),
+                    Style::default().fg(app.theme.accent),
                 )),
             )),
         detail_layout[0],
@@ -224,8 +223,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
             .split(detail_layout[1]);
         let meta_block = themed_panel(
-            &theme,
-            Line::from(Span::styled(" Details ", Style::default().fg(theme.accent))),
+            &app.theme,
+            Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
         );
         f.render_widget(
             Paragraph::new(build_task_detail_meta(app))
@@ -239,12 +238,12 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             .and_then(|s| indices.get(s).copied())
         {
             let task = app.data.tasks[sel].clone();
-            draw_subtask_panel(f, app, sub_chunks[1], &theme, &task);
+            draw_subtask_panel(f, app, sub_chunks[1], &task);
         }
     } else {
         let detail_block = themed_panel(
-            &theme,
-            Line::from(Span::styled(" Details ", Style::default().fg(theme.accent))),
+            &app.theme,
+            Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
         );
         f.render_widget(
             Paragraph::new(build_task_detail(app))
@@ -262,20 +261,20 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 Line::from(Span::styled(
                     "Search tasks (title or tags)",
                     Style::default()
-                        .fg(theme.accent)
+                        .fg(app.theme.accent)
                         .add_modifier(Modifier::BOLD),
                 )),
                 Line::from(format!("{}|", app.task_search)),
                 Line::from(Span::styled(
                     "Enter confirm · Esc cancel",
-                    Style::default().fg(theme.dim),
+                    Style::default().fg(app.theme.dim),
                 )),
             ])
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(theme.accent)),
+                    .border_style(Style::default().fg(app.theme.accent)),
             ),
             search_area,
         );
@@ -304,7 +303,6 @@ pub(crate) fn build_task_detail(app: &App) -> Vec<Line<'_>> {
 }
 
 fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
-    let theme = &app.theme;
     let frame_today = app.frame_today();
     let indices = &app.cached_filtered_tasks;
     if indices.is_empty() {
@@ -317,7 +315,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         };
         return vec![Line::from(Span::styled(
             msg,
-            Style::default().fg(theme.dim),
+            Style::default().fg(app.theme.dim),
         ))];
     }
     let sel = app
@@ -332,112 +330,112 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         lines.push(Line::from(Span::styled(
             "OVERDUE",
             Style::default()
-                .fg(theme.error)
+                .fg(app.theme.error)
                 .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(""));
     }
     let status_color = match t.status {
-        crate::model::TaskStatus::Done => theme.success,
-        crate::model::TaskStatus::InProgress => theme.warning,
-        crate::model::TaskStatus::Pending => theme.dim,
+        crate::model::TaskStatus::Done => app.theme.success,
+        crate::model::TaskStatus::InProgress => app.theme.warning,
+        crate::model::TaskStatus::Pending => app.theme.dim,
     };
     lines.push(Line::from(Span::styled(
         t.title.clone(),
-        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        Style::default().fg(app.theme.text).add_modifier(Modifier::BOLD),
     )));
     lines.extend(vec![
         Line::from(""),
         Line::from(vec![
-            Span::styled("ID:        ", Style::default().fg(theme.dim)),
-            Span::styled(format!("{}", t.id), Style::default().fg(theme.text)),
+            Span::styled("ID:        ", Style::default().fg(app.theme.dim)),
+            Span::styled(format!("{}", t.id), Style::default().fg(app.theme.text)),
         ]),
         Line::from(vec![
-            Span::styled("Priority:  ", Style::default().fg(theme.dim)),
-            Span::styled(t.priority.label(), Style::default().fg(theme.warning)),
+            Span::styled("Priority:  ", Style::default().fg(app.theme.dim)),
+            Span::styled(t.priority.label(), Style::default().fg(app.theme.warning)),
         ]),
         Line::from(vec![
-            Span::styled("Status:    ", Style::default().fg(theme.dim)),
+            Span::styled("Status:    ", Style::default().fg(app.theme.dim)),
             Span::styled(t.status.label(), Style::default().fg(status_color)),
         ]),
         Line::from(vec![
-            Span::styled("Estimate:  ", Style::default().fg(theme.dim)),
+            Span::styled("Estimate:  ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 format_minutes(t.estimated_minutes),
-                Style::default().fg(theme.text),
+                Style::default().fg(app.theme.text),
             ),
         ]),
         Line::from(vec![
-            Span::styled("Logged:    ", Style::default().fg(theme.dim)),
+            Span::styled("Logged:    ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 format!(
                     "{} across {} sessions",
                     format_minutes(t.actual_minutes),
                     t.sessions
                 ),
-                Style::default().fg(theme.success),
+                Style::default().fg(app.theme.success),
             ),
         ]),
         Line::from(vec![
-            Span::styled("Remaining: ", Style::default().fg(theme.dim)),
+            Span::styled("Remaining: ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 format!(
                     "~{} sessions ({}m each)",
                     crate::storage::sessions_remaining_hint(t, app.data.focus_minutes),
                     app.data.focus_minutes
                 ),
-                Style::default().fg(theme.info),
+                Style::default().fg(app.theme.info),
             ),
         ]),
         Line::from(vec![
-            Span::styled("Today:     ", Style::default().fg(theme.dim)),
+            Span::styled("Today:     ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 if t.today { "yes" } else { "no" },
-                Style::default().fg(if t.today { theme.success } else { theme.dim }),
+                Style::default().fg(if t.today { app.theme.success } else { app.theme.dim }),
             ),
         ]),
         Line::from(vec![
-            Span::styled("Created:   ", Style::default().fg(theme.dim)),
+            Span::styled("Created:   ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 t.created_at.format("%Y-%m-%d %H:%M").to_string(),
-                Style::default().fg(theme.text),
+                Style::default().fg(app.theme.text),
             ),
         ]),
     ]);
     if let Some(c) = t.completed_at {
         lines.push(Line::from(vec![
-            Span::styled("Done:      ", Style::default().fg(theme.dim)),
+            Span::styled("Done:      ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 c.format("%Y-%m-%d %H:%M").to_string(),
-                Style::default().fg(theme.success),
+                Style::default().fg(app.theme.success),
             ),
         ]));
     }
     if let Some(ref due) = t.due_date {
         let overdue = t.is_overdue_on(frame_today);
         lines.push(Line::from(vec![
-            Span::styled("Due:       ", Style::default().fg(theme.dim)),
+            Span::styled("Due:       ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 due.clone(),
-                Style::default().fg(if overdue { theme.error } else { theme.text }),
+                Style::default().fg(if overdue { app.theme.error } else { app.theme.text }),
             ),
         ]));
     }
     if !t.tags.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("Tags:      ", Style::default().fg(theme.dim)),
-            Span::styled(t.tags.join(", "), Style::default().fg(theme.info)),
+            Span::styled("Tags:      ", Style::default().fg(app.theme.dim)),
+            Span::styled(t.tags.join(", "), Style::default().fg(app.theme.info)),
         ]));
     }
     if t.recurrence != crate::model::TaskRecurrence::None {
         lines.push(Line::from(vec![
-            Span::styled("Repeats:   ", Style::default().fg(theme.dim)),
-            Span::styled(t.recurrence.label(), Style::default().fg(theme.info)),
+            Span::styled("Repeats:   ", Style::default().fg(app.theme.dim)),
+            Span::styled(t.recurrence.label(), Style::default().fg(app.theme.info)),
         ]));
     }
     if !t.blocked_by.is_empty() {
         lines.push(Line::from(vec![
-            Span::styled("Blocked:   ", Style::default().fg(theme.dim)),
+            Span::styled("Blocked:   ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 t.blocked_by
                     .iter()
@@ -445,9 +443,9 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
                     .collect::<Vec<_>>()
                     .join(", "),
                 Style::default().fg(if app.is_task_blocked_at(task_idx) {
-                    theme.error
+                    app.theme.error
                 } else {
-                    theme.text
+                    app.theme.text
                 }),
             ),
         ]));
@@ -460,7 +458,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         lines.push(Line::from(Span::styled(
             format!("{} ACTIVE — press [f] to focus", app.icons.focus),
             Style::default()
-                .fg(theme.accent)
+                .fg(app.theme.accent)
                 .add_modifier(Modifier::BOLD),
         )));
     }
@@ -471,9 +469,9 @@ fn draw_subtask_panel(
     f: &mut Frame,
     app: &mut App,
     area: Rect,
-    theme: &crate::app::Theme,
     task: &crate::model::Task,
 ) {
+    let theme = &app.theme;
     let (done, total) = task.subtask_progress().unwrap_or((0, 0));
     let focus_label = if app.subtask_focus { " · FOCUS" } else { "" };
     let border_color = if app.subtask_focus {
