@@ -30,10 +30,13 @@ fn rect_ok(area: Rect) -> bool {
     area.width > 0 && area.height > 0
 }
 
-pub(crate) fn draw_popup(f: &mut Frame, app: &mut App, popup: &crate::app::Popup) {
+pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
+    let Some(popup) = app.popup.clone() else {
+        return;
+    };
     let icons = app.icons;
     let area = f.area();
-    let popup_area = popup_rect(popup, area);
+    let popup_area = popup_rect(&popup, area);
     f.render_widget(Clear, popup_area);
     let block = Block::default()
         .borders(Borders::ALL)
@@ -41,7 +44,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App, popup: &crate::app::Popup
         .border_style(Style::default().fg(app.theme.accent))
         .style(Style::default().bg(app.theme.bg))
         .title(Span::styled(
-            match popup {
+            match &popup {
                 crate::app::Popup::AddTask => format!(" {} Add Task ", icons.plus),
                 crate::app::Popup::EditTask(_) => format!(" {} Edit Task ", icons.edit),
                 crate::app::Popup::ConfirmDelete(_) => format!(" {} Confirm Delete ", icons.delete),
@@ -56,7 +59,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App, popup: &crate::app::Popup
     let body = block.inner(popup_area);
     f.render_widget(block, popup_area);
 
-    match popup {
+    match &popup {
         crate::app::Popup::AddTask | crate::app::Popup::EditTask(_) => {
             let theme = &app.theme;
             let chunks = popup_body_layout(body, PopupLayout::Form);

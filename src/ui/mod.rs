@@ -55,9 +55,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
     if app.zen_mode && app.tab == FocusTab::Dashboard {
         draw_zen_dashboard(f, app, area);
-        if let Some(popup) = app.popup.clone() {
-            draw_popup(f, app, &popup);
-        }
+        draw_popup(f, app);
         return;
     }
 
@@ -86,9 +84,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
 
     draw_footer(f, app, chunks[3]);
 
-    if let Some(popup) = app.popup.clone() {
-        draw_popup(f, app, &popup);
-    }
+    draw_popup(f, app);
     if matches!(app.input_mode, InputMode::Editing)
         && !matches!(
             app.popup.as_ref(),
