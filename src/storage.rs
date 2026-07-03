@@ -204,15 +204,13 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
     task.estimated_minutes = estimated;
     task.recurrence = recurrence;
     task.blocked_by = blocked_by;
-    task.subtasks = subtasks
-        .into_iter()
-        .enumerate()
-        .map(|(i, mut s)| {
-            s.id = id * 1000 + i as u64 + 1;
-            s.done = false;
-            s
-        })
-        .collect();
+    let mut respawned_subtasks = Vec::with_capacity(subtasks.len());
+    for mut subtask in subtasks {
+        subtask.id = next_id(db, data)?;
+        subtask.done = false;
+        respawned_subtasks.push(subtask);
+    }
+    task.subtasks = respawned_subtasks;
     task.due_date = next_due_date(recurrence, due_date.as_deref());
     db.upsert_task(&task)?;
     data.tasks.push(task);
@@ -929,6 +927,50 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn recurring_spawn_assigns_unique_subtask_ids() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        data.next_id = 2;
+
+        let mut task = Task::new(1, "Daily".into());
+        task.recurrence = TaskRecurrence::Daily;
+        task.status = TaskStatus::Pending;
+        task.subtasks = vec![
+            Subtask {
+                id: 1001,
+                title: "Step one".into(),
+                done: true,
+            },
+            Subtask {
+                id: 1002,
+                title: "Step two".into(),
+                done: false,
+            },
+        ];
+        db.upsert_task(&task).unwrap();
+        data.tasks.push(task);
+
+        mark_task_done(&db, &mut data, 1).unwrap();
+
+        let spawned = data.tasks.iter().find(|t| t.id == 2).expect("spawned task");
+        assert_eq!(spawned.subtasks.len(), 2);
+        let ids: Vec<u64> = spawned.subtasks.iter().map(|s| s.id).collect();
+        assert_eq!(ids, vec![3, 4]);
+        assert!(ids.iter().all(|id| *id != 2 * 1000 + 1 && *id != 2 * 1000 + 2));
+
+        let loaded = db.load_app_data().unwrap();
+        let all_subtask_ids: Vec<u64> = loaded
+            .tasks
+            .iter()
+            .flat_map(|t| t.subtasks.iter().map(|s| s.id))
+            .collect();
+        assert_eq!(
+            all_subtask_ids.len(),
+            all_subtask_ids.iter().collect::<std::collections::HashSet<_>>().len()
+        );
     }
 
     #[test]
