@@ -4,6 +4,12 @@ use rusqlite::Connection;
 pub fn migrate(conn: &Connection) -> Result<()> {
     migrate_v1(conn)?;
     migrate_v2(conn)?;
+    optimize(conn)?;
+    Ok(())
+}
+
+pub fn optimize(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA optimize;")?;
     Ok(())
 }
 

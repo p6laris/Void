@@ -77,6 +77,7 @@ pub fn import_json(conn: &Connection, path: &std::path::Path) -> Result<()> {
     for record in &data.session_history {
         insert_focus_session_conn(conn, record)?;
     }
+    super::schema::optimize(conn).context("optimizing database after import")?;
     Ok(())
 }
 
