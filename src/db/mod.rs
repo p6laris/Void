@@ -247,12 +247,7 @@ impl Database {
     }
 
     pub fn set_setting(&self, key: &str, value: impl AsRef<str>) -> Result<()> {
-        self.conn.execute(
-            "INSERT INTO settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value.as_ref()],
-        )?;
-        Ok(())
+        set_setting_conn(&self.conn, key, value)
     }
 
     pub fn upsert_task(&self, task: &Task) -> Result<()> {
@@ -281,20 +276,28 @@ impl Database {
     }
 
     pub fn persist_session_stats(&self, data: &AppData) -> Result<()> {
-        self.set_setting("total_focus_minutes", data.total_focus_minutes.to_string())?;
-        self.set_setting("total_sessions", data.total_sessions.to_string())?;
-        self.set_setting("streak_days", data.streak_days.to_string())?;
-        self.set_setting(
+        let tx = self.conn.unchecked_transaction()?;
+        set_setting_conn(&tx, "total_focus_minutes", data.total_focus_minutes.to_string())?;
+        set_setting_conn(&tx, "total_sessions", data.total_sessions.to_string())?;
+        set_setting_conn(&tx, "streak_days", data.streak_days.to_string())?;
+        set_setting_conn(
+            &tx,
             "last_session_date",
             data.last_session_date.clone().unwrap_or_default(),
         )?;
-        self.set_setting("today_focus_minutes", data.today_focus_minutes.to_string())?;
-        self.set_setting("today_date", data.today_date.clone().unwrap_or_default())?;
-        self.set_setting("goal_streak_days", data.goal_streak_days.to_string())?;
-        self.set_setting(
+        set_setting_conn(&tx, "today_focus_minutes", data.today_focus_minutes.to_string())?;
+        set_setting_conn(
+            &tx,
+            "today_date",
+            data.today_date.clone().unwrap_or_default(),
+        )?;
+        set_setting_conn(&tx, "goal_streak_days", data.goal_streak_days.to_string())?;
+        set_setting_conn(
+            &tx,
             "last_goal_date",
             data.last_goal_date.clone().unwrap_or_default(),
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -474,6 +477,15 @@ fn data_dir() -> Result<PathBuf> {
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────
+
+fn set_setting_conn(conn: &Connection, key: &str, value: impl AsRef<str>) -> Result<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value.as_ref()],
+    )?;
+    Ok(())
+}
 
 pub(crate) fn load_settings(conn: &Connection, data: &mut AppData) -> Result<()> {
     let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
@@ -1216,6 +1228,32 @@ mod tests {
         .unwrap();
 
         assert_eq!(db.session_counts_by_mode().unwrap(), (3, 2, 2));
+    }
+
+    #[test]
+    fn persist_session_stats_round_trips_all_fields() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        data.total_focus_minutes = 120;
+        data.total_sessions = 5;
+        data.streak_days = 3;
+        data.last_session_date = Some("2026-07-02".into());
+        data.today_focus_minutes = 50;
+        data.today_date = Some("2026-07-03".into());
+        data.goal_streak_days = 2;
+        data.last_goal_date = Some("2026-07-02".into());
+
+        db.persist_session_stats(&data).unwrap();
+        let loaded = db.load_app_data().unwrap();
+
+        assert_eq!(loaded.total_focus_minutes, 120);
+        assert_eq!(loaded.total_sessions, 5);
+        assert_eq!(loaded.streak_days, 3);
+        assert_eq!(loaded.last_session_date.as_deref(), Some("2026-07-02"));
+        assert_eq!(loaded.today_focus_minutes, 50);
+        assert_eq!(loaded.today_date.as_deref(), Some("2026-07-03"));
+        assert_eq!(loaded.goal_streak_days, 2);
+        assert_eq!(loaded.last_goal_date.as_deref(), Some("2026-07-02"));
     }
 
     #[test]
