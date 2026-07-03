@@ -43,7 +43,7 @@ pub fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
 
     draw_summary(f, app, bottom_cols[0]);
     draw_vdivider(f, bottom_cols[1], theme);
-    if app.stats_view_mode == crate::app::StatsViewMode::Overview {
+    if app.stats.stats_view_mode == crate::app::StatsViewMode::Overview {
         draw_week_bars(f, app, bottom_cols[2]);
     } else {
         draw_tag_analytics(f, app, bottom_cols[2]);
@@ -96,10 +96,10 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
         inner,
         theme,
         icons,
-        &app.heatmap_data,
+        &app.stats.heatmap_data,
         app.data.daily_goal_minutes,
         today_mins,
-        app.heatmap_cursor,
+        app.stats.heatmap_cursor,
     );
 
     render_bottom_cap(f, theme, area);
@@ -110,7 +110,7 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
 fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
-    let (focus_n, custom_n, break_n) = app.session_counts;
+    let (focus_n, custom_n, break_n) = app.stats.session_counts;
     let today = app.today_focus_mins();
 
     let dim_style = Style::default().fg(theme.dim);
@@ -219,7 +219,7 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
 fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
-    let data = &app.weekly_chart;
+    let data = &app.stats.weekly_chart;
 
     let block = section_panel(
         theme,
@@ -348,19 +348,19 @@ fn draw_recent_sessions(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let (title, data) = if let Some(cursor) = app.heatmap_cursor {
+    let (title, data) = if let Some(cursor) = app.stats.heatmap_cursor {
         (
             format!(
                 " {} Sessions on {} ",
                 icons.calendar,
                 cursor.format("%b %d")
             ),
-            &app.cursor_sessions,
+            &app.stats.cursor_sessions,
         )
     } else {
         (
             format!(" {} Today's Timeline ", icons.calendar),
-            &app.timeline_sessions,
+            &app.stats.timeline_sessions,
         )
     };
 
@@ -394,7 +394,7 @@ fn draw_recent_sessions(f: &mut Frame, app: &App, area: Rect) {
             .take(inner.height as usize)
             .enumerate()
             .map(|(idx, s)| {
-                let style = if idx == app.stats_session_selected {
+                let style = if idx == app.stats.stats_session_selected {
                     selected_style
                 } else {
                     normal_style
@@ -436,7 +436,7 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    if app.tag_analytics.is_empty() {
+    if app.stats.tag_analytics.is_empty() {
         f.render_widget(
             Paragraph::new(Span::styled(
                 "No tagged sessions (30d)",
@@ -449,7 +449,7 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let bars: Vec<(&str, u64)> = app
-        .tag_analytics
+        .stats.tag_analytics
         .iter()
         .take(10)
         .map(|(k, v)| (k.as_str(), *v as u64))
@@ -494,7 +494,7 @@ fn draw_daily_timeline(f: &mut Frame, app: &App, area: Rect) {
     let mut blocks = vec!['·'; timeline_w];
     let mins_per_day = 24.0 * 60.0;
 
-    for s in &app.timeline_sessions {
+    for s in &app.stats.timeline_sessions {
         let end_time = s.record.completed_at.with_timezone(&chrono::Local);
         let end_mins = (end_time.hour() * 60 + end_time.minute()) as f64;
         let start_mins = (end_mins - s.record.minutes as f64).max(0.0);

@@ -53,7 +53,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
         area,
     );
 
-    if app.zen_mode && app.tab == FocusTab::Dashboard {
+    if app.ui.zen_mode && app.ui.tab == FocusTab::Dashboard {
         draw_zen_dashboard(f, app, area);
         draw_popup(f, app);
         return;
@@ -73,7 +73,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
     draw_header(f, app, chunks[0]);
     draw_tabs(f, app, chunks[1]);
 
-    match app.tab {
+    match app.ui.tab {
         FocusTab::Dashboard => draw_dashboard(f, app, chunks[2]),
         FocusTab::Tasks => draw_tasks(f, app, chunks[2]),
         FocusTab::Stats => draw_stats(f, app, chunks[2]),
@@ -85,9 +85,9 @@ pub fn render(f: &mut Frame, app: &mut App) {
     draw_footer(f, app, chunks[3]);
 
     draw_popup(f, app);
-    if matches!(app.input_mode, InputMode::Editing)
+    if matches!(app.input.input_mode, InputMode::Editing)
         && !matches!(
-            app.popup.as_ref(),
+            app.input.popup.as_ref(),
             Some(crate::app::Popup::AddTask)
                 | Some(crate::app::Popup::EditTask(_))
                 | Some(crate::app::Popup::AddSubtask(_))

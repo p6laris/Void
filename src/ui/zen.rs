@@ -8,7 +8,7 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
     let mc = mode_color(theme, t.mode);
 
     let mut active_task_ref = None;
-    if let Some(id) = app.active_task {
+    if let Some(id) = app.task_ui.active_task {
         if let Some(task) = app.data.task(id) {
             active_task_ref = Some(task);
         }

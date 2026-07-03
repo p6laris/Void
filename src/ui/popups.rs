@@ -31,7 +31,7 @@ fn rect_ok(area: Rect) -> bool {
 }
 
 pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
-    let Some(popup) = app.popup.clone() else {
+    let Some(popup) = app.input.popup.clone() else {
         return;
     };
     let icons = app.icons;
@@ -67,7 +67,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
                 return;
             }
             let form_area = chunks[0];
-            let (left_area, right_area) = if matches!(app.input_field, InputField::DueDate) {
+            let (left_area, right_area) = if matches!(app.input.input_field, InputField::DueDate) {
                 let cols = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -90,63 +90,63 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
                     text.to_string()
                 }
             };
-            let due_display = if matches!(app.input_field, InputField::DueDate) {
-                cursor(true, &app.input_due_date)
-            } else if app.input_due_date.is_empty() {
+            let due_display = if matches!(app.input.input_field, InputField::DueDate) {
+                cursor(true, &app.input.input_due_date)
+            } else if app.input.input_due_date.is_empty() {
                 "—".to_string()
             } else {
-                app.input_due_date.clone()
+                app.input.input_due_date.clone()
             };
-            let tags_display = cursor(matches!(app.input_field, InputField::Tags), &app.input_tags);
+            let tags_display = cursor(matches!(app.input.input_field, InputField::Tags), &app.input.input_tags);
             let value_max = left_area.width.saturating_sub(22) as usize;
             let p = Paragraph::new(vec![
                 popup_field_line(
                     theme,
                     "Title",
                     cursor(
-                        matches!(app.input_field, InputField::Title),
-                        &truncate_field(&app.input_buffer, value_max),
+                        matches!(app.input.input_field, InputField::Title),
+                        &truncate_field(&app.input.input_buffer, value_max),
                     ),
-                    matches!(app.input_field, InputField::Title),
+                    matches!(app.input.input_field, InputField::Title),
                     value_max,
                 ),
                 popup_field_line(
                     theme,
                     "Estimate (min)",
-                    if matches!(app.input_field, InputField::Estimate) {
-                        format!("{}|", app.input_number)
+                    if matches!(app.input.input_field, InputField::Estimate) {
+                        format!("{}|", app.input.input_number)
                     } else {
-                        app.input_number.to_string()
+                        app.input.input_number.to_string()
                     },
-                    matches!(app.input_field, InputField::Estimate),
+                    matches!(app.input.input_field, InputField::Estimate),
                     value_max,
                 ),
                 popup_field_line(
                     theme,
                     "Priority",
-                    app.input_priority.label().to_string(),
-                    matches!(app.input_field, InputField::Priority),
+                    app.input.input_priority.label().to_string(),
+                    matches!(app.input.input_field, InputField::Priority),
                     value_max,
                 ),
                 popup_field_line(
                     theme,
                     "Due (YYYY-MM-DD)",
                     truncate_field(&due_display, value_max),
-                    matches!(app.input_field, InputField::DueDate),
+                    matches!(app.input.input_field, InputField::DueDate),
                     value_max,
                 ),
                 popup_field_line(
                     theme,
                     "Tags (comma-sep)",
                     truncate_field(&tags_display, value_max),
-                    matches!(app.input_field, InputField::Tags),
+                    matches!(app.input.input_field, InputField::Tags),
                     value_max,
                 ),
             ]);
             f.render_widget(p, left_area);
 
             if let Some(r) = right_area {
-                let d = app.calendar_date;
+                let d = app.stats.calendar_date;
                 if let Ok(time_date) = time::Date::from_calendar_date(
                     d.year(),
                     time::Month::try_from(d.month() as u8).unwrap_or(time::Month::January),
@@ -171,7 +171,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
                     f.render_widget(monthly, r);
                 }
             }
-            let hint = if matches!(app.input_field, InputField::DueDate) {
+            let hint = if matches!(app.input.input_field, InputField::DueDate) {
                 "←→ day · ↑↓ week · Tab field · Enter save · Esc cancel"
             } else {
                 "Tab field · Enter save · Esc cancel"
@@ -251,14 +251,14 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             let (title, detail, accent) = match action {
                 crate::app::BulkAction::MarkDone => (
                     "Mark selected tasks as done?",
-                    format!("{} task(s) selected.", app.bulk_selected.len()),
+                    format!("{} task(s) selected.", app.task_ui.bulk_selected.len()),
                     theme.success,
                 ),
                 crate::app::BulkAction::Delete => (
                     "Delete selected tasks?",
                     format!(
                         "{} task(s) will be removed permanently.",
-                        app.bulk_selected.len()
+                        app.task_ui.bulk_selected.len()
                     ),
                     theme.error,
                 ),
@@ -345,7 +345,7 @@ fn draw_add_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64) {
         ])),
         chunks[0],
     );
-    draw_singleline_editor(f, chunks[1], theme, &app.input_buffer);
+    draw_singleline_editor(f, chunks[1], theme, &app.input.input_buffer);
     draw_action_footer(
         f,
         chunks[2],
@@ -483,7 +483,7 @@ pub(crate) fn draw_input(f: &mut Frame, app: &App, area: Rect) {
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.accent))
         .title(Span::styled(" Input ", Style::default().fg(theme.accent)));
-    let p = Paragraph::new(format!("{}|", app.input_buffer))
+    let p = Paragraph::new(format!("{}|", app.input.input_buffer))
         .style(Style::default().fg(theme.text))
         .block(block);
     f.render_widget(p, chunks[0]);

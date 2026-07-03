@@ -25,8 +25,8 @@ impl App {
             }
             EstimateCompleteBehavior::AutoDone => {
                 self.persist_data(|db, data| storage::mark_task_done(db, data, id));
-                if self.active_task == Some(id) {
-                    self.active_task = None;
+                if self.task_ui.active_task == Some(id) {
+                    self.task_ui.active_task = None;
                     self.data.active_task_id = None;
                     self.persist(|db| db.persist_active_task(None));
                 }
@@ -91,11 +91,11 @@ impl App {
         if just_finished {
             self.on_timer_finished(false);
         }
-        if self.status.is_some()
-            && !self.status_error
-            && self.last_status_set.elapsed() > Duration::from_secs(4)
+        if self.ui.status.is_some()
+            && !self.ui.status_error
+            && self.ui.last_status_set.elapsed() > Duration::from_secs(4)
         {
-            self.status = None;
+            self.ui.status = None;
         }
     }
 
@@ -103,7 +103,7 @@ impl App {
         let mode = self.timer.mode;
         if mode == TimerMode::Focus {
             let mins = self.elapsed_minutes(skipped);
-            let task_id = self.active_task;
+            let task_id = self.task_ui.active_task;
             let meta = self.timer.session_meta();
             self.persist_data(|db, data| {
                 storage::record_focus_session_with_meta(db, data, mins, task_id, mode, meta)
@@ -146,7 +146,7 @@ impl App {
             self.advance_to_break();
         } else if mode == TimerMode::Custom {
             let mins = self.elapsed_minutes(skipped);
-            let task_id = self.active_task;
+            let task_id = self.task_ui.active_task;
             let meta = self.timer.session_meta();
             self.persist_data(|db, data| {
                 storage::record_focus_session_with_meta(db, data, mins, task_id, mode, meta)

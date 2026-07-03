@@ -118,75 +118,27 @@ pub mod settings;
 pub use settings::*;
 pub mod keys;
 pub mod popups;
+pub mod state;
 pub mod task_ops;
 pub mod timer_ops;
+
+pub use state::{InputState, StatsState, TaskUiState, UiState};
 
 pub struct App {
     pub db: Database,
     pub data: AppData,
     pub timer: Timer,
-    pub tab: FocusTab,
-    pub input_mode: InputMode,
-    pub input_buffer: String,
-    pub input_due_date: String,
-    pub input_tags: String,
-    pub input_number: u32,
-    pub input_priority: Priority,
-    pub input_field: InputField,
-    pub popup: Option<Popup>,
-    pub task_state: ListState,
-    pub goal_switch_state: ListState,
+    pub ui: UiState,
+    pub input: InputState,
+    pub task_ui: TaskUiState,
+    pub stats: StatsState,
     pub settings_state: SettingsState,
-    pub status: Option<String>,
-    pub status_error: bool,
-    pub last_status_set: Instant,
-    pub should_quit: bool,
     pub theme: Theme,
     pub theme_catalog: ThemeCatalog,
     pub icons: IconSet,
-    pub active_task: Option<u64>,
-    pub zen_mode: bool,
-    pub task_filter: TaskFilter,
-    pub active_tag_filter: Option<String>,
-    pub task_search: String,
-    pub task_search_lower: String,
-    pub searching: bool,
-    pub cached_filtered_tasks: Vec<usize>,
-    pub cached_dashboard_tasks: Vec<usize>,
-    cached_task_tags: Vec<String>,
-    cached_task_blocked: Vec<bool>,
-    pub weekly_chart: Vec<(String, u32)>,
-    pub heatmap_data: Vec<(String, u32)>,
-    pub session_counts: (u32, u32, u32),
-    pub chart_dirty: bool,
     pub data_version: u64,
-    pub recent_sessions: Vec<StoredSession>,
-    pub stats_session_selected: usize,
-    pub dashboard_task_state: ListState,
-    pub calendar_date: chrono::NaiveDate,
-    pub bulk_mode: bool,
-    pub bulk_selected: HashSet<u64>,
-    pub reordering_task: Option<u64>,
-    pub subtask_selected: usize,
-    pub subtask_focus: bool,
-    pub subtask_state: ListState,
-    pub stats_session_page: usize,
-    pub stats_session_total: usize,
     pub end_warning_shown: bool,
     pub last_activity: Instant,
-    pub timeline_sessions: Vec<StoredSession>,
-    pub help_scroll: u16,
-    pub about_scroll: u16,
-    pub heatmap_cursor: Option<chrono::NaiveDate>,
-    pub cursor_sessions: Vec<StoredSession>,
-    pub stats_view_mode: StatsViewMode,
-    pub tag_analytics: Vec<(String, u32)>,
-    frame_today: String,
-    frame_today_focus_mins: u32,
-    window_title_sig: u64,
-    cached_window_title: String,
-    settings_labels_sig: u64,
-    cached_settings_labels: Vec<CachedSettingsLabel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,68 +216,76 @@ impl App {
             db,
             data,
             timer,
-            tab: FocusTab::Dashboard,
-            input_mode: InputMode::Normal,
-            input_buffer: String::new(),
-            input_due_date: String::new(),
-            input_tags: String::new(),
-            input_number: 25,
-            input_priority: Priority::Medium,
-            input_field: InputField::Title,
-            popup: None,
-            task_state,
-            goal_switch_state: ListState::default(),
+            ui: UiState {
+                tab: FocusTab::Dashboard,
+                zen_mode: false,
+                status: Some(status_msg),
+                status_error: false,
+                last_status_set: Instant::now(),
+                should_quit: false,
+                help_scroll: 0,
+                about_scroll: 0,
+                frame_today: String::new(),
+                frame_today_focus_mins: 0,
+                window_title_sig: u64::MAX,
+                cached_window_title: String::new(),
+                settings_labels_sig: u64::MAX,
+                cached_settings_labels: Vec::new(),
+            },
+            input: InputState {
+                input_mode: InputMode::Normal,
+                input_buffer: String::new(),
+                input_due_date: String::new(),
+                input_tags: String::new(),
+                input_number: 25,
+                input_priority: Priority::Medium,
+                input_field: InputField::Title,
+                popup: None,
+            },
+            task_ui: TaskUiState {
+                task_state,
+                dashboard_task_state,
+                goal_switch_state: ListState::default(),
+                active_task,
+                task_filter: TaskFilter::All,
+                active_tag_filter: None,
+                task_search: String::new(),
+                task_search_lower: String::new(),
+                searching: false,
+                cached_filtered_tasks: Vec::new(),
+                cached_dashboard_tasks: Vec::new(),
+                cached_task_tags: Vec::new(),
+                cached_task_blocked: Vec::new(),
+                bulk_mode: false,
+                bulk_selected: HashSet::new(),
+                reordering_task: None,
+                subtask_selected: 0,
+                subtask_focus: false,
+                subtask_state: ListState::default(),
+            },
+            stats: StatsState {
+                weekly_chart,
+                heatmap_data,
+                session_counts,
+                chart_dirty: false,
+                recent_sessions,
+                stats_session_selected: 0,
+                stats_session_page: 0,
+                stats_session_total,
+                timeline_sessions,
+                heatmap_cursor: None,
+                cursor_sessions: Vec::new(),
+                stats_view_mode: StatsViewMode::Overview,
+                tag_analytics,
+                calendar_date: chrono::Local::now().date_naive(),
+            },
             settings_state: SettingsState::new(),
-            status: Some(status_msg),
-            status_error: false,
-            last_status_set: Instant::now(),
-            should_quit: false,
             theme,
             theme_catalog,
             icons,
-            active_task,
-            zen_mode: false,
-            task_filter: TaskFilter::All,
-            active_tag_filter: None,
-            task_search: String::new(),
-            task_search_lower: String::new(),
-            searching: false,
-            cached_filtered_tasks: Vec::new(),
-            cached_dashboard_tasks: Vec::new(),
-            cached_task_tags: Vec::new(),
-            cached_task_blocked: Vec::new(),
-            weekly_chart,
-            heatmap_data,
-            session_counts,
-            chart_dirty: false,
             data_version: 0,
-            recent_sessions,
-            stats_session_selected: 0,
-            dashboard_task_state,
-            calendar_date: chrono::Local::now().date_naive(),
-            bulk_mode: false,
-            bulk_selected: HashSet::new(),
-            reordering_task: None,
-            subtask_selected: 0,
-            subtask_focus: false,
-            subtask_state: ListState::default(),
-            stats_session_page: 0,
-            stats_session_total,
             end_warning_shown: false,
             last_activity: Instant::now(),
-            timeline_sessions,
-            help_scroll: 0,
-            about_scroll: 0,
-            heatmap_cursor: None,
-            cursor_sessions: Vec::new(),
-            stats_view_mode: StatsViewMode::Overview,
-            tag_analytics,
-            frame_today: String::new(),
-            frame_today_focus_mins: 0,
-            window_title_sig: u64::MAX,
-            cached_window_title: String::new(),
-            settings_labels_sig: u64::MAX,
-            cached_settings_labels: Vec::new(),
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();
@@ -333,8 +293,8 @@ impl App {
     }
 
     pub(crate) fn refresh_frame_today_cache(&mut self) {
-        self.frame_today = crate::date::today_str();
-        self.frame_today_focus_mins = if self.data.today_date.as_deref() == Some(self.frame_today.as_str())
+        self.ui.frame_today = crate::date::today_str();
+        self.ui.frame_today_focus_mins = if self.data.today_date.as_deref() == Some(self.ui.frame_today.as_str())
         {
             self.data.today_focus_minutes
         } else {
@@ -343,11 +303,11 @@ impl App {
     }
 
     pub fn frame_today(&self) -> &str {
-        &self.frame_today
+        &self.ui.frame_today
     }
 
     pub fn today_focus_mins(&self) -> u32 {
-        self.frame_today_focus_mins
+        self.ui.frame_today_focus_mins
     }
 
     pub const SESSIONS_PER_PAGE: usize = 15;
@@ -371,7 +331,7 @@ impl App {
     }
 
     pub fn daily_goal_met(&self) -> bool {
-        self.frame_today_focus_mins >= self.data.daily_goal_minutes
+        self.ui.frame_today_focus_mins >= self.data.daily_goal_minutes
     }
 
     fn persist_timer_state(&mut self) {
@@ -381,40 +341,40 @@ impl App {
     }
 
     pub(crate) fn active_stats_sessions(&self) -> &[StoredSession] {
-        if self.heatmap_cursor.is_some() {
-            &self.cursor_sessions
+        if self.stats.heatmap_cursor.is_some() {
+            &self.stats.cursor_sessions
         } else {
-            &self.recent_sessions
+            &self.stats.recent_sessions
         }
     }
 
     pub(crate) fn clamp_stats_session_selection(&mut self) {
         let n = self.active_stats_sessions().len();
         if n == 0 {
-            self.stats_session_selected = 0;
-        } else if self.stats_session_selected >= n {
-            self.stats_session_selected = n - 1;
+            self.stats.stats_session_selected = 0;
+        } else if self.stats.stats_session_selected >= n {
+            self.stats.stats_session_selected = n - 1;
         }
     }
 
     pub(crate) fn selected_stats_session(&self) -> Option<&StoredSession> {
         self.active_stats_sessions()
-            .get(self.stats_session_selected)
+            .get(self.stats.stats_session_selected)
     }
 
     pub(crate) fn refresh_recent_sessions(&mut self) {
-        let offset = self.stats_session_page * Self::SESSIONS_PER_PAGE;
+        let offset = self.stats.stats_session_page * Self::SESSIONS_PER_PAGE;
         match self
             .db
             .recent_sessions_paged(offset, Self::SESSIONS_PER_PAGE)
         {
-            Ok(sessions) => self.recent_sessions = sessions,
+            Ok(sessions) => self.stats.recent_sessions = sessions,
             Err(e) => self.set_status(format!("Error loading sessions: {e}"), true),
         }
-        self.stats_session_total = self.db.session_count().unwrap_or(0);
+        self.stats.stats_session_total = self.db.session_count().unwrap_or(0);
         self.clamp_stats_session_selection();
         let today = crate::date::today_str();
-        self.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
+        self.stats.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
     }
 
     pub fn tick_rate(&self) -> Duration {
@@ -453,18 +413,18 @@ impl App {
     /// Rebuilds and returns the window title when timer state/mode/seconds change (~1/sec while running).
     pub fn poll_window_title(&mut self) -> Option<&str> {
         if !self.data.show_terminal_title {
-            if self.window_title_sig != u64::MAX {
-                self.window_title_sig = u64::MAX;
+            if self.ui.window_title_sig != u64::MAX {
+                self.ui.window_title_sig = u64::MAX;
             }
             return None;
         }
         let sig = self.window_title_signature();
-        if sig == self.window_title_sig {
+        if sig == self.ui.window_title_sig {
             return None;
         }
-        self.window_title_sig = sig;
-        self.cached_window_title = self.format_window_title();
-        Some(&self.cached_window_title)
+        self.ui.window_title_sig = sig;
+        self.ui.cached_window_title = self.format_window_title();
+        Some(&self.ui.cached_window_title)
     }
 
     pub(crate) fn bump_tasks(&mut self) {
@@ -475,13 +435,13 @@ impl App {
 
     pub(crate) fn bump_sessions(&mut self) {
         self.data_version = self.data_version.wrapping_add(1);
-        self.chart_dirty = true;
+        self.stats.chart_dirty = true;
         self.refresh_recent_sessions();
     }
 
     pub fn bump_data(&mut self) {
         self.bump_tasks();
-        self.chart_dirty = true;
+        self.stats.chart_dirty = true;
         self.refresh_recent_sessions();
     }
 
@@ -508,26 +468,26 @@ impl App {
     }
 
     pub fn refresh_chart_if_needed(&mut self) {
-        if self.chart_dirty {
+        if self.stats.chart_dirty {
             match storage::minutes_by_date(&self.db, 7) {
-                Ok(data) => self.weekly_chart = data,
+                Ok(data) => self.stats.weekly_chart = data,
                 Err(e) => self.set_status(format!("Chart error: {e}"), true),
             }
             match storage::focus_heatmap(&self.db) {
-                Ok(data) => self.heatmap_data = data,
+                Ok(data) => self.stats.heatmap_data = data,
                 Err(e) => self.set_status(format!("Heatmap error: {e}"), true),
             }
             match self.db.session_counts_by_mode() {
-                Ok(counts) => self.session_counts = counts,
+                Ok(counts) => self.stats.session_counts = counts,
                 Err(e) => self.set_status(format!("Stats error: {e}"), true),
             }
-            self.chart_dirty = false;
+            self.stats.chart_dirty = false;
         }
     }
 
     pub fn reload_heatmap(&mut self) {
         if let Ok(data) = storage::focus_heatmap(&self.db) {
-            self.heatmap_data = data;
+            self.stats.heatmap_data = data;
         }
     }
 
@@ -548,9 +508,9 @@ impl App {
     }
 
     pub fn hint(&self) -> String {
-        match self.tab {
+        match self.ui.tab {
             FocusTab::Dashboard => {
-                if self.zen_mode {
+                if self.ui.zen_mode {
                     "[p] Cycle Task  [s/Space] Start/Pause  [n] Skip  [r] Reset  [z] Exit Zen"
                         .into()
                 } else {
@@ -572,9 +532,9 @@ impl App {
     }
 
     pub fn set_status(&mut self, msg: impl Into<String>, error: bool) {
-        self.status = Some(msg.into());
-        self.status_error = error;
-        self.last_status_set = Instant::now();
+        self.ui.status = Some(msg.into());
+        self.ui.status_error = error;
+        self.ui.last_status_set = Instant::now();
     }
 
     fn check_queue_empty(&mut self) {
@@ -600,7 +560,7 @@ impl App {
                 self.set_status("All tasks done — timer paused. [E] end session", false);
             }
             EmptyQueueBehavior::AskEachTime => {
-                self.popup = Some(Popup::EmptyQueueChoice);
+                self.input.popup = Some(Popup::EmptyQueueChoice);
                 self.set_status(
                     "All tasks done — [Enter] free focus  [p] pause  [a] add task",
                     false,
@@ -617,14 +577,14 @@ impl App {
     }
 
     pub fn open_add_task(&mut self) {
-        self.input_buffer.clear();
-        self.input_due_date.clear();
-        self.input_tags.clear();
-        self.input_number = 25;
-        self.input_priority = Priority::Medium;
-        self.input_field = InputField::Title;
-        self.popup = Some(Popup::AddTask);
-        self.input_mode = InputMode::Editing;
+        self.input.input_buffer.clear();
+        self.input.input_due_date.clear();
+        self.input.input_tags.clear();
+        self.input.input_number = 25;
+        self.input.input_priority = Priority::Medium;
+        self.input.input_field = InputField::Title;
+        self.input.popup = Some(Popup::AddTask);
+        self.input.input_mode = InputMode::Editing;
     }
 
     pub fn open_edit_task(&mut self) {
@@ -633,28 +593,28 @@ impl App {
             return;
         };
         if let Some(t) = self.data.task(id).cloned() {
-            self.input_buffer = t.title;
-            self.input_due_date = t.due_date.unwrap_or_default();
-            self.input_tags = t.tags.join(", ");
-            self.input_number = t.estimated_minutes;
-            self.input_priority = t.priority;
-            self.input_field = InputField::Title;
-            self.popup = Some(Popup::EditTask(id));
-            self.input_mode = InputMode::Editing;
+            self.input.input_buffer = t.title;
+            self.input.input_due_date = t.due_date.unwrap_or_default();
+            self.input.input_tags = t.tags.join(", ");
+            self.input.input_number = t.estimated_minutes;
+            self.input.input_priority = t.priority;
+            self.input.input_field = InputField::Title;
+            self.input.popup = Some(Popup::EditTask(id));
+            self.input.input_mode = InputMode::Editing;
         }
     }
 
     pub fn open_confirm_delete(&mut self) {
         if let Some(id) = self.selected_task_id() {
-            self.popup = Some(Popup::ConfirmDelete(id));
+            self.input.popup = Some(Popup::ConfirmDelete(id));
         } else {
             self.set_status("No task to delete.", true);
         }
     }
 
     fn popup_due_date(&self) -> Result<Option<String>, String> {
-        let allow_past = matches!(self.popup, Some(crate::app::Popup::EditTask(_)));
-        storage::normalize_due_date(&self.input_due_date, allow_past)
+        let allow_past = matches!(self.input.popup, Some(crate::app::Popup::EditTask(_)));
+        storage::normalize_due_date(&self.input.input_due_date, allow_past)
     }
 
     pub fn cycle_tag_filter(&mut self) {
@@ -665,7 +625,7 @@ impl App {
             return;
         }
 
-        self.active_tag_filter = match &self.active_tag_filter {
+        self.task_ui.active_tag_filter = match &self.task_ui.active_tag_filter {
             None => Some(tags[0].clone()),
             Some(current) => {
                 if let Some(idx) = tags.iter().position(|t| t == current) {
@@ -680,7 +640,7 @@ impl App {
             }
         };
 
-        let msg = match &self.active_tag_filter {
+        let msg = match &self.task_ui.active_tag_filter {
             Some(t) => format!("Filtered by tag: #{}", t),
             None => "Tag filter cleared.".to_string(),
         };
@@ -689,20 +649,20 @@ impl App {
         self.clamp_dashboard_task_selection();
         let len = self.filtered_task_indices().len();
         if len == 0 {
-            self.task_state.select(None);
+            self.task_ui.task_state.select(None);
         } else {
-            let sel = self.task_state.selected().unwrap_or(0).min(len - 1);
-            self.task_state.select(Some(sel));
+            let sel = self.task_ui.task_state.selected().unwrap_or(0).min(len - 1);
+            self.task_ui.task_state.select(Some(sel));
         }
     }
 
     fn popup_tags(&self) -> Vec<String> {
-        storage::parse_tags(&self.input_tags)
+        storage::parse_tags(&self.input.input_tags)
     }
 
     pub fn selected_task_id(&self) -> Option<u64> {
         let indices = self.filtered_task_indices();
-        self.task_state
+        self.task_ui.task_state
             .selected()
             .and_then(|i| indices.get(i).copied())
             .and_then(|idx| self.data.task_at(idx).map(|t| t.id))

@@ -3,7 +3,7 @@ use crate::model::{EmptyQueueBehavior, EstimateCompleteBehavior};
 use crossterm::event::{KeyCode, KeyEvent};
 use std::hash::{Hash, Hasher};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct CachedSettingsLabel {
     pub key: &'static str,
     pub value: String,
@@ -254,7 +254,7 @@ impl App {
                 }
                 let ids: Vec<u64> = self.data.tasks.keys().copied().collect();
                 let cur = self
-                    .active_task
+                    .task_ui.active_task
                     .and_then(|id| ids.iter().position(|x| *x == id));
                 let next_idx = match (cur, dir) {
                     (Some(i), d) if d > 0 => (i + 1) % ids.len(),
@@ -366,7 +366,7 @@ impl App {
             SettingsItem::ExportBackup => {}
         }
         self.sync_timer_config_to_data();
-        self.settings_labels_sig = u64::MAX;
+        self.ui.settings_labels_sig = u64::MAX;
     }
 
     fn settings_labels_signature(&self) -> u64 {
@@ -385,8 +385,8 @@ impl App {
         self.data.log_breaks.hash(&mut hasher);
         self.data.theme.hash(&mut hasher);
         self.timer.custom_minutes.hash(&mut hasher);
-        self.active_task.hash(&mut hasher);
-        if let Some(id) = self.active_task {
+        self.task_ui.active_task.hash(&mut hasher);
+        if let Some(id) = self.task_ui.active_task {
             if let Some(task) = self.data.task(id) {
                 task.title.hash(&mut hasher);
             }
@@ -454,7 +454,7 @@ impl App {
             CachedSettingsLabel {
                 key: "Active task",
                 value: self
-                    .active_task
+                    .task_ui.active_task
                     .and_then(|id| self.data.task(id))
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| "(none)".into()),
@@ -505,14 +505,14 @@ impl App {
 
     pub(crate) fn refresh_settings_labels_cache(&mut self) {
         let sig = self.settings_labels_signature();
-        if sig == self.settings_labels_sig {
+        if sig == self.ui.settings_labels_sig {
             return;
         }
-        self.settings_labels_sig = sig;
-        self.cached_settings_labels = self.build_settings_labels();
+        self.ui.settings_labels_sig = sig;
+        self.ui.cached_settings_labels = self.build_settings_labels();
     }
 
     pub(crate) fn settings_labels(&self) -> &[CachedSettingsLabel] {
-        &self.cached_settings_labels
+        &self.ui.cached_settings_labels
     }
 }

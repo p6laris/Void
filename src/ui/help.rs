@@ -92,7 +92,7 @@ pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.dim));
     let max_scroll = (text.len() as u16).saturating_sub(area.height.saturating_sub(2));
-    let scroll = app.help_scroll.min(max_scroll);
+    let scroll = app.ui.help_scroll.min(max_scroll);
 
     f.render_widget(
         Paragraph::new(text)

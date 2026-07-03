@@ -313,7 +313,7 @@ where
             app.on_tick();
             last_tick = std::time::Instant::now();
         }
-        if app.should_quit {
+        if app.ui.should_quit {
             return Ok(());
         }
     }

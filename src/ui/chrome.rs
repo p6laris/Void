@@ -117,7 +117,7 @@ pub fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
                 String::new()
             };
             let label = format!(" {icon} {num}·{}{badge} ", t.label());
-            if *t == app.tab {
+            if *t == app.ui.tab {
                 Span::styled(
                     label,
                     Style::default()
@@ -140,15 +140,15 @@ pub fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
 pub fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
 
-    let msg = if let Some(ref m) = app.status {
+    let msg = if let Some(ref m) = app.ui.status {
         m.clone()
-    } else if app.should_quit {
+    } else if app.ui.should_quit {
         format!("{} Goodbye!", app.icons.check)
     } else {
         app.hint()
     };
 
-    let left_style = if app.status_error {
+    let left_style = if app.ui.status_error {
         Style::default().fg(theme.error)
     } else {
         Style::default().fg(theme.dim)

@@ -4,11 +4,11 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 impl App {
     pub fn close_popup(&mut self) {
-        self.popup = None;
-        self.input_mode = InputMode::Normal;
-        self.input_buffer.clear();
-        self.input_due_date.clear();
-        self.input_tags.clear();
+        self.input.popup = None;
+        self.input.input_mode = InputMode::Normal;
+        self.input.input_buffer.clear();
+        self.input.input_due_date.clear();
+        self.input.input_tags.clear();
     }
 
     fn preserved_task_notes(&self, id: u64) -> String {
@@ -19,9 +19,9 @@ impl App {
     }
 
     pub fn submit_popup(&mut self) {
-        match self.popup.clone() {
+        match self.input.popup.clone() {
             Some(Popup::AddTask) => {
-                let title = self.input_buffer.trim().to_string();
+                let title = self.input.input_buffer.trim().to_string();
                 if title.is_empty() {
                     self.set_status("Title cannot be empty.", true);
                     return;
@@ -40,8 +40,8 @@ impl App {
                     storage::TaskPayload {
                         title,
                         notes: String::new(),
-                        estimated_minutes: self.input_number,
-                        priority: self.input_priority,
+                        estimated_minutes: self.input.input_number,
+                        priority: self.input.input_priority,
                         tags,
                         due_date,
                     },
@@ -52,13 +52,13 @@ impl App {
                 self.bump_tasks();
                 let indices = self.filtered_task_indices();
                 let sel = indices.len().saturating_sub(1);
-                self.task_state
+                self.task_ui.task_state
                     .select(if indices.is_empty() { None } else { Some(sel) });
                 self.close_popup();
                 self.set_status("Task added.", false);
             }
             Some(Popup::EditTask(id)) => {
-                let title = self.input_buffer.trim().to_string();
+                let title = self.input.input_buffer.trim().to_string();
                 if title.is_empty() {
                     self.set_status("Title cannot be empty.", true);
                     return;
@@ -71,8 +71,8 @@ impl App {
                     }
                 };
                 let tags = self.popup_tags();
-                let estimate = self.input_number.clamp(1, 480);
-                let priority = self.input_priority;
+                let estimate = self.input.input_number.clamp(1, 480);
+                let priority = self.input.input_priority;
                 let notes = self.preserved_task_notes(id);
                 if let Err(e) = storage::update_task(
                     &self.db,
@@ -100,7 +100,7 @@ impl App {
             }
             Some(Popup::EmptyQueueChoice) => {}
             Some(Popup::AddSubtask(id)) => {
-                let title = self.input_buffer.trim().to_string();
+                let title = self.input.input_buffer.trim().to_string();
                 if title.is_empty() {
                     self.set_status("Subtask title cannot be empty.", true);
                     return;
@@ -111,10 +111,10 @@ impl App {
                 }
                 self.bump_tasks();
                 if let Some(t) = self.data.task(id) {
-                    self.subtask_selected = t.subtasks.len().saturating_sub(1);
+                    self.task_ui.subtask_selected = t.subtasks.len().saturating_sub(1);
                 }
-                self.input_buffer.clear();
-                self.subtask_focus = true;
+                self.input.input_buffer.clear();
+                self.task_ui.subtask_focus = true;
                 self.sync_subtask_list();
                 self.set_status(
                     format!("Added \"{title}\" — type another or q to close"),
@@ -122,15 +122,15 @@ impl App {
                 );
             }
             Some(Popup::BulkConfirm(action)) => {
-                let ids: Vec<u64> = self.bulk_selected.iter().copied().collect();
+                let ids: Vec<u64> = self.task_ui.bulk_selected.iter().copied().collect();
                 let result = match action {
                     BulkAction::MarkDone => storage::bulk_mark_done(&self.db, &mut self.data, &ids),
                     BulkAction::Delete => storage::bulk_delete(&self.db, &mut self.data, &ids),
                 };
                 match result {
                     Ok(n) => {
-                        self.bulk_selected.clear();
-                        self.bulk_mode = false;
+                        self.task_ui.bulk_selected.clear();
+                        self.task_ui.bulk_mode = false;
                         self.bump_tasks();
                         self.clamp_task_selection_after_mutation();
                         self.set_status(format!("Bulk action applied to {n} tasks."), false);
@@ -146,7 +146,7 @@ impl App {
     fn delete_task_confirmed(&mut self, id: u64) {
         match storage::delete_task(&self.db, &mut self.data, id) {
             Ok(true) => {
-                if self.active_task == Some(id) {
+                if self.task_ui.active_task == Some(id) {
                     self.set_active_task(None);
                 }
                 self.bump_tasks();
@@ -160,14 +160,14 @@ impl App {
     }
 
     pub fn confirm_delete(&mut self) {
-        if let Some(Popup::ConfirmDelete(id)) = self.popup.clone() {
+        if let Some(Popup::ConfirmDelete(id)) = self.input.popup.clone() {
             self.delete_task_confirmed(id);
             self.close_popup();
         }
     }
 
     pub(crate) fn handle_popup_key(&mut self, key: KeyEvent) {
-        if matches!(self.popup, Some(Popup::EmptyQueueChoice)) {
+        if matches!(self.input.popup, Some(Popup::EmptyQueueChoice)) {
             match key.code {
                 KeyCode::Esc => self.close_popup(),
                 KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
@@ -196,7 +196,7 @@ impl App {
             }
             return;
         }
-        if matches!(self.popup, Some(Popup::ConfirmDelete(_))) {
+        if matches!(self.input.popup, Some(Popup::ConfirmDelete(_))) {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
                     self.close_popup();
@@ -208,7 +208,7 @@ impl App {
             }
             return;
         }
-        if matches!(self.popup, Some(Popup::BulkConfirm(_))) {
+        if matches!(self.input.popup, Some(Popup::BulkConfirm(_))) {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => self.close_popup(),
                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => self.submit_popup(),
@@ -216,16 +216,16 @@ impl App {
             }
             return;
         }
-        if matches!(self.popup, Some(Popup::AddSubtask(_))) {
+        if matches!(self.input.popup, Some(Popup::AddSubtask(_))) {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.close_popup(),
                 KeyCode::Enter => self.submit_popup(),
                 KeyCode::Backspace => {
-                    self.input_buffer.pop();
+                    self.input.input_buffer.pop();
                 }
                 KeyCode::Char(c) if !ctrl => {
-                    self.input_buffer.push(c);
+                    self.input.input_buffer.push(c);
                 }
                 _ => {}
             }
@@ -233,7 +233,7 @@ impl App {
         }
 
         let is_text_field = matches!(
-            self.input_field,
+            self.input.input_field,
             InputField::Title | InputField::DueDate | InputField::Tags
         );
         match key.code {
@@ -250,14 +250,14 @@ impl App {
                 ];
                 let idx = order
                     .iter()
-                    .position(|f| *f == self.input_field)
+                    .position(|f| *f == self.input.input_field)
                     .unwrap_or(0);
                 let next = if key.code == KeyCode::Tab {
                     (idx + 1) % order.len()
                 } else {
                     (idx + order.len() - 1) % order.len()
                 };
-                self.input_field = order[next];
+                self.input.input_field = order[next];
             }
             KeyCode::Enter => {
                 self.submit_popup();
@@ -273,35 +273,35 @@ impl App {
     }
 
     pub(crate) fn handle_text_input(&mut self, key: KeyEvent) {
-        if self.input_field == InputField::DueDate {
+        if self.input.input_field == InputField::DueDate {
             match key.code {
                 KeyCode::Left => {
-                    self.calendar_date -= chrono::Duration::days(1);
-                    self.input_due_date = self.calendar_date.format("%Y-%m-%d").to_string();
+                    self.stats.calendar_date -= chrono::Duration::days(1);
+                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
                     return;
                 }
                 KeyCode::Right => {
-                    self.calendar_date += chrono::Duration::days(1);
-                    self.input_due_date = self.calendar_date.format("%Y-%m-%d").to_string();
+                    self.stats.calendar_date += chrono::Duration::days(1);
+                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
                     return;
                 }
                 KeyCode::Up => {
-                    self.calendar_date -= chrono::Duration::days(7);
-                    self.input_due_date = self.calendar_date.format("%Y-%m-%d").to_string();
+                    self.stats.calendar_date -= chrono::Duration::days(7);
+                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
                     return;
                 }
                 KeyCode::Down => {
-                    self.calendar_date += chrono::Duration::days(7);
-                    self.input_due_date = self.calendar_date.format("%Y-%m-%d").to_string();
+                    self.stats.calendar_date += chrono::Duration::days(7);
+                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
                     return;
                 }
                 _ => {}
             }
         }
-        let buf = match self.input_field {
-            InputField::Title => &mut self.input_buffer,
-            InputField::DueDate => &mut self.input_due_date,
-            InputField::Tags => &mut self.input_tags,
+        let buf = match self.input.input_field {
+            InputField::Title => &mut self.input.input_buffer,
+            InputField::DueDate => &mut self.input.input_due_date,
+            InputField::Tags => &mut self.input.input_tags,
             _ => return,
         };
         match key.code {
@@ -316,32 +316,32 @@ impl App {
     }
 
     pub(crate) fn handle_field_input(&mut self, key: KeyEvent) {
-        match self.input_field {
+        match self.input.input_field {
             InputField::Estimate => match key.code {
                 KeyCode::Char(c) if c.is_ascii_digit() => {
                     let d = c.to_digit(10).unwrap_or(0);
-                    self.input_number = (self.input_number.saturating_mul(10) + d).min(480);
+                    self.input.input_number = (self.input.input_number.saturating_mul(10) + d).min(480);
                 }
                 KeyCode::Backspace => {
-                    self.input_number /= 10;
-                    if self.input_number == 0 {
-                        self.input_number = 1;
+                    self.input.input_number /= 10;
+                    if self.input.input_number == 0 {
+                        self.input.input_number = 1;
                     }
                 }
-                KeyCode::Up => self.input_number = (self.input_number + 5).min(480),
-                KeyCode::Down => self.input_number = self.input_number.saturating_sub(5).max(1),
+                KeyCode::Up => self.input.input_number = (self.input.input_number + 5).min(480),
+                KeyCode::Down => self.input.input_number = self.input.input_number.saturating_sub(5).max(1),
                 _ => {}
             },
             InputField::Priority => {
                 let next = match key.code {
                     KeyCode::Right | KeyCode::Up | KeyCode::Char(' ') => {
-                        match self.input_priority {
+                        match self.input.input_priority {
                             Priority::Low => Priority::Medium,
                             Priority::Medium => Priority::High,
                             Priority::High => Priority::Low,
                         }
                     }
-                    KeyCode::Left | KeyCode::Down => match self.input_priority {
+                    KeyCode::Left | KeyCode::Down => match self.input.input_priority {
                         Priority::Low => Priority::High,
                         Priority::High => Priority::Medium,
                         Priority::Medium => Priority::Low,
@@ -349,9 +349,9 @@ impl App {
                     KeyCode::Char('1') => Priority::Low,
                     KeyCode::Char('2') => Priority::Medium,
                     KeyCode::Char('3') => Priority::High,
-                    _ => self.input_priority,
+                    _ => self.input.input_priority,
                 };
-                self.input_priority = next;
+                self.input.input_priority = next;
             }
             _ => {}
         }

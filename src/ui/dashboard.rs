@@ -49,7 +49,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         .block(task_block);
         f.render_widget(empty_list, left_chunks[0]);
     } else {
-        let selected_idx = app.dashboard_task_state.selected().unwrap_or(0);
+        let selected_idx = app.task_ui.dashboard_task_state.selected().unwrap_or(0);
         let pending: Vec<ListItem> = indices
             .iter()
             .enumerate()
@@ -61,7 +61,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
                     crate::model::Priority::Medium => icons.dot,
                     crate::model::Priority::Low => " ",
                 };
-                let active = if app.active_task == Some(t.id) {
+                let active = if app.task_ui.active_task == Some(t.id) {
                     format!("{} ", icons.task_active)
                 } else if selected {
                     format!("{} ", icons.chevron)
@@ -94,7 +94,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
             })
             .collect();
         let list = List::new(pending).block(task_block);
-        f.render_stateful_widget(list, left_chunks[0], &mut app.dashboard_task_state);
+        f.render_stateful_widget(list, left_chunks[0], &mut app.task_ui.dashboard_task_state);
 
         if let Some(id) = app.dashboard_selected_task_id() {
             if let Some(task) = app.data.task(id) {
@@ -339,7 +339,7 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
     );
 
     if let Some(mut spans) = active_task_spans(app, theme) {
-        if let Some(id) = app.active_task {
+        if let Some(id) = app.task_ui.active_task {
             if let Some(task) = app.data.task(id) {
                 let left = crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
                 if left > 0 {
@@ -509,7 +509,7 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     }
 
     let recent_for_task: Vec<_> = app
-        .recent_sessions
+        .stats.recent_sessions
         .iter()
         .filter(|s| s.record.task_id == Some(task.id))
         .take(3)

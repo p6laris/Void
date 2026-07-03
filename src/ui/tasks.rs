@@ -9,10 +9,10 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
-    let indices = &app.cached_filtered_tasks;
+    let indices = &app.task_ui.cached_filtered_tasks;
     let filtered_count = indices.len();
 
-    let selected_idx = app.task_state.selected();
+    let selected_idx = app.task_ui.task_state.selected();
     let title_max = chunks[0].width.saturating_sub(22) as usize;
     let items: Vec<ListItem> = indices
         .iter()
@@ -25,7 +25,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 crate::model::Priority::Medium => app.theme.info,
                 crate::model::Priority::Low => app.theme.dim,
             };
-            let is_active = app.active_task == Some(t.id);
+            let is_active = app.task_ui.active_task == Some(t.id);
             let subtask_mark = t
                 .subtask_progress()
                 .map(|(d, n)| format!(" ({d}/{n})"))
@@ -35,11 +35,11 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 ""
             };
-            let is_reordering = app.reordering_task == Some(t.id);
+            let is_reordering = app.task_ui.reordering_task == Some(t.id);
             let reorder_mark = if is_reordering { " ↕ " } else { "" };
             let is_cursor = selected_idx == Some(list_idx);
-            let bulk_selected = app.bulk_mode && app.bulk_selected.contains(&t.id);
-            let bulk_mark = if app.bulk_mode {
+            let bulk_selected = app.task_ui.bulk_mode && app.task_ui.bulk_selected.contains(&t.id);
+            let bulk_mark = if app.task_ui.bulk_mode {
                 if bulk_selected {
                     Span::styled(
                         icons.check,
@@ -95,7 +95,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                     style
                 },
             )];
-            if app.bulk_mode {
+            if app.task_ui.bulk_mode {
                 spans.push(bulk_mark);
                 spans.push(Span::raw(" "));
             }
@@ -136,16 +136,16 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let filter_label = if app.task_search.is_empty() {
-        app.task_filter.label().to_string()
+    let filter_label = if app.task_ui.task_search.is_empty() {
+        app.task_ui.task_filter.label().to_string()
     } else {
-        format!("'{}'", app.task_search)
+        format!("'{}'", app.task_ui.task_search)
     };
 
     let visible_height = chunks[0].height.saturating_sub(2) as usize;
     let has_overflow = filtered_count > visible_height;
     let at_bottom = app
-        .task_state
+        .task_ui.task_state
         .selected()
         .map(|sel| sel + 1 >= filtered_count)
         .unwrap_or(true);
@@ -155,7 +155,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         ""
     };
 
-    let bulk_hint = if app.bulk_mode { " · BULK" } else { "" };
+    let bulk_hint = if app.task_ui.bulk_mode { " · BULK" } else { "" };
     let block = themed_panel(
         &app.theme,
         Line::from(vec![
@@ -165,7 +165,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                     icons.tasks, filter_label, filtered_count, bulk_hint
                 ),
                 Style::default()
-                    .fg(if app.bulk_mode {
+                    .fg(if app.task_ui.bulk_mode {
                         app.theme.info
                     } else {
                         app.theme.accent
@@ -184,14 +184,14 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▸ ");
-    f.render_stateful_widget(list, chunks[0], &mut app.task_state);
+    f.render_stateful_widget(list, chunks[0], &mut app.task_ui.task_state);
 
     let detail_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(chunks[1]);
     let progress_ratio = app
-        .task_state
+        .task_ui.task_state
         .selected()
         .and_then(|sel| indices.get(sel).copied())
         .map(|idx| app.data.tasks[idx].progress_ratio())
@@ -211,7 +211,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         detail_layout[0],
     );
     let has_subtasks = app
-        .task_state
+        .task_ui.task_state
         .selected()
         .and_then(|s| indices.get(s).copied())
         .map(|idx| !app.data.tasks[idx].subtasks.is_empty())
@@ -233,7 +233,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             sub_chunks[0],
         );
         if let Some(task_idx) = app
-            .task_state
+            .task_ui.task_state
             .selected()
             .and_then(|s| indices.get(s).copied())
         {
@@ -252,7 +252,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         );
     }
 
-    if app.searching {
+    if app.task_ui.searching {
         let search_area = centered_rect(50, 20, area);
         f.render_widget(Clear, search_area);
         f.render_widget(
@@ -263,7 +263,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                         .fg(app.theme.accent)
                         .add_modifier(Modifier::BOLD),
                 )),
-                Line::from(format!("{}|", app.task_search)),
+                Line::from(format!("{}|", app.task_ui.task_search)),
                 Line::from(Span::styled(
                     "Enter confirm · Esc cancel",
                     Style::default().fg(app.theme.dim),
@@ -282,12 +282,12 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
 
 pub(crate) fn build_task_detail(app: &App) -> Vec<Line<'_>> {
     let mut lines = build_task_detail_meta(app);
-    let indices = &app.cached_filtered_tasks;
+    let indices = &app.task_ui.cached_filtered_tasks;
     if indices.is_empty() {
         return lines;
     }
     let sel = app
-        .task_state
+        .task_ui.task_state
         .selected()
         .unwrap_or(0)
         .min(indices.len() - 1);
@@ -303,9 +303,9 @@ pub(crate) fn build_task_detail(app: &App) -> Vec<Line<'_>> {
 
 fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
     let frame_today = app.frame_today();
-    let indices = &app.cached_filtered_tasks;
+    let indices = &app.task_ui.cached_filtered_tasks;
     if indices.is_empty() {
-        let msg = match app.task_filter {
+        let msg = match app.task_ui.task_filter {
             TaskFilter::All => "No tasks yet. Press 'a' to add one.",
             TaskFilter::Pending => "All tasks done! Great work.",
             TaskFilter::Done => "No completed tasks yet.",
@@ -318,7 +318,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         ))];
     }
     let sel = app
-        .task_state
+        .task_ui.task_state
         .selected()
         .unwrap_or(0)
         .min(indices.len() - 1);
@@ -452,7 +452,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
     if t.subtasks.is_empty() && t.status != crate::model::TaskStatus::Done {
         // Shown in build_task_detail for tasks without subtask panel
     }
-    if app.active_task == Some(t.id) {
+    if app.task_ui.active_task == Some(t.id) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             format!("{} ACTIVE — press [f] to focus", app.icons.focus),
@@ -473,8 +473,8 @@ fn draw_subtask_panel(
     let theme = &app.theme;
     let task = &app.data.tasks[task_idx];
     let (done, total) = task.subtask_progress().unwrap_or((0, 0));
-    let focus_label = if app.subtask_focus { " · FOCUS" } else { "" };
-    let border_color = if app.subtask_focus {
+    let focus_label = if app.task_ui.subtask_focus { " · FOCUS" } else { "" };
+    let border_color = if app.task_ui.subtask_focus {
         theme.accent
     } else {
         theme.panel_border
@@ -498,7 +498,7 @@ fn draw_subtask_panel(
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    app.subtask_state.select(Some(app.subtask_selected));
+    app.task_ui.subtask_state.select(Some(app.task_ui.subtask_selected));
     let items: Vec<ListItem> = task
         .subtasks
         .iter()
@@ -529,5 +529,5 @@ fn draw_subtask_panel(
             .fg(theme.select_fg)
             .add_modifier(Modifier::BOLD),
     );
-    f.render_stateful_widget(list, inner, &mut app.subtask_state);
+    f.render_stateful_widget(list, inner, &mut app.task_ui.subtask_state);
 }

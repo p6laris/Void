@@ -15,7 +15,7 @@ impl App {
             None
         } else {
             let idx = self
-                .dashboard_task_state
+                .task_ui.dashboard_task_state
                 .selected()
                 .unwrap_or(0)
                 .min(indices.len() - 1);
@@ -26,20 +26,20 @@ impl App {
     pub(crate) fn clamp_dashboard_task_selection(&mut self) {
         let n = self.dashboard_task_indices().len();
         if n == 0 {
-            self.dashboard_task_state.select(None);
+            self.task_ui.dashboard_task_state.select(None);
         } else {
-            let sel = self.dashboard_task_state.selected().unwrap_or(0).min(n - 1);
-            self.dashboard_task_state.select(Some(sel));
+            let sel = self.task_ui.dashboard_task_state.selected().unwrap_or(0).min(n - 1);
+            self.task_ui.dashboard_task_state.select(Some(sel));
         }
     }
 
     pub(crate) fn clamp_task_selection_after_mutation(&mut self) {
         let len = self.filtered_task_indices().len();
         if len == 0 {
-            self.task_state.select(None);
+            self.task_ui.task_state.select(None);
         } else {
-            let sel = self.task_state.selected().unwrap_or(0).min(len - 1);
-            self.task_state.select(Some(sel));
+            let sel = self.task_ui.task_state.selected().unwrap_or(0).min(len - 1);
+            self.task_ui.task_state.select(Some(sel));
         }
     }
 
@@ -48,9 +48,9 @@ impl App {
         if count == 0 {
             return;
         }
-        let cur = self.dashboard_task_state.selected().unwrap_or(0) as i32;
+        let cur = self.task_ui.dashboard_task_state.selected().unwrap_or(0) as i32;
         let next = (cur + delta).rem_euclid(count as i32) as usize;
-        self.dashboard_task_state.select(Some(next));
+        self.task_ui.dashboard_task_state.select(Some(next));
     }
 
     pub fn pending_task_count(&self) -> u32 {
@@ -58,7 +58,7 @@ impl App {
     }
 
     pub fn active_task_pending_index(&self) -> Option<u32> {
-        let id = self.active_task?;
+        let id = self.task_ui.active_task?;
         storage::sorted_pending_tasks(&self.data)
             .iter()
             .position(|t| t.id == id)
@@ -66,26 +66,26 @@ impl App {
     }
 
     pub fn active_task_progress(&self) -> Option<f64> {
-        let id = self.active_task?;
+        let id = self.task_ui.active_task?;
         let task = self.data.task(id)?;
         Some(task.progress_ratio())
     }
 
     pub(crate) fn matches_filter(&self, t: &crate::model::Task) -> bool {
-        if !self.task_search_lower.is_empty() {
-            let q = &self.task_search_lower;
+        if !self.task_ui.task_search_lower.is_empty() {
+            let q = &self.task_ui.task_search_lower;
             let title_match = t.title.to_lowercase().contains(q);
             let tags_match = t.tags.iter().any(|tag| tag.to_lowercase().contains(q));
             if !title_match && !tags_match {
                 return false;
             }
         }
-        if let Some(ref tag) = self.active_tag_filter {
+        if let Some(ref tag) = self.task_ui.active_tag_filter {
             if !t.tags.iter().any(|t| t == tag) {
                 return false;
             }
         }
-        match self.task_filter {
+        match self.task_ui.task_filter {
             TaskFilter::All => true,
             TaskFilter::Pending => t.status != crate::model::TaskStatus::Done && !t.archived,
             TaskFilter::Done => t.status == crate::model::TaskStatus::Done && !t.archived,
@@ -97,7 +97,7 @@ impl App {
     }
 
     pub fn recompute_task_caches(&mut self) {
-        self.cached_filtered_tasks = self
+        self.task_ui.cached_filtered_tasks = self
             .data
             .tasks
             .values()
@@ -123,7 +123,7 @@ impl App {
                 .then(tb.today.cmp(&ta.today))
                 .then(ta.sort_order.cmp(&tb.sort_order))
         });
-        self.cached_dashboard_tasks = dash;
+        self.task_ui.cached_dashboard_tasks = dash;
 
         let mut tags: Vec<String> = self
             .data
@@ -133,7 +133,7 @@ impl App {
             .collect();
         tags.sort();
         tags.dedup();
-        self.cached_task_tags = tags;
+        self.task_ui.cached_task_tags = tags;
 
         let open_blockers: std::collections::HashSet<u64> = self
             .data
@@ -142,7 +142,7 @@ impl App {
             .filter(|t| t.status != crate::model::TaskStatus::Done)
             .map(|t| t.id)
             .collect();
-        self.cached_task_blocked = self
+        self.task_ui.cached_task_blocked = self
             .data
             .tasks
             .values()
@@ -151,7 +151,7 @@ impl App {
     }
 
     pub fn is_task_blocked_at(&self, task_idx: usize) -> bool {
-        self.cached_task_blocked
+        self.task_ui.cached_task_blocked
             .get(task_idx)
             .copied()
             .unwrap_or(false)
@@ -166,19 +166,19 @@ impl App {
     }
 
     pub fn task_tags(&self) -> &[String] {
-        &self.cached_task_tags
+        &self.task_ui.cached_task_tags
     }
 
     pub fn filtered_task_indices(&self) -> &[usize] {
-        &self.cached_filtered_tasks
+        &self.task_ui.cached_filtered_tasks
     }
 
     pub fn dashboard_task_indices(&self) -> &[usize] {
-        &self.cached_dashboard_tasks
+        &self.task_ui.cached_dashboard_tasks
     }
 
     pub fn dashboard_task(&self, index: usize) -> Option<&crate::model::Task> {
-        self.cached_dashboard_tasks
+        self.task_ui.cached_dashboard_tasks
             .get(index)
             .map(|&i| &self.data.tasks[i])
     }
@@ -200,13 +200,13 @@ impl App {
             }
             self.persist_data(|db, data| storage::promote_task_on_activate(db, data, id));
         }
-        self.active_task = id;
+        self.task_ui.active_task = id;
         self.data.active_task_id = id;
         self.persist(|db| db.persist_active_task(id));
     }
 
     pub fn cycle_active_task_status(&mut self) {
-        let Some(id) = self.active_task else {
+        let Some(id) = self.task_ui.active_task else {
             self.set_status("No active task — set one on Tasks (Space).", true);
             return;
         };
@@ -223,8 +223,8 @@ impl App {
             return;
         };
         if status == crate::model::TaskStatus::Done {
-            if self.active_task == Some(id) {
-                self.active_task = None;
+            if self.task_ui.active_task == Some(id) {
+                self.task_ui.active_task = None;
                 self.data.active_task_id = None;
                 self.persist(|db| db.persist_active_task(None));
             }
@@ -238,12 +238,12 @@ impl App {
     }
 
     pub fn mark_active_task_done(&mut self) {
-        let Some(id) = self.active_task else {
+        let Some(id) = self.task_ui.active_task else {
             self.set_status("No active task — set one on Tasks (Space).", true);
             return;
         };
         self.persist_data(|db, data| storage::mark_task_done(db, data, id));
-        self.active_task = None;
+        self.task_ui.active_task = None;
         self.data.active_task_id = None;
         self.persist(|db| db.persist_active_task(None));
         self.bump_tasks();
@@ -256,7 +256,7 @@ impl App {
     }
 
     pub(crate) fn auto_pick_task_if_needed(&mut self) {
-        if self.active_task.is_some() || !self.data.auto_pick_task {
+        if self.task_ui.active_task.is_some() || !self.data.auto_pick_task {
             return;
         }
         if let Some(id) = storage::pick_best_task(&self.data) {
@@ -268,7 +268,7 @@ impl App {
         if !self.data.auto_advance_task {
             return;
         }
-        let next = storage::advance_to_next_task(&self.data, self.active_task);
+        let next = storage::advance_to_next_task(&self.data, self.task_ui.active_task);
         self.set_active_task(next);
         if let Some(id) = next {
             if let Some(t) = self.data.task(id) {
@@ -293,7 +293,7 @@ impl App {
             self.set_status("No tasks available to switch to.", true);
             return;
         }
-        let next_id = if let Some(current) = self.active_task {
+        let next_id = if let Some(current) = self.task_ui.active_task {
             if let Some(pos) = pending.iter().position(|&id| id == current) {
                 pending[(pos + 1) % pending.len()]
             } else {
@@ -316,7 +316,7 @@ impl App {
             return;
         }
         self.set_active_task(Some(id));
-        self.tab = FocusTab::Dashboard;
+        self.ui.tab = FocusTab::Dashboard;
         if self.timer.mode != TimerMode::Focus {
             self.timer.configure(TimerMode::Focus);
         }
@@ -324,24 +324,24 @@ impl App {
     }
 
     pub fn cycle_task_filter(&mut self) {
-        self.task_filter = self.task_filter.next();
+        self.task_ui.task_filter = self.task_ui.task_filter.next();
         self.recompute_task_caches();
-        self.task_state.select(Some(0));
-        self.set_status(format!("Filter: {}", self.task_filter.label()), false);
+        self.task_ui.task_state.select(Some(0));
+        self.set_status(format!("Filter: {}", self.task_ui.task_filter.label()), false);
     }
 
     pub fn toggle_bulk_mode(&mut self) {
-        self.bulk_mode = !self.bulk_mode;
-        self.bulk_selected.clear();
-        if self.bulk_mode {
+        self.task_ui.bulk_mode = !self.task_ui.bulk_mode;
+        self.task_ui.bulk_selected.clear();
+        if self.task_ui.bulk_mode {
             if let Some(id) = self.selected_task_id() {
-                self.bulk_selected.insert(id);
+                self.task_ui.bulk_selected.insert(id);
             }
         }
         self.set_status(
             format!(
                 "Bulk select {} — [v]/Enter toggle row, [V] done, [D] delete, [q] exit",
-                if self.bulk_mode { "on" } else { "off" }
+                if self.task_ui.bulk_mode { "on" } else { "off" }
             ),
             false,
         );
@@ -351,33 +351,33 @@ impl App {
         let Some(id) = self.selected_task_id() else {
             return;
         };
-        if self.bulk_selected.contains(&id) {
-            self.bulk_selected.remove(&id);
+        if self.task_ui.bulk_selected.contains(&id) {
+            self.task_ui.bulk_selected.remove(&id);
         } else {
-            self.bulk_selected.insert(id);
+            self.task_ui.bulk_selected.insert(id);
         }
         self.set_status(
-            format!("{} task(s) selected", self.bulk_selected.len()),
+            format!("{} task(s) selected", self.task_ui.bulk_selected.len()),
             false,
         );
     }
 
     pub fn clamp_subtask_selection(&mut self) {
         let Some(id) = self.selected_task_id() else {
-            self.subtask_selected = 0;
-            self.subtask_state.select(None);
+            self.task_ui.subtask_selected = 0;
+            self.task_ui.subtask_state.select(None);
             return;
         };
         let n = self.data.task(id).map(|t| t.subtasks.len()).unwrap_or(0);
         if n == 0 {
-            self.subtask_selected = 0;
-            self.subtask_focus = false;
-            self.subtask_state.select(None);
-        } else if self.subtask_selected >= n {
-            self.subtask_selected = n - 1;
-            self.subtask_state.select(Some(self.subtask_selected));
+            self.task_ui.subtask_selected = 0;
+            self.task_ui.subtask_focus = false;
+            self.task_ui.subtask_state.select(None);
+        } else if self.task_ui.subtask_selected >= n {
+            self.task_ui.subtask_selected = n - 1;
+            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
         } else {
-            self.subtask_state.select(Some(self.subtask_selected));
+            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
         }
     }
 
@@ -396,8 +396,8 @@ impl App {
             self.set_status("No subtasks — press [c] to add.", true);
             return;
         }
-        self.subtask_focus = !self.subtask_focus;
-        if self.subtask_focus {
+        self.task_ui.subtask_focus = !self.task_ui.subtask_focus;
+        if self.task_ui.subtask_focus {
             self.reset_subtask_selection();
             self.sync_subtask_list();
             self.set_status(
@@ -418,13 +418,13 @@ impl App {
             self.set_status("No subtasks — press [c] to add.", true);
             return;
         }
-        let cur = self.subtask_selected as i32;
-        self.subtask_selected = (cur + delta).rem_euclid(n as i32) as usize;
-        self.subtask_state.select(Some(self.subtask_selected));
+        let cur = self.task_ui.subtask_selected as i32;
+        self.task_ui.subtask_selected = (cur + delta).rem_euclid(n as i32) as usize;
+        self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
         if let Some(s) = self
             .data
             .task(id)
-            .and_then(|t| t.subtasks.get(self.subtask_selected))
+            .and_then(|t| t.subtasks.get(self.task_ui.subtask_selected))
         {
             self.set_status(format!("Subtask: {}", s.title), false);
         }
@@ -432,19 +432,19 @@ impl App {
 
     pub fn reset_subtask_selection(&mut self) {
         let Some(id) = self.selected_task_id() else {
-            self.subtask_selected = 0;
+            self.task_ui.subtask_selected = 0;
             return;
         };
         let Some(t) = self.data.task(id) else {
-            self.subtask_selected = 0;
+            self.task_ui.subtask_selected = 0;
             return;
         };
         if t.subtasks.is_empty() {
-            self.subtask_selected = 0;
-            self.subtask_state.select(None);
+            self.task_ui.subtask_selected = 0;
+            self.task_ui.subtask_state.select(None);
         } else {
-            self.subtask_selected = t.subtasks.iter().position(|s| !s.done).unwrap_or(0);
-            self.subtask_state.select(Some(self.subtask_selected));
+            self.task_ui.subtask_selected = t.subtasks.iter().position(|s| !s.done).unwrap_or(0);
+            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
         }
     }
 
@@ -455,7 +455,7 @@ impl App {
         let sub_id = self
             .data
             .task(id)
-            .and_then(|t| t.subtasks.get(self.subtask_selected))
+            .and_then(|t| t.subtasks.get(self.task_ui.subtask_selected))
             .map(|s| s.id);
         let Some(sub_id) = sub_id else {
             self.set_status("No subtasks to remove.", true);
@@ -478,9 +478,9 @@ impl App {
             self.set_status("No task selected.", true);
             return;
         };
-        self.input_buffer.clear();
-        self.popup = Some(Popup::AddSubtask(id));
-        self.input_mode = InputMode::Editing;
+        self.input.input_buffer.clear();
+        self.input.popup = Some(Popup::AddSubtask(id));
+        self.input.input_mode = InputMode::Editing;
     }
 
     pub fn toggle_subtask_on_selected(&mut self) {
@@ -490,7 +490,7 @@ impl App {
         let sub_id = self
             .data
             .task(id)
-            .and_then(|t| t.subtasks.get(self.subtask_selected))
+            .and_then(|t| t.subtasks.get(self.task_ui.subtask_selected))
             .map(|s| s.id);
         let Some(sub_id) = sub_id else {
             self.set_status("No subtasks — press [c] to add.", true);

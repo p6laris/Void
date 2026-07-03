@@ -68,7 +68,7 @@ pub fn task_status_icon(icons: IconSet, status: TaskStatus) -> &'static str {
 }
 
 pub fn active_task_spans(app: &App, theme: &Theme) -> Option<Vec<Span<'static>>> {
-    let id = app.active_task?;
+    let id = app.task_ui.active_task?;
     let task = app.data.task(id)?;
     let icons = app.icons;
     let status_color = task_status_color(theme, task.status);
