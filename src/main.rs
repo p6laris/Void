@@ -31,6 +31,17 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn parse_cli_task_id(raw: &str, command: &str) -> Option<u64> {
+    match raw.parse() {
+        Ok(id) => Some(id),
+        Err(_) => {
+            eprintln!("Invalid task_id: {raw}");
+            eprintln!("Usage: void {command} <task_id>");
+            None
+        }
+    }
+}
+
 fn handle_cli(args: Vec<String>) -> Result<bool> {
     if args.len() < 2 {
         return Ok(false);
@@ -119,7 +130,9 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 eprintln!("Usage: void done <task_id>");
                 return Ok(true);
             }
-            let id: u64 = args[2].parse().unwrap_or(0);
+            let Some(id) = parse_cli_task_id(&args[2], "done") else {
+                return Ok(true);
+            };
             let db = void::db::Database::open()?;
             let mut data = db.load_app_data().unwrap_or_default();
 
@@ -136,7 +149,9 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 eprintln!("Usage: void start <task_id>");
                 return Ok(true);
             }
-            let id: u64 = args[2].parse().unwrap_or(0);
+            let Some(id) = parse_cli_task_id(&args[2], "start") else {
+                return Ok(true);
+            };
             let db = void::db::Database::open()?;
             let mut data = db.load_app_data().unwrap_or_default();
 
@@ -211,7 +226,10 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             }
 
             print!("WARNING: This will completely overwrite your current tasks and focus history.\nAre you sure you want to proceed? (y/N): ");
-            std::io::stdout().flush().unwrap();
+            if let Err(e) = std::io::stdout().flush() {
+                eprintln!("Could not show import prompt: {e}");
+                return Ok(true);
+            }
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if input.trim().to_lowercase() != "y" {
