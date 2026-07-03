@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use ratatui::style::Color;
 use serde::Deserialize;
 
 use super::color::resolve_color;
-use super::tokens::{ThemeTokens, NAMES};
+use super::{Theme, TOKEN_NAMES};
 
 #[derive(Debug, Deserialize)]
 pub struct ThemeFile {
@@ -26,40 +27,39 @@ impl ThemeFile {
         Self::from_str(&source)
     }
 
-    pub fn into_tokens(self) -> Result<ThemeTokens> {
-        for required in NAMES {
+    fn resolve_token(&self, name: &str) -> Result<Color> {
+        let raw = self
+            .tokens
+            .get(name)
+            .with_context(|| format!("missing token `{name}`"))?;
+        resolve_color(raw, &self.palette).with_context(|| format!("token `{name}`"))
+    }
+
+    pub fn into_theme(self) -> Result<Theme> {
+        for required in TOKEN_NAMES {
             if !self.tokens.contains_key(*required) {
                 bail!("missing required token `{required}`");
             }
         }
 
-        let get = |name: &str| -> Result<ratatui::style::Color> {
-            let raw = self
-                .tokens
-                .get(name)
-                .map(String::as_str)
-                .expect("checked above");
-            resolve_color(raw, &self.palette).with_context(|| format!("token `{name}`"))
-        };
-
-        Ok(ThemeTokens {
-            bg: get("bg")?,
-            text: get("text")?,
-            dim: get("dim")?,
-            accent: get("accent")?,
-            on_accent: get("on_accent")?,
-            success: get("success")?,
-            warning: get("warning")?,
-            error: get("error")?,
-            info: get("info")?,
-            progress_dim: get("progress_dim")?,
-            task_track: get("task_track")?,
-            panel: get("panel")?,
-            panel_border: get("panel_border")?,
-            select_bg: get("select_bg")?,
-            select_fg: get("select_fg")?,
-            active_bg: get("active_bg")?,
-            active_fg: get("active_fg")?,
+        Ok(Theme {
+            bg: self.resolve_token("bg")?,
+            text: self.resolve_token("text")?,
+            dim: self.resolve_token("dim")?,
+            accent: self.resolve_token("accent")?,
+            on_accent: self.resolve_token("on_accent")?,
+            success: self.resolve_token("success")?,
+            warning: self.resolve_token("warning")?,
+            error: self.resolve_token("error")?,
+            info: self.resolve_token("info")?,
+            progress_dim: self.resolve_token("progress_dim")?,
+            task_track: self.resolve_token("task_track")?,
+            panel: self.resolve_token("panel")?,
+            panel_border: self.resolve_token("panel_border")?,
+            select_bg: self.resolve_token("select_bg")?,
+            select_fg: self.resolve_token("select_fg")?,
+            active_bg: self.resolve_token("active_bg")?,
+            active_fg: self.resolve_token("active_fg")?,
         })
     }
 }
@@ -74,8 +74,8 @@ mod tests {
     fn loads_catppuccin_mocha_tokens() {
         let file = ThemeFile::from_str(MOCHA).unwrap();
         assert_eq!(file.name, "Catppuccin Mocha");
-        let tokens = file.into_tokens().unwrap();
-        assert_eq!(tokens.bg, ratatui::style::Color::Rgb(30, 30, 46));
-        assert_eq!(tokens.accent, ratatui::style::Color::Rgb(137, 182, 250));
+        let theme = file.into_theme().unwrap();
+        assert_eq!(theme.bg, Color::Rgb(30, 30, 46));
+        assert_eq!(theme.accent, Color::Rgb(137, 182, 250));
     }
 }

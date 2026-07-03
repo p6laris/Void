@@ -6,16 +6,35 @@ mod builtin;
 mod catalog;
 mod color;
 mod file;
-mod tokens;
 
 pub use catalog::{themes_dir, ThemeCatalog, ThemeEntry};
-pub use tokens::{ThemeTokens, NAMES as TOKEN_NAMES};
 
 use anyhow::{Context, Result};
 
-use self::builtin::builtin_tokens;
+use self::builtin::builtin_theme;
 use self::catalog::ThemeSource;
 use self::file::ThemeFile;
+
+/// All required keys for a theme file `[tokens]` table.
+pub const TOKEN_NAMES: &[&str] = &[
+    "bg",
+    "text",
+    "dim",
+    "accent",
+    "on_accent",
+    "success",
+    "warning",
+    "error",
+    "info",
+    "progress_dim",
+    "task_track",
+    "panel",
+    "panel_border",
+    "select_bg",
+    "select_fg",
+    "active_bg",
+    "active_fg",
+];
 
 #[derive(Clone)]
 pub struct Theme {
@@ -39,50 +58,6 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub fn from_tokens(tokens: ThemeTokens) -> Self {
-        Self {
-            bg: tokens.bg,
-            text: tokens.text,
-            dim: tokens.dim,
-            accent: tokens.accent,
-            on_accent: tokens.on_accent,
-            success: tokens.success,
-            warning: tokens.warning,
-            error: tokens.error,
-            info: tokens.info,
-            progress_dim: tokens.progress_dim,
-            task_track: tokens.task_track,
-            panel: tokens.panel,
-            panel_border: tokens.panel_border,
-            select_bg: tokens.select_bg,
-            select_fg: tokens.select_fg,
-            active_bg: tokens.active_bg,
-            active_fg: tokens.active_fg,
-        }
-    }
-
-    pub fn into_tokens(self) -> ThemeTokens {
-        ThemeTokens {
-            bg: self.bg,
-            text: self.text,
-            dim: self.dim,
-            accent: self.accent,
-            on_accent: self.on_accent,
-            success: self.success,
-            warning: self.warning,
-            error: self.error,
-            info: self.info,
-            progress_dim: self.progress_dim,
-            task_track: self.task_track,
-            panel: self.panel,
-            panel_border: self.panel_border,
-            select_bg: self.select_bg,
-            select_fg: self.select_fg,
-            active_bg: self.active_bg,
-            active_fg: self.active_fg,
-        }
-    }
-
     pub fn dark() -> Self {
         Self {
             bg: Color::Rgb(15, 15, 20),
@@ -192,17 +167,16 @@ impl Theme {
 }
 
 pub fn resolve(id: &str, catalog: &ThemeCatalog) -> Result<Theme> {
-    if let Some(tokens) = builtin_tokens(id) {
-        return Ok(Theme::from_tokens(tokens));
+    if let Some(theme) = builtin_theme(id) {
+        return Ok(theme);
     }
 
     let entry = catalog.resolve_entry(id)?;
-    let tokens = match &entry.source {
-        ThemeSource::Builtin => builtin_tokens(id).context("builtin theme missing tokens")?,
-        ThemeSource::Embedded(source) => ThemeFile::from_str(source)?.into_tokens()?,
-        ThemeSource::File(path) => ThemeFile::from_path(path)?.into_tokens()?,
-    };
-    Ok(Theme::from_tokens(tokens))
+    match &entry.source {
+        ThemeSource::Builtin => builtin_theme(id).context("builtin theme missing"),
+        ThemeSource::Embedded(source) => ThemeFile::from_str(source)?.into_theme(),
+        ThemeSource::File(path) => ThemeFile::from_path(path)?.into_theme(),
+    }
 }
 
 pub fn normalize_theme_id(raw: &str) -> String {

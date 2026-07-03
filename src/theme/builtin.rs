@@ -1,4 +1,3 @@
-use super::tokens::ThemeTokens;
 use super::Theme;
 
 pub const BUILTINS: &[(&str, &str)] = &[
@@ -8,13 +7,12 @@ pub const BUILTINS: &[(&str, &str)] = &[
     ("polaris", "Polaris"),
 ];
 
-pub fn builtin_tokens(id: &str) -> Option<ThemeTokens> {
-    let theme = match id {
-        "matrix" => Theme::matrix(),
-        "dark" => Theme::dark(),
-        "light" => Theme::light(),
-        "polaris" => Theme::polaris(),
-        _ => return None,
-    };
-    Some(theme.into_tokens())
+pub fn builtin_theme(id: &str) -> Option<Theme> {
+    match id {
+        "matrix" => Some(Theme::matrix()),
+        "dark" => Some(Theme::dark()),
+        "light" => Some(Theme::light()),
+        "polaris" => Some(Theme::polaris()),
+        _ => None,
+    }
 }
