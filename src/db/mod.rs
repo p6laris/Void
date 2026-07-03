@@ -274,11 +274,12 @@ impl Database {
 
     pub fn sync_sort_orders(&self, tasks: &[Task]) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        for task in tasks {
-            tx.execute(
-                "UPDATE tasks SET sort_order = ?1 WHERE id = ?2",
-                params![task.sort_order, task.id as i64],
-            )?;
+        {
+            let mut stmt =
+                tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
+            for task in tasks {
+                stmt.execute(params![task.sort_order, task.id as i64])?;
+            }
         }
         tx.commit()?;
         Ok(())
