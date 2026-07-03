@@ -405,9 +405,7 @@ impl App {
                 if let Some(id) = self.selected_task_id() {
                     let next = self
                         .data
-                        .tasks
-                        .iter()
-                        .find(|t| t.id == id)
+                        .task(id)
                         .map(|t| t.recurrence.next())
                         .unwrap_or(crate::model::TaskRecurrence::None);
                     self.persist_data(|db, data| storage::set_task_recurrence(db, data, id, next));

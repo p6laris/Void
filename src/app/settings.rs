@@ -252,7 +252,7 @@ impl App {
                     self.set_status("No tasks to activate.", true);
                     return;
                 }
-                let ids: Vec<u64> = self.data.tasks.iter().map(|t| t.id).collect();
+                let ids: Vec<u64> = self.data.tasks.keys().copied().collect();
                 let cur = self
                     .active_task
                     .and_then(|id| ids.iter().position(|x| *x == id));

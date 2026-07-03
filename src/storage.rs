@@ -88,7 +88,7 @@ pub fn add_task_full(db: &Database, data: &mut AppData, payload: TaskPayload) ->
     task.tags = payload.tags;
     task.due_date = payload.due_date;
     db.upsert_task(&task)?;
-    data.tasks.push(task);
+    data.tasks.insert(task.id, task);
     Ok(id)
 }
 
@@ -107,9 +107,7 @@ pub fn update_task(db: &Database, data: &mut AppData, id: u64, payload: TaskPayl
 }
 
 pub fn delete_task(db: &Database, data: &mut AppData, id: u64) -> Result<bool> {
-    let before = data.tasks.len();
-    data.tasks.retain(|t| t.id != id);
-    if before == data.tasks.len() {
+    if data.tasks.shift_remove(&id).is_none() {
         return Ok(false);
     }
     db.delete_task(id)?;
@@ -213,7 +211,7 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
     task.subtasks = respawned_subtasks;
     task.due_date = next_due_date(recurrence, due_date.as_deref());
     db.upsert_task(&task)?;
-    data.tasks.push(task);
+    data.tasks.insert(task.id, task);
     Ok(())
 }
 
@@ -282,15 +280,13 @@ pub fn set_priority(db: &Database, data: &mut AppData, id: u64, priority: Priori
 }
 
 pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Result<()> {
-    let idx = match data.tasks.iter().position(|t| t.id == id) {
-        Some(i) => i,
-        None => return Ok(()),
+    let Some(idx) = data.tasks.get_index_of(&id) else {
+        return Ok(());
     };
     let new_idx = (idx as i32 + delta).clamp(0, data.tasks.len() as i32 - 1) as usize;
     if idx != new_idx {
-        let task = data.tasks.remove(idx);
-        data.tasks.insert(new_idx, task);
-        for (i, t) in data.tasks.iter_mut().enumerate() {
+        data.tasks.move_index(idx, new_idx);
+        for (i, (_, t)) in data.tasks.iter_mut().enumerate() {
             t.sort_order = i as u32;
         }
         db.sync_sort_orders(&data.tasks)?;
@@ -300,7 +296,7 @@ pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Resu
 
 pub fn pick_best_task(data: &AppData) -> Option<u64> {
     data.tasks
-        .iter()
+        .values()
         .filter(|t| t.status != TaskStatus::Done && !t.archived)
         .max_by(|a, b| {
             a.priority
@@ -315,7 +311,7 @@ pub fn pick_best_task(data: &AppData) -> Option<u64> {
 pub fn advance_to_next_task(data: &AppData, current: Option<u64>) -> Option<u64> {
     let pending: Vec<&Task> = data
         .tasks
-        .iter()
+        .values()
         .filter(|t| t.status != TaskStatus::Done && !t.archived)
         .collect();
     if pending.is_empty() {
@@ -427,7 +423,7 @@ pub fn tag_analytics(db: &Database, data: &AppData, days: usize) -> Result<Vec<(
 
 pub fn pending_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
     data.tasks
-        .iter()
+        .values()
         .filter(|t| t.status != TaskStatus::Done && !t.archived)
 }
 
@@ -444,7 +440,7 @@ pub fn sorted_pending_tasks(data: &AppData) -> Vec<&Task> {
 }
 
 pub fn completed_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
-    data.tasks.iter().filter(|t| t.status == TaskStatus::Done)
+    data.tasks.values().filter(|t| t.status == TaskStatus::Done)
 }
 
 pub fn most_productive_hour_label(db: &Database) -> String {
@@ -628,7 +624,7 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
 
     let to_archive: Vec<u64> = data
         .tasks
-        .iter()
+        .values()
         .filter(|t| t.status == TaskStatus::Done && !t.archived)
         .filter_map(|t| {
             t.completed_at.as_ref().and_then(|completed| {
@@ -658,7 +654,7 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
 }
 
 pub fn archived_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
-    data.tasks.iter().filter(|t| t.archived)
+    data.tasks.values().filter(|t| t.archived)
 }
 
 pub fn toggle_subtask(
@@ -756,7 +752,7 @@ pub fn overdue_and_due_today(data: &AppData) -> (Vec<u64>, Vec<u64>) {
     let mut due_today = Vec::new();
     for t in data
         .tasks
-        .iter()
+        .values()
         .filter(|t| t.status != TaskStatus::Done && !t.archived)
     {
         if let Some(ref due) = t.due_date {
@@ -909,7 +905,8 @@ mod tests {
         let mut t2 = Task::new(2, "Task 2".into());
         t2.priority = Priority::High;
 
-        data.tasks = vec![t1, t2];
+        data.tasks.insert(t1.id, t1);
+        data.tasks.insert(t2.id, t2);
 
         let sorted = sorted_pending_tasks(&data);
         assert_eq!(sorted.len(), 2);
@@ -954,7 +951,8 @@ mod tests {
         recent.completed_at = Some(Utc::now());
         db.upsert_task(&recent).unwrap();
 
-        data.tasks = vec![old, recent];
+        data.tasks.insert(old.id, old);
+        data.tasks.insert(recent.id, recent);
 
         let count = auto_archive_old_tasks(&db, &mut data).unwrap();
         assert_eq!(count, 1);
@@ -988,7 +986,7 @@ mod tests {
             },
         ];
         db.upsert_task(&task).unwrap();
-        data.tasks.push(task);
+        data.tasks.insert(task.id, task);
 
         mark_task_done(&db, &mut data, 1).unwrap();
 
@@ -1001,7 +999,7 @@ mod tests {
         let loaded = db.load_app_data().unwrap();
         let all_subtask_ids: Vec<u64> = loaded
             .tasks
-            .iter()
+            .values()
             .flat_map(|t| t.subtasks.iter().map(|s| s.id))
             .collect();
         assert_eq!(
@@ -1017,7 +1015,7 @@ mod tests {
 
         let mut t = Task::new(1, "Task 1".into());
         t.status = TaskStatus::Pending;
-        data.tasks.push(t);
+        data.tasks.insert(t.id, t);
 
         assert_eq!(pick_best_task(&data), Some(1));
 
@@ -1025,7 +1023,7 @@ mod tests {
         archived.status = TaskStatus::Pending;
         archived.priority = Priority::High;
         archived.archived = true;
-        data.tasks.push(archived);
+        data.tasks.insert(archived.id, archived);
 
         assert_eq!(pick_best_task(&data), Some(1));
     }

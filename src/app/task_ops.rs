@@ -100,7 +100,7 @@ impl App {
         self.cached_filtered_tasks = self
             .data
             .tasks
-            .iter()
+            .values()
             .enumerate()
             .filter(|(_, t)| self.matches_filter(t))
             .map(|(i, _)| i)
@@ -109,7 +109,7 @@ impl App {
         let mut dash: Vec<usize> = self
             .data
             .tasks
-            .iter()
+            .values()
             .enumerate()
             .filter(|(_, t)| t.status != crate::model::TaskStatus::Done && !t.archived)
             .map(|(i, _)| i)
@@ -128,7 +128,7 @@ impl App {
         let mut tags: Vec<String> = self
             .data
             .tasks
-            .iter()
+            .values()
             .flat_map(|t| t.tags.iter().cloned())
             .collect();
         tags.sort();
@@ -138,14 +138,14 @@ impl App {
         let open_blockers: std::collections::HashSet<u64> = self
             .data
             .tasks
-            .iter()
+            .values()
             .filter(|t| t.status != crate::model::TaskStatus::Done)
             .map(|t| t.id)
             .collect();
         self.cached_task_blocked = self
             .data
             .tasks
-            .iter()
+            .values()
             .map(|t| t.blocked_by.iter().any(|id| open_blockers.contains(id)))
             .collect();
     }
@@ -160,8 +160,7 @@ impl App {
     pub fn is_task_blocked(&self, task_id: u64) -> bool {
         self.data
             .tasks
-            .iter()
-            .position(|t| t.id == task_id)
+            .get_index_of(&task_id)
             .map(|idx| self.is_task_blocked_at(idx))
             .unwrap_or(false)
     }
@@ -189,8 +188,7 @@ impl App {
             if self
                 .data
                 .tasks
-                .iter()
-                .find(|t| t.id == id)
+                .get(&id)
                 .is_some_and(|t| t.status == crate::model::TaskStatus::Done)
             {
                 self.set_status("That task is done — pick another.", true);
@@ -220,12 +218,7 @@ impl App {
             self.set_active_task(Some(id));
         }
         self.persist_data(|db, data| storage::cycle_task_status(db, data, id));
-        let status = self
-            .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
-            .map(|t| t.status);
+        let status = self.data.task(id).map(|t| t.status);
         let Some(status) = status else {
             return;
         };
@@ -288,7 +281,7 @@ impl App {
         let pending: Vec<_> = self
             .data
             .tasks
-            .iter()
+            .values()
             .filter(|t| {
                 !t.archived
                     && (t.status == crate::model::TaskStatus::Pending
@@ -316,8 +309,7 @@ impl App {
         if self
             .data
             .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .get(&id)
             .is_some_and(|t| t.status == crate::model::TaskStatus::Done)
         {
             self.set_status("That task is done — pick another.", true);
@@ -376,13 +368,7 @@ impl App {
             self.subtask_state.select(None);
             return;
         };
-        let n = self
-            .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
-            .map(|t| t.subtasks.len())
-            .unwrap_or(0);
+        let n = self.data.task(id).map(|t| t.subtasks.len()).unwrap_or(0);
         if n == 0 {
             self.subtask_selected = 0;
             self.subtask_focus = false;
@@ -401,13 +387,7 @@ impl App {
 
     pub fn selected_subtask_count(&self) -> usize {
         self.selected_task_id()
-            .and_then(|id| {
-                self.data
-                    .tasks
-                    .iter()
-                    .find(|t| t.id == id)
-                    .map(|t| t.subtasks.len())
-            })
+            .and_then(|id| self.data.task(id).map(|t| t.subtasks.len()))
             .unwrap_or(0)
     }
 
@@ -433,13 +413,7 @@ impl App {
         let Some(id) = self.selected_task_id() else {
             return;
         };
-        let n = self
-            .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
-            .map(|t| t.subtasks.len())
-            .unwrap_or(0);
+        let n = self.data.task(id).map(|t| t.subtasks.len()).unwrap_or(0);
         if n == 0 {
             self.set_status("No subtasks — press [c] to add.", true);
             return;
@@ -449,9 +423,7 @@ impl App {
         self.subtask_state.select(Some(self.subtask_selected));
         if let Some(s) = self
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .and_then(|t| t.subtasks.get(self.subtask_selected))
         {
             self.set_status(format!("Subtask: {}", s.title), false);
@@ -482,9 +454,7 @@ impl App {
         };
         let sub_id = self
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .and_then(|t| t.subtasks.get(self.subtask_selected))
             .map(|s| s.id);
         let Some(sub_id) = sub_id else {
@@ -493,9 +463,7 @@ impl App {
         };
         let title = self
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .and_then(|t| t.subtasks.iter().find(|s| s.id == sub_id))
             .map(|s| s.title.clone())
             .unwrap_or_default();
@@ -521,9 +489,7 @@ impl App {
         };
         let sub_id = self
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .and_then(|t| t.subtasks.get(self.subtask_selected))
             .map(|s| s.id);
         let Some(sub_id) = sub_id else {

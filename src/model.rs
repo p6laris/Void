@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -161,11 +162,10 @@ impl Task {
         }
     }
 
-    pub fn is_blocked(&self, tasks: &[Task]) -> bool {
+    pub fn is_blocked(&self, tasks: &IndexMap<u64, Task>) -> bool {
         self.blocked_by.iter().any(|&blocker_id| {
             tasks
-                .iter()
-                .find(|t| t.id == blocker_id)
+                .get(&blocker_id)
                 .is_some_and(|t| t.status != TaskStatus::Done)
         })
     }
@@ -377,9 +377,30 @@ fn default_theme_id() -> String {
     "matrix".into()
 }
 
+mod tasks_serde {
+    use super::{IndexMap, Task};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(map: &IndexMap<u64, Task>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        map.values().collect::<Vec<_>>().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<IndexMap<u64, Task>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let tasks: Vec<Task> = Vec::deserialize(deserializer)?;
+        Ok(tasks.into_iter().map(|t| (t.id, t)).collect())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppData {
-    pub tasks: Vec<Task>,
+    #[serde(with = "tasks_serde")]
+    pub tasks: IndexMap<u64, Task>,
     pub total_focus_minutes: u32,
     pub total_sessions: u32,
     pub streak_days: u32,
@@ -445,11 +466,15 @@ pub struct AppData {
 
 impl AppData {
     pub fn task(&self, id: u64) -> Option<&Task> {
-        self.tasks.iter().find(|t| t.id == id)
+        self.tasks.get(&id)
     }
 
     pub fn task_mut(&mut self, id: u64) -> Option<&mut Task> {
-        self.tasks.iter_mut().find(|t| t.id == id)
+        self.tasks.get_mut(&id)
+    }
+
+    pub fn task_at(&self, index: usize) -> Option<&Task> {
+        self.tasks.get_index(index).map(|(_, task)| task)
     }
 }
 
@@ -464,7 +489,7 @@ fn default_timer_presets() -> Vec<TimerPreset> {
 impl Default for AppData {
     fn default() -> Self {
         Self {
-            tasks: Vec::new(),
+            tasks: IndexMap::new(),
             total_focus_minutes: 0,
             total_sessions: 0,
             streak_days: 0,

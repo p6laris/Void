@@ -415,8 +415,8 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
             if let Some(b) = app
                 .data
                 .tasks
-                .iter()
-                .find(|t| t.id == b_id && t.status != crate::model::TaskStatus::Done)
+                .get(&b_id)
+                .filter(|t| t.status != crate::model::TaskStatus::Done)
             {
                 blocker_names.push(b.title.clone());
             }

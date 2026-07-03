@@ -231,8 +231,7 @@ impl App {
         let icons = IconSet::detect();
         let active_task = data.active_task_id.filter(|id| {
             data.tasks
-                .iter()
-                .find(|t| t.id == *id)
+                .get(id)
                 .is_some_and(|t| t.status != crate::model::TaskStatus::Done)
         });
         if active_task != data.active_task_id {
@@ -706,6 +705,6 @@ impl App {
         self.task_state
             .selected()
             .and_then(|i| indices.get(i).copied())
-            .and_then(|idx| self.data.tasks.get(idx).map(|t| t.id))
+            .and_then(|idx| self.data.task_at(idx).map(|t| t.id))
     }
 }

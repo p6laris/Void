@@ -545,9 +545,7 @@ fn session_task_label(app: &App, task_id: Option<u64>) -> String {
         None => "general".into(),
         Some(id) => app
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .map(|t| super::widgets::truncate(&t.title, 16))
             .unwrap_or_else(|| "?".into()),
     }

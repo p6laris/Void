@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Timelike, Utc};
+use indexmap::IndexMap;
 use rusqlite::{params, Connection};
 
 use crate::model::{
@@ -292,12 +293,12 @@ impl Database {
         Ok(())
     }
 
-    pub fn sync_sort_orders(&self, tasks: &[Task]) -> Result<()> {
+    pub fn sync_sort_orders(&self, tasks: &IndexMap<u64, Task>) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         {
             let mut stmt =
                 tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
-            for task in tasks {
+            for task in tasks.values() {
                 stmt.execute(params![task.sort_order, task.id as i64])?;
             }
         }
@@ -677,7 +678,7 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
 
 // ── tasks ────────────────────────────────────────────────────────────────────
 
-pub(crate) fn load_tasks(conn: &Connection) -> Result<Vec<Task>> {
+pub(crate) fn load_tasks(conn: &Connection) -> Result<IndexMap<u64, Task>> {
     let mut stmt = conn.prepare(
         "SELECT id, title, notes, priority, status, estimated_minutes, actual_minutes,
                 sessions, created_at, completed_at, due_date, today, sort_order,
@@ -715,7 +716,7 @@ pub(crate) fn load_tasks(conn: &Connection) -> Result<Vec<Task>> {
     let subtasks_by_task = load_all_subtasks(conn)?;
     let blocked_by_task = load_all_blocked_by(conn)?;
 
-    let mut tasks = Vec::new();
+    let mut tasks = IndexMap::new();
     for row in rows {
         let mut task = row?;
         task.tags = tags_by_task
@@ -730,7 +731,7 @@ pub(crate) fn load_tasks(conn: &Connection) -> Result<Vec<Task>> {
             .get(&task.id)
             .cloned()
             .unwrap_or_default();
-        tasks.push(task);
+        tasks.insert(task.id, task);
     }
     Ok(tasks)
 }
@@ -782,12 +783,12 @@ fn load_all_blocked_by(conn: &Connection) -> Result<HashMap<u64, Vec<u64>>> {
     Ok(map)
 }
 
-fn sync_tasks(conn: &Connection, tasks: &[Task]) -> Result<()> {
+fn sync_tasks(conn: &Connection, tasks: &IndexMap<u64, Task>) -> Result<()> {
     conn.execute("DELETE FROM task_tags", [])?;
     conn.execute("DELETE FROM task_blocked_by", [])?;
     conn.execute("DELETE FROM subtasks", [])?;
     conn.execute("DELETE FROM tasks", [])?;
-    for task in tasks {
+    for task in tasks.values() {
         upsert_task_row(conn, task)?;
     }
     Ok(())
@@ -1093,7 +1094,7 @@ mod tests {
         let mut data = AppData::default();
         let mut t = Task::new(1, "Test Task".into());
         t.priority = Priority::High;
-        data.tasks.push(t);
+        data.tasks.insert(t.id, t);
 
         db.save_app_data(&data).unwrap();
 
@@ -1125,7 +1126,8 @@ mod tests {
             },
         ];
         task.blocked_by = vec![1];
-        data.tasks = vec![blocked, task];
+        data.tasks.insert(blocked.id, blocked);
+        data.tasks.insert(task.id, task);
 
         db.save_app_data(&data).unwrap();
         let loaded = db.load_app_data().unwrap();

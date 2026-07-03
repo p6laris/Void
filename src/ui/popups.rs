@@ -188,9 +188,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             }
             let title = app
                 .data
-                .tasks
-                .iter()
-                .find(|t| t.id == *id)
+                .task(*id)
                 .map(|t| t.title.as_str())
                 .unwrap_or("Unknown task");
             let p = Paragraph::new(vec![
@@ -313,9 +311,7 @@ fn popup_body_layout(body: Rect, kind: PopupLayout) -> Vec<Rect> {
 
 fn task_title(app: &App, id: u64) -> String {
     app.data
-        .tasks
-        .iter()
-        .find(|t| t.id == id)
+        .task(id)
         .map(|t| t.title.clone())
         .unwrap_or_else(|| "Unknown task".into())
 }
@@ -329,9 +325,7 @@ fn draw_add_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64) {
     let parent = task_title(app, task_id);
     let existing = app
         .data
-        .tasks
-        .iter()
-        .find(|t| t.id == task_id)
+        .task(task_id)
         .map(|t| t.subtasks.len())
         .unwrap_or(0);
     f.render_widget(

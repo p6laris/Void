@@ -136,7 +136,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             let db = void::db::Database::open()?;
             let mut data = db.load_app_data().unwrap_or_default();
 
-            if data.tasks.iter().any(|t| t.id == id) {
+            if data.tasks.contains_key(&id) {
                 void::storage::mark_task_done(&db, &mut data, id)?;
                 println!("Task {} marked as done.", id);
             } else {
@@ -157,8 +157,8 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
 
             if data
                 .tasks
-                .iter()
-                .any(|t| t.id == id && t.status != void::model::TaskStatus::Done)
+                .get(&id)
+                .is_some_and(|t| t.status != void::model::TaskStatus::Done)
             {
                 void::storage::promote_task_on_activate(&db, &mut data, id)?;
                 db.persist_active_task(Some(id))?;

@@ -13,9 +13,7 @@ impl App {
 
     fn preserved_task_notes(&self, id: u64) -> String {
         self.data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .map(|t| t.notes.clone())
             .unwrap_or_default()
     }

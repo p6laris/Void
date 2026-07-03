@@ -8,9 +8,7 @@ impl App {
         };
         let estimated = self
             .data
-            .tasks
-            .iter()
-            .find(|t| t.id == id)
+            .task(id)
             .map(|t| (t.title.clone(), t.actual_minutes, t.estimated_minutes));
         let Some((title, actual, estimate)) = estimated else {
             return;
