@@ -1,5 +1,10 @@
 ﻿/target/
-/Cargo.lock
+
+# Local database and artifacts
+data.db
+*.zip
+wingetcreate.exe
+test_backup.json
 
 # IDEs
 .idea/
