@@ -97,19 +97,7 @@ impl App {
                 self.set_status("Task updated.", false);
             }
             Some(Popup::ConfirmDelete(id)) => {
-                match storage::delete_task(&self.db, &mut self.data, id) {
-                    Ok(true) => {
-                        if self.active_task == Some(id) {
-                            self.set_active_task(None);
-                        }
-                        self.bump_tasks();
-                        self.clamp_task_selection_after_mutation();
-                        self.set_status("Task deleted.", false);
-                        self.check_queue_empty();
-                    }
-                    Ok(false) => {}
-                    Err(e) => self.set_status(format!("Delete error: {e}"), true),
-                }
+                self.delete_task_confirmed(id);
                 self.close_popup();
             }
             Some(Popup::EmptyQueueChoice) => {}
@@ -157,21 +145,25 @@ impl App {
         }
     }
 
+    fn delete_task_confirmed(&mut self, id: u64) {
+        match storage::delete_task(&self.db, &mut self.data, id) {
+            Ok(true) => {
+                if self.active_task == Some(id) {
+                    self.set_active_task(None);
+                }
+                self.bump_tasks();
+                self.clamp_task_selection_after_mutation();
+                self.set_status("Task deleted.", false);
+                self.check_queue_empty();
+            }
+            Ok(false) => {}
+            Err(e) => self.set_status(format!("Delete error: {e}"), true),
+        }
+    }
+
     pub fn confirm_delete(&mut self) {
         if let Some(Popup::ConfirmDelete(id)) = self.popup.clone() {
-            match storage::delete_task(&self.db, &mut self.data, id) {
-                Ok(true) => {
-                    if self.active_task == Some(id) {
-                        self.set_active_task(None);
-                    }
-                    self.bump_tasks();
-                    self.clamp_task_selection_after_mutation();
-                    self.set_status("Task deleted.", false);
-                    self.check_queue_empty();
-                }
-                Ok(false) => {}
-                Err(e) => self.set_status(format!("Delete error: {e}"), true),
-            }
+            self.delete_task_confirmed(id);
             self.close_popup();
         }
     }
