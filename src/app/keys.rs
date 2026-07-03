@@ -202,7 +202,7 @@ impl App {
                 self.stats.stats_session_selected = 0;
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {
-                let today = chrono::Local::now().date_naive();
+                let today = crate::date::today_naive();
                 let current = self.stats.heatmap_cursor.unwrap_or(today);
 
                 let delta = match key.code {

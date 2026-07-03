@@ -277,22 +277,22 @@ impl App {
             match key.code {
                 KeyCode::Left => {
                     self.stats.calendar_date -= chrono::Duration::days(1);
-                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
                 KeyCode::Right => {
                     self.stats.calendar_date += chrono::Duration::days(1);
-                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
                 KeyCode::Up => {
                     self.stats.calendar_date -= chrono::Duration::days(7);
-                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
                 KeyCode::Down => {
                     self.stats.calendar_date += chrono::Duration::days(7);
-                    self.input.input_due_date = self.stats.calendar_date.format("%Y-%m-%d").to_string();
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
                 _ => {}

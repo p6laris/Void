@@ -277,7 +277,7 @@ impl App {
                 cursor_sessions: Vec::new(),
                 stats_view_mode: StatsViewMode::Overview,
                 tag_analytics,
-                calendar_date: chrono::Local::now().date_naive(),
+                calendar_date: crate::date::today_naive(),
             },
             settings_state: SettingsState::new(),
             theme,
@@ -364,7 +364,7 @@ impl App {
 
     pub(crate) fn refresh_cursor_sessions(&mut self) {
         if let Some(cursor) = self.stats.heatmap_cursor {
-            let date_str = cursor.format("%Y-%m-%d").to_string();
+            let date_str = crate::date::format_date(cursor);
             self.stats.cursor_sessions = self.db.sessions_on_date(&date_str).unwrap_or_default();
         }
     }

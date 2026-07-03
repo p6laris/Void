@@ -87,10 +87,10 @@ impl App {
         }
         match self.task_ui.task_filter {
             TaskFilter::All => true,
-            TaskFilter::Pending => t.status != crate::model::TaskStatus::Done && !t.archived,
+            TaskFilter::Pending => t.is_open(),
             TaskFilter::Done => t.status == crate::model::TaskStatus::Done && !t.archived,
             TaskFilter::Today => {
-                t.today && t.status != crate::model::TaskStatus::Done && !t.archived
+                t.today && t.is_open()
             }
             TaskFilter::Archived => t.archived,
         }
@@ -111,7 +111,7 @@ impl App {
             .tasks
             .values()
             .enumerate()
-            .filter(|(_, t)| t.status != crate::model::TaskStatus::Done && !t.archived)
+            .filter(|(_, t)| t.is_open())
             .map(|(i, _)| i)
             .collect();
         dash.sort_by(|&a, &b| {
@@ -284,17 +284,7 @@ impl App {
     }
 
     pub(crate) fn cycle_active_task(&mut self) {
-        let pending: Vec<_> = self
-            .data
-            .tasks
-            .values()
-            .filter(|t| {
-                !t.archived
-                    && (t.status == crate::model::TaskStatus::Pending
-                        || t.status == crate::model::TaskStatus::InProgress)
-            })
-            .map(|t| t.id)
-            .collect();
+        let pending: Vec<u64> = storage::pending_tasks(&self.data).map(|t| t.id).collect();
         if pending.is_empty() {
             self.set_status("No tasks available to switch to.", true);
             return;
@@ -314,8 +304,7 @@ impl App {
     pub fn start_focus_on_task(&mut self, id: u64) {
         if self
             .data
-            .tasks
-            .get(&id)
+            .task(id)
             .is_some_and(|t| t.status == crate::model::TaskStatus::Done)
         {
             self.set_status("That task is done — pick another.", true);
@@ -470,7 +459,7 @@ impl App {
         let title = self
             .data
             .task(id)
-            .and_then(|t| t.subtasks.iter().find(|s| s.id == sub_id))
+            .and_then(|t| t.subtask(sub_id))
             .map(|s| s.title.clone())
             .unwrap_or_default();
         self.persist_data(|db, data| storage::delete_subtask(db, data, id, sub_id));
@@ -506,7 +495,7 @@ impl App {
         self.bump_tasks();
         self.clamp_subtask_selection();
         if let Some(t) = self.data.task(id) {
-            if let Some(s) = t.subtasks.iter().find(|s| s.id == sub_id) {
+            if let Some(s) = t.subtask(sub_id) {
                 let state = if s.done { "done" } else { "open" };
                 self.set_status(format!("Subtask \"{}\" marked {state}", s.title), false);
             }

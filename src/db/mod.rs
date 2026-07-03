@@ -318,16 +318,16 @@ impl Database {
         if days == 0 {
             return Ok(Vec::new());
         }
-        let today = chrono::Local::now().date_naive();
+        let today = crate::date::today_naive();
         let start = today - chrono::Duration::days((days - 1) as i64);
         let by_date = self.focus_minutes_in_range(
-            &start.format("%Y-%m-%d").to_string(),
-            &today.format("%Y-%m-%d").to_string(),
+            &crate::date::format_date(start),
+            &crate::date::format_date(today),
         )?;
         let mut out = Vec::with_capacity(days);
         for offset in (0..days).rev() {
             let date = today - chrono::Duration::days(offset as i64);
-            let key = date.format("%Y-%m-%d").to_string();
+            let key = crate::date::format_date(date);
             let mins = by_date.get(&key).copied().unwrap_or(0);
             let label = date.format("%a").to_string();
             out.push((label, mins));
@@ -340,16 +340,16 @@ impl Database {
         if days == 0 {
             return Ok(Vec::new());
         }
-        let today = chrono::Local::now().date_naive();
+        let today = crate::date::today_naive();
         let start = today - chrono::Duration::days((days - 1) as i64);
         let by_date = self.focus_minutes_in_range(
-            &start.format("%Y-%m-%d").to_string(),
-            &today.format("%Y-%m-%d").to_string(),
+            &crate::date::format_date(start),
+            &crate::date::format_date(today),
         )?;
         let mut out = Vec::with_capacity(days);
         for offset in (0..days).rev() {
             let date = today - chrono::Duration::days(offset as i64);
-            let key = date.format("%Y-%m-%d").to_string();
+            let key = crate::date::format_date(date);
             let mins = by_date.get(&key).copied().unwrap_or(0);
             out.push((key, mins));
         }
@@ -378,8 +378,8 @@ impl Database {
 
     /// Tag analytics for the past N days.
     pub fn tag_analytics(&self, data: &AppData, days: usize) -> Result<Vec<(String, u32)>> {
-        let cutoff = chrono::Local::now().date_naive() - chrono::Duration::days(days as i64);
-        let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+        let cutoff = crate::date::today_naive() - chrono::Duration::days(days as i64);
+        let cutoff_str = crate::date::format_date(cutoff);
 
         let mut stmt = self.conn.prepare(
             "SELECT minutes, task_id
@@ -1109,9 +1109,9 @@ mod tests {
     #[test]
     fn minutes_by_date_aggregates_focus_minutes_in_one_query() {
         let db = Database::open_in_memory().unwrap();
-        let today = chrono::Local::now().date_naive();
+        let today = crate::date::today_naive();
         let yesterday = today - chrono::TimeDelta::days(1);
-        let yesterday_key = yesterday.format("%Y-%m-%d").to_string();
+        let yesterday_key = crate::date::format_date(yesterday);
 
         db.insert_focus_session(&FocusSessionRecord {
             date: yesterday_key.clone(),
@@ -1148,7 +1148,7 @@ mod tests {
         assert_eq!(yesterday_mins, Some(25));
 
         let series = db.focus_minutes_series(7).unwrap();
-        let today_key = today.format("%Y-%m-%d").to_string();
+        let today_key = crate::date::format_date(today);
         assert_eq!(
             series.iter().find(|(key, _)| key == &today_key).map(|(_, m)| *m),
             Some(0)

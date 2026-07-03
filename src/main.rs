@@ -136,7 +136,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             let db = void::db::Database::open()?;
             let mut data = db.load_app_data().unwrap_or_default();
 
-            if data.tasks.contains_key(&id) {
+            if data.task(id).is_some() {
                 void::storage::mark_task_done(&db, &mut data, id)?;
                 println!("Task {} marked as done.", id);
             } else {

@@ -162,6 +162,18 @@ impl Task {
         }
     }
 
+    pub fn is_open(&self) -> bool {
+        self.status != TaskStatus::Done && !self.archived
+    }
+
+    pub fn subtask(&self, id: u64) -> Option<&Subtask> {
+        self.subtasks.iter().find(|s| s.id == id)
+    }
+
+    pub fn subtask_mut(&mut self, id: u64) -> Option<&mut Subtask> {
+        self.subtasks.iter_mut().find(|s| s.id == id)
+    }
+
     pub fn is_blocked(&self, tasks: &IndexMap<u64, Task>) -> bool {
         self.blocked_by.iter().any(|&blocker_id| {
             tasks

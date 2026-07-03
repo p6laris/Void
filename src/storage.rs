@@ -43,8 +43,7 @@ pub fn normalize_due_date(input: &str, allow_past: bool) -> Result<Option<String
     match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         Ok(parsed) => {
             if !allow_past {
-                let today = chrono::Local::now().date_naive();
-                if parsed < today {
+                if parsed < crate::date::today_naive() {
                     return Err("Due date cannot be in the past.".into());
                 }
             }
@@ -52,11 +51,7 @@ pub fn normalize_due_date(input: &str, allow_past: bool) -> Result<Option<String
         }
         Err(_) => match s.to_lowercase().as_str() {
             "today" => Ok(Some(crate::date::today_str())),
-            "tomorrow" => Ok(Some(
-                (chrono::Local::now() + chrono::Duration::days(1))
-                    .format("%Y-%m-%d")
-                    .to_string(),
-            )),
+            "tomorrow" => Ok(Some(crate::date::tomorrow_str())),
             _ => Err("Due date must be YYYY-MM-DD, 'today', or 'tomorrow'.".into()),
         },
     }
@@ -217,30 +212,26 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
 
 fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<String> {
     use chrono::{Datelike, NaiveDate, Weekday};
-    let today = chrono::Local::now().date_naive();
+    let today = crate::date::today_naive();
     match recurrence {
         TaskRecurrence::None => current.map(String::from),
-        TaskRecurrence::Daily => Some(
-            (today + chrono::Duration::days(1))
-                .format("%Y-%m-%d")
-                .to_string(),
-        ),
+        TaskRecurrence::Daily => Some(crate::date::format_date(
+            today + chrono::Duration::days(1),
+        )),
         TaskRecurrence::Weekly => {
             let base = current
                 .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
                 .unwrap_or(today);
-            Some(
-                (base + chrono::Duration::days(7))
-                    .format("%Y-%m-%d")
-                    .to_string(),
-            )
+            Some(crate::date::format_date(
+                base + chrono::Duration::days(7),
+            ))
         }
         TaskRecurrence::Weekdays => {
             let mut d = today + chrono::Duration::days(1);
             while matches!(d.weekday(), Weekday::Sat | Weekday::Sun) {
                 d += chrono::Duration::days(1);
             }
-            Some(d.format("%Y-%m-%d").to_string())
+            Some(crate::date::format_date(d))
         }
     }
 }
@@ -297,7 +288,7 @@ pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Resu
 pub fn pick_best_task(data: &AppData) -> Option<u64> {
     data.tasks
         .values()
-        .filter(|t| t.status != TaskStatus::Done && !t.archived)
+        .filter(|t| t.is_open())
         .max_by(|a, b| {
             a.priority
                 .rank()
@@ -309,11 +300,7 @@ pub fn pick_best_task(data: &AppData) -> Option<u64> {
 }
 
 pub fn advance_to_next_task(data: &AppData, current: Option<u64>) -> Option<u64> {
-    let pending: Vec<&Task> = data
-        .tasks
-        .values()
-        .filter(|t| t.status != TaskStatus::Done && !t.archived)
-        .collect();
+    let pending: Vec<&Task> = pending_tasks(data).collect();
     if pending.is_empty() {
         return None;
     }
@@ -422,9 +409,7 @@ pub fn tag_analytics(db: &Database, data: &AppData, days: usize) -> Result<Vec<(
 }
 
 pub fn pending_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
-    data.tasks
-        .values()
-        .filter(|t| t.status != TaskStatus::Done && !t.archived)
+    data.tasks.values().filter(|t| t.is_open())
 }
 
 pub fn sorted_pending_tasks(data: &AppData) -> Vec<&Task> {
@@ -618,9 +603,9 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
     if days == 0 {
         return Ok(0);
     }
-    let cutoff = (chrono::Local::now() - chrono::Duration::days(days as i64))
-        .format("%Y-%m-%d")
-        .to_string();
+    let cutoff = crate::date::format_date(
+        crate::date::today_naive() - chrono::Duration::days(days as i64),
+    );
 
     let to_archive: Vec<u64> = data
         .tasks
@@ -628,7 +613,7 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
         .filter(|t| t.status == TaskStatus::Done && !t.archived)
         .filter_map(|t| {
             t.completed_at.as_ref().and_then(|completed| {
-                let key = completed.format("%Y-%m-%d").to_string();
+                let key = crate::date::format_date(completed.date_naive());
                 (key.as_str() < cutoff.as_str()).then_some(t.id)
             })
         })
@@ -664,7 +649,7 @@ pub fn toggle_subtask(
     subtask_id: u64,
 ) -> Result<()> {
     if let Some(t) = data.task_mut(task_id) {
-        if let Some(s) = t.subtasks.iter_mut().find(|s| s.id == subtask_id) {
+        if let Some(s) = t.subtask_mut(subtask_id) {
             s.done = !s.done;
             db.upsert_task(t)?;
         }
@@ -750,11 +735,7 @@ pub fn overdue_and_due_today(data: &AppData) -> (Vec<u64>, Vec<u64>) {
     let today = crate::date::today_str();
     let mut overdue = Vec::new();
     let mut due_today = Vec::new();
-    for t in data
-        .tasks
-        .values()
-        .filter(|t| t.status != TaskStatus::Done && !t.archived)
-    {
+    for t in data.tasks.values().filter(|t| t.is_open()) {
         if let Some(ref due) = t.due_date {
             if due.as_str() < today.as_str() {
                 overdue.push(t.id);

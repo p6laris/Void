@@ -87,7 +87,7 @@ pub fn draw_focus_heatmap(
     }
 
     let layout = HeatmapLayout::build(width);
-    let today = chrono::Local::now().date_naive();
+    let today = crate::date::today_naive();
     let grid_start = monday_of(today) - Duration::days((layout.weeks as i64 - 1) * 7);
 
     let grid_data = build_grid(data, today, grid_start, layout.weeks, goal, today_live_mins);
