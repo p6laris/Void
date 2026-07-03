@@ -182,6 +182,8 @@ pub struct App {
     pub tag_analytics: Vec<(String, u32)>,
     frame_today: String,
     frame_today_focus_mins: u32,
+    window_title_sig: u64,
+    cached_window_title: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -317,6 +319,8 @@ impl App {
             tag_analytics,
             frame_today: String::new(),
             frame_today_focus_mins: 0,
+            window_title_sig: u64::MAX,
+            cached_window_title: String::new(),
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();
@@ -417,10 +421,14 @@ impl App {
         }
     }
 
-    pub fn window_title(&self) -> String {
-        if !self.data.show_terminal_title {
-            return "Void".into();
-        }
+    fn window_title_signature(&self) -> u64 {
+        let rem_secs = self.timer.remaining_secs_f64() as u32;
+        let state = self.timer.state as u8 as u64;
+        let mode = self.timer.mode as u8 as u64;
+        (state << 40) | (mode << 32) | rem_secs as u64
+    }
+
+    fn format_window_title(&self) -> String {
         let (main, tenths, _) = crate::canvas_timer::format_time_stack(&self.timer);
         let state = match self.timer.state {
             TimerState::Running => self.icons.play,
@@ -435,6 +443,23 @@ impl App {
             tenths,
             self.timer.mode.label()
         )
+    }
+
+    /// Rebuilds and returns the window title when timer state/mode/seconds change (~1/sec while running).
+    pub fn poll_window_title(&mut self) -> Option<&str> {
+        if !self.data.show_terminal_title {
+            if self.window_title_sig != u64::MAX {
+                self.window_title_sig = u64::MAX;
+            }
+            return None;
+        }
+        let sig = self.window_title_signature();
+        if sig == self.window_title_sig {
+            return None;
+        }
+        self.window_title_sig = sig;
+        self.cached_window_title = self.format_window_title();
+        Some(&self.cached_window_title)
     }
 
     pub(crate) fn bump_tasks(&mut self) {

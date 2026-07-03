@@ -286,8 +286,8 @@ where
     let mut last_tick = std::time::Instant::now();
     loop {
         app.refresh_chart_if_needed();
-        if app.data.show_terminal_title {
-            set_window_title(&app.window_title());
+        if let Some(title) = app.poll_window_title() {
+            set_window_title(title);
         }
         terminal.draw(|f| ui::render(f, app))?;
 
