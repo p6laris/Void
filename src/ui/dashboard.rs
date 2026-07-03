@@ -26,13 +26,13 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
             Style::default().fg(theme.accent),
         )),
     );
-    let pending_tasks = app.dashboard_tasks();
+    let indices = app.dashboard_task_indices();
     let left_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(task_chunks[0]);
 
-    if pending_tasks.is_empty() {
+    if indices.is_empty() {
         let empty_msg = if app.queue_empty() && !app.data.tasks.is_empty() {
             "All tasks done — free focus or [a] add more"
         } else {
@@ -50,10 +50,11 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_widget(empty_list, left_chunks[0]);
     } else {
         let selected_idx = app.dashboard_task_state.selected().unwrap_or(0);
-        let pending: Vec<ListItem> = pending_tasks
-            .into_iter()
+        let pending: Vec<ListItem> = indices
+            .iter()
             .enumerate()
-            .map(|(idx, t)| {
+            .map(|(idx, &task_i)| {
+                let t = &app.data.tasks[task_i];
                 let selected = idx == selected_idx;
                 let marker = match t.priority {
                     crate::model::Priority::High => icons.alert,

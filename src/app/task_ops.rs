@@ -10,21 +10,21 @@ impl App {
     }
 
     pub fn dashboard_selected_task_id(&self) -> Option<u64> {
-        let pending = self.dashboard_tasks();
-        if pending.is_empty() {
+        let indices = self.dashboard_task_indices();
+        if indices.is_empty() {
             None
         } else {
             let idx = self
                 .dashboard_task_state
                 .selected()
                 .unwrap_or(0)
-                .min(pending.len() - 1);
-            Some(pending[idx].id)
+                .min(indices.len() - 1);
+            Some(self.data.tasks[indices[idx]].id)
         }
     }
 
     pub(crate) fn clamp_dashboard_task_selection(&mut self) {
-        let n = self.dashboard_tasks().len();
+        let n = self.dashboard_task_indices().len();
         if n == 0 {
             self.dashboard_task_state.select(None);
         } else {
@@ -44,7 +44,7 @@ impl App {
     }
 
     pub(crate) fn move_dashboard_task_selection(&mut self, delta: i32) {
-        let count = self.dashboard_tasks().len();
+        let count = self.dashboard_task_indices().len();
         if count == 0 {
             return;
         }
@@ -130,11 +130,14 @@ impl App {
         &self.cached_filtered_tasks
     }
 
-    pub fn dashboard_tasks(&self) -> Vec<&crate::model::Task> {
+    pub fn dashboard_task_indices(&self) -> &[usize] {
+        &self.cached_dashboard_tasks
+    }
+
+    pub fn dashboard_task(&self, index: usize) -> Option<&crate::model::Task> {
         self.cached_dashboard_tasks
-            .iter()
+            .get(index)
             .map(|&i| &self.data.tasks[i])
-            .collect()
     }
 
     pub fn set_active_task(&mut self, id: Option<u64>) {
