@@ -36,15 +36,11 @@ pub fn init_audio() {
                 let cursor = Cursor::new(bytes);
                 if let Ok(decoder) = Decoder::new(cursor) {
                     sink.append(decoder);
-                    sink.sleep_until_end();
+                    sink.detach();
                 }
             }
         }
     });
-}
-
-fn spawn_sound(f: impl FnOnce() + Send + 'static) {
-    thread::spawn(f);
 }
 
 #[cfg(target_os = "linux")]
@@ -94,6 +90,13 @@ fn play_embedded_sound(bytes: &'static [u8]) -> bool {
     }
 }
 
+fn play_sound(bytes: &'static [u8], fallback: fn()) {
+    if play_embedded_sound(bytes) {
+        return;
+    }
+    thread::spawn(fallback);
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum NotifyKind {
     FocusComplete,
@@ -123,82 +126,6 @@ fn beep_macos(sound_name: &str) {
 #[cfg(all(unix, not(target_os = "macos")))]
 fn beep_linux() {
     let _ = Command::new("sh").args(["-c", "printf '\\a'"]).output();
-}
-
-// -----------------------------------------------------------------------------
-// Rich Audio Events
-// -----------------------------------------------------------------------------
-
-pub fn play_focus_complete() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/focus_complete.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_success();
-        }
-    });
-}
-
-pub fn play_break_complete() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/break_complete.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_success();
-        }
-    });
-}
-
-pub fn play_task_complete() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/task_complete.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_success();
-        }
-    });
-}
-
-pub fn play_start() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/start.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_click();
-        }
-    });
-}
-
-pub fn play_pause() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/pause.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_soft();
-        }
-    });
-}
-
-pub fn play_resume() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/resume.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_click();
-        }
-    });
-}
-
-pub fn play_warning() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/warning.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_soft();
-        }
-    });
-}
-
-pub fn play_skip() {
-    spawn_sound(|| {
-        let bytes = include_bytes!("../assets/sounds/skip.mp3");
-        if !play_embedded_sound(bytes) {
-            fallback_click();
-        }
-    });
 }
 
 // -----------------------------------------------------------------------------
@@ -253,6 +180,51 @@ fn fallback_click() {
     {
         let _ = Command::new("printf").arg("%b").arg("\u{7}").output();
     }
+}
+
+// -----------------------------------------------------------------------------
+// Rich Audio Events
+// -----------------------------------------------------------------------------
+
+pub fn play_focus_complete() {
+    play_sound(
+        include_bytes!("../assets/sounds/focus_complete.mp3"),
+        fallback_success,
+    );
+}
+
+pub fn play_break_complete() {
+    play_sound(
+        include_bytes!("../assets/sounds/break_complete.mp3"),
+        fallback_success,
+    );
+}
+
+pub fn play_task_complete() {
+    play_sound(
+        include_bytes!("../assets/sounds/task_complete.mp3"),
+        fallback_success,
+    );
+}
+
+pub fn play_start() {
+    play_sound(include_bytes!("../assets/sounds/start.mp3"), fallback_click);
+}
+
+pub fn play_pause() {
+    play_sound(include_bytes!("../assets/sounds/pause.mp3"), fallback_soft);
+}
+
+pub fn play_resume() {
+    play_sound(include_bytes!("../assets/sounds/resume.mp3"), fallback_click);
+}
+
+pub fn play_warning() {
+    play_sound(include_bytes!("../assets/sounds/warning.mp3"), fallback_soft);
+}
+
+pub fn play_skip() {
+    play_sound(include_bytes!("../assets/sounds/skip.mp3"), fallback_click);
 }
 
 // -----------------------------------------------------------------------------
