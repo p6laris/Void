@@ -149,6 +149,42 @@ pub fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Paragraph::new(Line::from(tabs)).block(block), area);
 }
 
+fn footer_top_block(theme: &crate::app::Theme) -> Block<'_> {
+    Block::default()
+        .borders(Borders::TOP)
+        .border_style(Style::default().fg(theme.panel_border))
+}
+
+fn draw_footer_bar(f: &mut Frame, app: &App, area: Rect, left: Line<'_>) {
+    let theme = &app.theme;
+    let mut right_width: u16 = 0;
+    let right_line = if let Some(spans) = active_task_spans(app, theme) {
+        right_width = spans.iter().map(|s| s.width() as u16).sum::<u16>() + 1;
+        Some(Line::from(spans))
+    } else {
+        None
+    };
+
+    let footer_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(right_width)])
+        .split(area);
+
+    f.render_widget(
+        Paragraph::new(left).block(footer_top_block(theme)),
+        footer_layout[0],
+    );
+
+    if let Some(line) = right_line {
+        f.render_widget(
+            Paragraph::new(line)
+                .block(footer_top_block(theme))
+                .alignment(Alignment::Right),
+            footer_layout[1],
+        );
+    }
+}
+
 pub fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
 
@@ -166,42 +202,8 @@ pub fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.dim)
     };
 
-    let mut right_width: u16 = 0;
-    let right_line = if let Some(spans) = active_task_spans(app, theme) {
-        right_width = spans.iter().map(|s| s.width() as u16).sum::<u16>() + 1;
-        Some(Line::from(spans))
-    } else {
-        None
-    };
-
-    let footer_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(right_width)])
-        .split(area);
-
-    let top_border = Style::default().fg(theme.panel_border);
-    let status = Line::from(Span::styled(format!(" {msg}"), left_style));
-    f.render_widget(
-        Paragraph::new(status).block(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_style(top_border),
-        ),
-        footer_layout[0],
-    );
-
-    if let Some(line) = right_line {
-        f.render_widget(
-            Paragraph::new(line)
-                .block(
-                    Block::default()
-                        .borders(Borders::TOP)
-                        .border_style(top_border),
-                )
-                .alignment(Alignment::Right),
-            footer_layout[1],
-        );
-    }
+    let left = Line::from(Span::styled(format!(" {msg}"), left_style));
+    draw_footer_bar(f, app, area, left);
 }
 
 fn tab_icon(icons: IconSet, tab: FocusTab) -> &'static str {
@@ -223,39 +225,5 @@ pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
     chips.push(Span::raw(" "));
     chips.push(session_total_span(app, theme, icons, true));
 
-    let mut right_width: u16 = 0;
-    let right_line = if let Some(spans) = active_task_spans(app, theme) {
-        right_width = spans.iter().map(|s| s.width() as u16).sum::<u16>() + 1;
-        Some(Line::from(spans))
-    } else {
-        None
-    };
-
-    let footer_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(right_width)])
-        .split(area);
-
-    let top_border = Style::default().fg(theme.panel_border);
-    f.render_widget(
-        Paragraph::new(Line::from(chips)).block(
-            Block::default()
-                .borders(Borders::TOP)
-                .border_style(top_border),
-        ),
-        footer_layout[0],
-    );
-
-    if let Some(line) = right_line {
-        f.render_widget(
-            Paragraph::new(line)
-                .block(
-                    Block::default()
-                        .borders(Borders::TOP)
-                        .border_style(top_border),
-                )
-                .alignment(Alignment::Right),
-            footer_layout[1],
-        );
-    }
+    draw_footer_bar(f, app, area, Line::from(chips));
 }
