@@ -1,5 +1,6 @@
 pub mod app;
 pub mod canvas_timer;
+pub mod date;
 pub mod db;
 pub mod model;
 pub mod sound;

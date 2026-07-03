@@ -189,7 +189,7 @@ impl Task {
     }
 
     pub fn is_overdue(&self) -> bool {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::date::today_str();
         self.is_overdue_on(&today)
     }
 

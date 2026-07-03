@@ -211,7 +211,7 @@ impl App {
         timer.configure(mode);
         let recent_sessions = db.recent_sessions(15).unwrap_or_default();
         let stats_session_total = db.session_count().unwrap_or(0);
-        let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today_str = crate::date::today_str();
         let timeline_sessions = db.sessions_on_date(&today_str).unwrap_or_default();
         let archived = storage::auto_archive_old_tasks(&db, &mut data).unwrap_or(0);
         let mut task_state = ListState::default();
@@ -334,7 +334,7 @@ impl App {
     }
 
     pub(crate) fn refresh_frame_today_cache(&mut self) {
-        self.frame_today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        self.frame_today = crate::date::today_str();
         self.frame_today_focus_mins = if self.data.today_date.as_deref() == Some(self.frame_today.as_str())
         {
             self.data.today_focus_minutes
@@ -414,7 +414,7 @@ impl App {
         }
         self.stats_session_total = self.db.session_count().unwrap_or(0);
         self.clamp_stats_session_selection();
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::date::today_str();
         self.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
     }
 

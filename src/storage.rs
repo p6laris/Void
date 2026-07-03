@@ -15,7 +15,7 @@ pub fn next_id(db: &Database, data: &mut AppData) -> Result<u64> {
 }
 
 pub fn ensure_today_reset(db: &Database, data: &mut AppData) -> Result<bool> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     if data.today_date.as_deref() != Some(today.as_str()) {
         data.today_focus_minutes = 0;
         data.today_date = Some(today.clone());
@@ -51,7 +51,7 @@ pub fn normalize_due_date(input: &str, allow_past: bool) -> Result<Option<String
             Ok(Some(s.to_string()))
         }
         Err(_) => match s.to_lowercase().as_str() {
-            "today" => Ok(Some(chrono::Local::now().format("%Y-%m-%d").to_string())),
+            "today" => Ok(Some(crate::date::today_str())),
             "tomorrow" => Ok(Some(
                 (chrono::Local::now() + chrono::Duration::days(1))
                     .format("%Y-%m-%d")
@@ -354,7 +354,7 @@ pub fn record_focus_session_with_meta(
     data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
     data.total_sessions = data.total_sessions.saturating_add(1);
 
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     match &data.last_session_date {
         Some(last) if last == &today => {}
         Some(last) => {
@@ -405,7 +405,7 @@ pub fn record_focus_session_with_meta(
 }
 
 pub fn today_focus_minutes(data: &AppData) -> u32 {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     if data.today_date.as_deref() == Some(today.as_str()) {
         data.today_focus_minutes
     } else {
@@ -479,7 +479,7 @@ pub fn queue_empty(data: &AppData) -> bool {
 }
 
 pub fn update_goal_streak(data: &mut AppData) -> Result<()> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     if data.today_focus_minutes < data.daily_goal_minutes {
         return Ok(());
     }
@@ -513,7 +513,7 @@ pub fn record_break_session(
     if !data.log_breaks {
         return Ok(());
     }
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     let record = FocusSessionRecord {
         date: today,
         minutes: minutes.max(1),
@@ -534,7 +534,7 @@ pub fn record_break_session(
 pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> {
     let stored = db.get_session(id)?;
     let r = &stored.record;
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     if matches!(r.mode, TimerMode::Focus | TimerMode::Custom) {
         data.total_focus_minutes = data.total_focus_minutes.saturating_sub(r.minutes);
         if r.date == today {
@@ -566,7 +566,7 @@ pub fn adjust_session_minutes(
     if old == new_minutes {
         return Ok(());
     }
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     if matches!(stored.record.mode, TimerMode::Focus | TimerMode::Custom) {
         let delta = new_minutes as i32 - old as i32;
         if delta > 0 {
@@ -756,7 +756,7 @@ pub fn bulk_delete(db: &Database, data: &mut AppData, ids: &[u64]) -> Result<u32
 }
 
 pub fn overdue_and_due_today(data: &AppData) -> (Vec<u64>, Vec<u64>) {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let today = crate::date::today_str();
     let mut overdue = Vec::new();
     let mut due_today = Vec::new();
     for t in data
@@ -1050,7 +1050,7 @@ mod tests {
     fn delete_session_does_not_adjust_today_focus_for_old_sessions() {
         let db = Database::open_in_memory().unwrap();
         let mut data = AppData::default();
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::date::today_str();
         data.today_date = Some(today);
         data.today_focus_minutes = 50;
         data.total_focus_minutes = 100;
@@ -1066,7 +1066,7 @@ mod tests {
     fn adjust_session_minutes_does_not_adjust_today_focus_for_old_sessions() {
         let db = Database::open_in_memory().unwrap();
         let mut data = AppData::default();
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let today = crate::date::today_str();
         data.today_date = Some(today);
         data.today_focus_minutes = 50;
         data.total_focus_minutes = 100;
