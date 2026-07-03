@@ -233,7 +233,7 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
         height: area.height.saturating_sub(2),
     };
 
-    let on_break = is_break_mode(t.mode);
+    let on_break = t.mode.is_break();
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if on_break {
@@ -368,7 +368,7 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
     }
 
     if areas.len() > 2 {
-        if is_break_mode(t.mode) {
+        if t.mode.is_break() {
             draw_break_tip(f, areas[2], t, mc, theme.text, theme.dim, app.icons.heart);
         } else {
             let state_label = match t.state {

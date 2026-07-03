@@ -4,7 +4,7 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
     let t = &app.timer;
-    let on_break = is_break_mode(t.mode);
+    let on_break = t.mode.is_break();
     let mc = mode_color(theme, t.mode);
 
     let mut active_task_ref = None;

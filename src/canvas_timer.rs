@@ -393,7 +393,7 @@ struct SceneMotion {
 
 fn scene_motion(timer: &Timer) -> SceneMotion {
     let t = time_s();
-    let on_break = is_break_mode(timer.mode);
+    let on_break = timer.mode.is_break();
     let breath_hz = if on_break { 0.18 } else { 0.22 };
     let breath = 0.5 + 0.5 * (t * breath_hz * 2.0 * PI).sin();
 
@@ -509,7 +509,7 @@ fn draw_bg_waves(
     let (_cx, cy, base, t) = geom;
     let (wave, bg) = colors;
     let w = xb[1] - xb[0];
-    let on_break = is_break_mode(mode);
+    let on_break = mode.is_break();
     let bands = if compact {
         1
     } else if on_break {
@@ -803,7 +803,7 @@ fn draw_timer_orb(
 ) {
     let (cx, cy, base, breath) = geom;
     let (bg, glow, core, mode) = colors;
-    let on_break = is_break_mode(timer_mode);
+    let on_break = timer_mode.is_break();
     let warm = if on_break {
         blend_color(mode, core, 0.45)
     } else {
@@ -1233,8 +1233,4 @@ pub fn draw_simple_timer(
             layout[1],
         );
     }
-}
-
-pub fn is_break_mode(mode: TimerMode) -> bool {
-    matches!(mode, TimerMode::ShortBreak | TimerMode::LongBreak)
 }

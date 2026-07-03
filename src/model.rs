@@ -227,6 +227,10 @@ impl TimerMode {
             TimerMode::Custom => "CUSTOM",
         }
     }
+
+    pub fn is_break(self) -> bool {
+        matches!(self, TimerMode::ShortBreak | TimerMode::LongBreak)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
