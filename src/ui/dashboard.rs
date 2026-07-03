@@ -495,18 +495,13 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
         lines.push(Line::from(""));
     }
 
-    for (i, subtask) in task.subtasks.iter().enumerate().take(9) {
-        let icon = if subtask.done { icons.check } else { icons.dot };
-        let style = if subtask.done {
-            Style::default().fg(theme.dim)
-        } else {
-            Style::default().fg(theme.text)
-        };
-        lines.push(Line::from(vec![
-            Span::styled(format!(" [{}] {} ", i + 1, icon), style),
-            Span::styled(truncate(&subtask.title, area.width as usize - 10), style),
-        ]));
-    }
+    lines.extend(super::widgets::subtask_inline_lines(
+        &task.subtasks,
+        theme,
+        icons,
+        " ",
+        Some(area.width as usize - 10),
+    ));
 
     let recent_for_task: Vec<_> = app
         .stats.recent_sessions

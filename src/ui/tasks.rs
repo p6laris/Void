@@ -509,11 +509,7 @@ fn draw_subtask_panel(
             };
             let title = Span::styled(
                 s.title.clone(),
-                if s.done {
-                    Style::default().fg(theme.dim)
-                } else {
-                    Style::default().fg(theme.text)
-                },
+                super::widgets::subtask_line_style(theme, s.done),
             );
             ListItem::new(Line::from(vec![mark, title]))
         })

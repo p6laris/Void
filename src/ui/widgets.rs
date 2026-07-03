@@ -4,7 +4,7 @@ use ratatui::widgets::{Block, Borders};
 
 use super::icons::IconSet;
 use crate::app::{App, Theme};
-use crate::model::TaskStatus;
+use crate::model::{Subtask, TaskStatus};
 
 pub fn format_minutes(mins: u32) -> String {
     if mins >= 60 {
@@ -61,6 +61,41 @@ pub fn task_status_icon(icons: IconSet, status: TaskStatus) -> &'static str {
         TaskStatus::InProgress => icons.task_progress,
         TaskStatus::Pending => icons.task_todo,
     }
+}
+
+pub fn subtask_line_style(theme: &Theme, done: bool) -> Style {
+    if done {
+        Style::default().fg(theme.dim)
+    } else {
+        Style::default().fg(theme.text)
+    }
+}
+
+/// Numbered inline subtask lines for dashboard details and zen overlay (max 9).
+pub fn subtask_inline_lines(
+    subtasks: &[Subtask],
+    theme: &Theme,
+    icons: IconSet,
+    indent: &str,
+    title_max_chars: Option<usize>,
+) -> Vec<Line<'static>> {
+    subtasks
+        .iter()
+        .enumerate()
+        .take(9)
+        .map(|(i, subtask)| {
+            let icon = if subtask.done { icons.check } else { icons.dot };
+            let style = subtask_line_style(theme, subtask.done);
+            let title = match title_max_chars {
+                Some(max) => truncate(&subtask.title, max),
+                None => subtask.title.clone(),
+            };
+            Line::from(vec![
+                Span::styled(format!("{indent}[{}] {} ", i + 1, icon), style),
+                Span::styled(title, style),
+            ])
+        })
+        .collect()
 }
 
 pub fn active_task_spans(app: &App, theme: &Theme) -> Option<Vec<Span<'static>>> {

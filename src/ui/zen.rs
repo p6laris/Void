@@ -92,18 +92,13 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
             ]));
         }
 
-        for (i, subtask) in task.subtasks.iter().enumerate().take(9) {
-            let icon = if subtask.done { icons.check } else { icons.dot };
-            let style = if subtask.done {
-                Style::default().fg(theme.dim)
-            } else {
-                Style::default().fg(theme.text)
-            };
-            overlay_lines.push(Line::from(vec![
-                Span::styled(format!("   [{}] {} ", i + 1, icon), style),
-                Span::styled(&subtask.title, style),
-            ]));
-        }
+        overlay_lines.extend(super::widgets::subtask_inline_lines(
+            &task.subtasks,
+            theme,
+            icons,
+            "   ",
+            None,
+        ));
     } else {
         overlay_lines.push(Line::from(Span::styled(
             if app.queue_empty() {
