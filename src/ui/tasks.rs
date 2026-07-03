@@ -31,7 +31,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 .subtask_progress()
                 .map(|(d, n)| format!(" ({d}/{n})"))
                 .unwrap_or_default();
-            let blocked_mark = if t.is_blocked(&app.data.tasks) {
+            let blocked_mark = if app.is_task_blocked_at(idx) {
                 "!"
             } else {
                 ""
@@ -325,7 +325,8 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         .selected()
         .unwrap_or(0)
         .min(indices.len() - 1);
-    let t = &app.data.tasks[indices[sel]];
+    let task_idx = indices[sel];
+    let t = &app.data.tasks[task_idx];
     let mut lines = Vec::new();
     if t.is_overdue_on(frame_today) {
         lines.push(Line::from(Span::styled(
@@ -443,7 +444,7 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
                     .map(|id| id.to_string())
                     .collect::<Vec<_>>()
                     .join(", "),
-                Style::default().fg(if t.is_blocked(&app.data.tasks) {
+                Style::default().fg(if app.is_task_blocked_at(task_idx) {
                     theme.error
                 } else {
                     theme.text

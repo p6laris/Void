@@ -134,6 +134,36 @@ impl App {
         tags.sort();
         tags.dedup();
         self.cached_task_tags = tags;
+
+        let open_blockers: std::collections::HashSet<u64> = self
+            .data
+            .tasks
+            .iter()
+            .filter(|t| t.status != crate::model::TaskStatus::Done)
+            .map(|t| t.id)
+            .collect();
+        self.cached_task_blocked = self
+            .data
+            .tasks
+            .iter()
+            .map(|t| t.blocked_by.iter().any(|id| open_blockers.contains(id)))
+            .collect();
+    }
+
+    pub fn is_task_blocked_at(&self, task_idx: usize) -> bool {
+        self.cached_task_blocked
+            .get(task_idx)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    pub fn is_task_blocked(&self, task_id: u64) -> bool {
+        self.data
+            .tasks
+            .iter()
+            .position(|t| t.id == task_id)
+            .map(|idx| self.is_task_blocked_at(idx))
+            .unwrap_or(false)
     }
 
     pub fn task_tags(&self) -> &[String] {
@@ -166,13 +196,7 @@ impl App {
                 self.set_status("That task is done — pick another.", true);
                 return;
             }
-            if self
-                .data
-                .tasks
-                .iter()
-                .find(|t| t.id == id)
-                .is_some_and(|t| t.is_blocked(&self.data.tasks))
-            {
+            if self.is_task_blocked(id) {
                 self.set_status("Task is blocked — complete dependencies first.", true);
                 return;
             }

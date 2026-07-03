@@ -409,7 +409,7 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
         lines.push(Line::from(""));
     }
 
-    if task.is_blocked(&app.data.tasks) {
+    if app.is_task_blocked(task.id) {
         let mut blocker_names = Vec::new();
         for &b_id in &task.blocked_by {
             if let Some(b) = app
