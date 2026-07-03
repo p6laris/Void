@@ -630,22 +630,36 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
     let cutoff = (chrono::Local::now() - chrono::Duration::days(days as i64))
         .format("%Y-%m-%d")
         .to_string();
-    let mut count = 0u32;
-    for t in data
+
+    let to_archive: Vec<u64> = data
         .tasks
-        .iter_mut()
+        .iter()
         .filter(|t| t.status == TaskStatus::Done && !t.archived)
-    {
-        if let Some(ref completed) = t.completed_at {
-            let key = completed.format("%Y-%m-%d").to_string();
-            if key.as_str() < cutoff.as_str() {
-                t.archived = true;
-                db.upsert_task(t)?;
-                count += 1;
-            }
+        .filter_map(|t| {
+            t.completed_at.as_ref().and_then(|completed| {
+                let key = completed.format("%Y-%m-%d").to_string();
+                (key.as_str() < cutoff.as_str()).then_some(t.id)
+            })
+        })
+        .collect();
+
+    if to_archive.is_empty() {
+        return Ok(0);
+    }
+
+    for id in &to_archive {
+        if let Some(t) = data.tasks.iter_mut().find(|t| t.id == *id) {
+            t.archived = true;
         }
     }
-    Ok(count)
+
+    let tasks_to_persist: Vec<&Task> = to_archive
+        .iter()
+        .filter_map(|id| data.tasks.iter().find(|t| t.id == *id))
+        .collect();
+    db.upsert_tasks(&tasks_to_persist)?;
+
+    Ok(to_archive.len() as u32)
 }
 
 pub fn archived_tasks(data: &AppData) -> impl Iterator<Item = &Task> {
@@ -927,6 +941,34 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn auto_archive_old_tasks_persists_archived_tasks() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        data.archive_after_days = 30;
+
+        let mut old = Task::new(1, "Old done".into());
+        old.status = TaskStatus::Done;
+        old.completed_at = Some(Utc::now() - chrono::Duration::days(60));
+        db.upsert_task(&old).unwrap();
+
+        let mut recent = Task::new(2, "Recent done".into());
+        recent.status = TaskStatus::Done;
+        recent.completed_at = Some(Utc::now());
+        db.upsert_task(&recent).unwrap();
+
+        data.tasks = vec![old, recent];
+
+        let count = auto_archive_old_tasks(&db, &mut data).unwrap();
+        assert_eq!(count, 1);
+        assert!(data.tasks.iter().find(|t| t.id == 1).unwrap().archived);
+        assert!(!data.tasks.iter().find(|t| t.id == 2).unwrap().archived);
+
+        let loaded = db.load_app_data().unwrap();
+        assert!(loaded.tasks.iter().find(|t| t.id == 1).unwrap().archived);
+        assert!(!loaded.tasks.iter().find(|t| t.id == 2).unwrap().archived);
     }
 
     #[test]

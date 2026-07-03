@@ -251,8 +251,17 @@ impl Database {
     }
 
     pub fn upsert_task(&self, task: &Task) -> Result<()> {
+        self.upsert_tasks(&[task])
+    }
+
+    pub fn upsert_tasks(&self, tasks: &[&Task]) -> Result<()> {
+        if tasks.is_empty() {
+            return Ok(());
+        }
         let tx = self.conn.unchecked_transaction()?;
-        upsert_task_row(&tx, task)?;
+        for task in tasks {
+            upsert_task_row(&tx, task)?;
+        }
         tx.commit()?;
         Ok(())
     }
