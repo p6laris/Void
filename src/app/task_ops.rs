@@ -124,6 +124,20 @@ impl App {
                 .then(ta.sort_order.cmp(&tb.sort_order))
         });
         self.cached_dashboard_tasks = dash;
+
+        let mut tags: Vec<String> = self
+            .data
+            .tasks
+            .iter()
+            .flat_map(|t| t.tags.iter().cloned())
+            .collect();
+        tags.sort();
+        tags.dedup();
+        self.cached_task_tags = tags;
+    }
+
+    pub fn task_tags(&self) -> &[String] {
+        &self.cached_task_tags
     }
 
     pub fn filtered_task_indices(&self) -> &[usize] {

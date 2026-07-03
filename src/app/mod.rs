@@ -153,6 +153,7 @@ pub struct App {
     pub searching: bool,
     pub cached_filtered_tasks: Vec<usize>,
     pub cached_dashboard_tasks: Vec<usize>,
+    cached_task_tags: Vec<String>,
     pub weekly_chart: Vec<(String, u32)>,
     pub heatmap_data: Vec<(String, u32)>,
     pub session_counts: (u32, u32, u32),
@@ -287,6 +288,7 @@ impl App {
             searching: false,
             cached_filtered_tasks: Vec::new(),
             cached_dashboard_tasks: Vec::new(),
+            cached_task_tags: Vec::new(),
             weekly_chart,
             heatmap_data,
             session_counts,
@@ -626,14 +628,7 @@ impl App {
     }
 
     pub fn cycle_tag_filter(&mut self) {
-        let mut tags: Vec<String> = self
-            .data
-            .tasks
-            .iter()
-            .flat_map(|t| t.tags.clone())
-            .collect();
-        tags.sort();
-        tags.dedup();
+        let tags = self.task_tags();
 
         if tags.is_empty() {
             self.set_status("No tags available to filter.", true);
