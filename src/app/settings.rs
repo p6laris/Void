@@ -121,6 +121,24 @@ impl App {
         );
     }
 
+    pub(crate) fn adjust_persisted_timer_setting(
+        &mut self,
+        dir: i32,
+        min: u32,
+        max: u32,
+        mut getter: impl FnMut(&Self) -> u32,
+        mut apply: impl FnMut(&mut Self, u32),
+        status: impl Fn(u32) -> String,
+    ) {
+        let cur = getter(self) as i32;
+        let v = (cur + dir).clamp(min as i32, max as i32) as u32;
+        apply(self, v);
+        if let Err(e) = self.db.persist_timer_settings(&self.data) {
+            self.set_status(format!("Save error: {e}"), true);
+        }
+        self.set_status(status(v), false);
+    }
+
     pub(crate) fn handle_settings_key(&mut self, key: KeyEvent) {
         let n = self.settings_state.items.len();
         match key.code {
@@ -176,44 +194,56 @@ impl App {
         let item = self.settings_state.items[self.settings_state.selected];
         match item {
             SettingsItem::FocusMinutes => {
-                let cur = self.timer.config.focus_minutes as i32;
-                let v = (cur + dir).clamp(1, 240) as u32;
-                self.timer.set_focus_minutes(v);
-                self.data.focus_minutes = v;
-                if let Err(e) = self.db.persist_timer_settings(&self.data) {
-                    self.set_status(format!("Save error: {e}"), true);
-                }
-                self.set_status(format!("Focus: {} min", v), false);
+                self.adjust_persisted_timer_setting(
+                    dir,
+                    1,
+                    240,
+                    |app| app.timer.config.focus_minutes,
+                    |app, v| {
+                        app.timer.set_focus_minutes(v);
+                        app.data.focus_minutes = v;
+                    },
+                    |v| format!("Focus: {} min", v),
+                );
             }
             SettingsItem::ShortBreak => {
-                let cur = self.timer.config.short_break_minutes as i32;
-                let v = (cur + dir).clamp(1, 60) as u32;
-                self.timer.config.short_break_minutes = v;
-                self.data.short_break_minutes = v;
-                if let Err(e) = self.db.persist_timer_settings(&self.data) {
-                    self.set_status(format!("Save error: {e}"), true);
-                }
-                self.set_status(format!("Short break: {} min", v), false);
+                self.adjust_persisted_timer_setting(
+                    dir,
+                    1,
+                    60,
+                    |app| app.timer.config.short_break_minutes,
+                    |app, v| {
+                        app.timer.config.short_break_minutes = v;
+                        app.data.short_break_minutes = v;
+                    },
+                    |v| format!("Short break: {} min", v),
+                );
             }
             SettingsItem::LongBreak => {
-                let cur = self.timer.config.long_break_minutes as i32;
-                let v = (cur + dir).clamp(1, 120) as u32;
-                self.timer.config.long_break_minutes = v;
-                self.data.long_break_minutes = v;
-                if let Err(e) = self.db.persist_timer_settings(&self.data) {
-                    self.set_status(format!("Save error: {e}"), true);
-                }
-                self.set_status(format!("Long break: {} min", v), false);
+                self.adjust_persisted_timer_setting(
+                    dir,
+                    1,
+                    120,
+                    |app| app.timer.config.long_break_minutes,
+                    |app, v| {
+                        app.timer.config.long_break_minutes = v;
+                        app.data.long_break_minutes = v;
+                    },
+                    |v| format!("Long break: {} min", v),
+                );
             }
             SettingsItem::LongBreakEvery => {
-                let cur = self.timer.config.long_break_every as i32;
-                let v = (cur + dir).clamp(1, 12) as u32;
-                self.timer.config.long_break_every = v;
-                self.data.long_break_every = v;
-                if let Err(e) = self.db.persist_timer_settings(&self.data) {
-                    self.set_status(format!("Save error: {e}"), true);
-                }
-                self.set_status(format!("Long break every: {} sessions", v), false);
+                self.adjust_persisted_timer_setting(
+                    dir,
+                    1,
+                    12,
+                    |app| app.timer.config.long_break_every,
+                    |app, v| {
+                        app.timer.config.long_break_every = v;
+                        app.data.long_break_every = v;
+                    },
+                    |v| format!("Long break every: {} sessions", v),
+                );
             }
             SettingsItem::DailyGoal => {
                 self.adjust_numeric_setting(
