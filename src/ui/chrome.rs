@@ -10,6 +10,37 @@ use crate::ui::IconSet;
 
 use super::widgets::{active_task_spans, chip, format_minutes};
 
+/// Streak and daily-goal progress chips shared by the header and zen footer.
+fn streak_goal_chips(app: &App, theme: &crate::app::Theme, icons: IconSet) -> Vec<Span<'static>> {
+    let today = app.today_focus_mins();
+    let goal = app.data.daily_goal_minutes;
+    let goal_met = app.daily_goal_met();
+    vec![
+        chip(
+            icons.fire,
+            format!("{}d", app.data.streak_days),
+            theme.success,
+            theme.panel_border,
+        ),
+        Span::raw(" "),
+        chip(
+            icons.target,
+            format!("{}/{}", format_minutes(today), format_minutes(goal)),
+            if goal_met { theme.success } else { theme.text },
+            theme.panel_border,
+        ),
+    ]
+}
+
+fn session_total_span(app: &App, theme: &crate::app::Theme, icons: IconSet, as_chip: bool) -> Span<'static> {
+    let count = format!("{}", app.data.total_sessions);
+    if as_chip {
+        chip(icons.timer, count, theme.dim, theme.panel_border)
+    } else {
+        Span::styled(format!("{} {count}", icons.timer), Style::default().fg(theme.dim))
+    }
+}
+
 pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
@@ -28,27 +59,11 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         app.timer.format_remaining()
     };
 
-    let today = app.today_focus_mins();
-    let goal = app.data.daily_goal_minutes;
-    let goal_met = app.daily_goal_met();
-
     let mut chips: Vec<Span> = vec![
         chip(timer_icon, timer_text, timer_color, theme.panel_border),
         Span::raw(" "),
-        chip(
-            icons.fire,
-            format!("{}d", app.data.streak_days),
-            theme.success,
-            theme.panel_border,
-        ),
-        Span::raw(" "),
-        chip(
-            icons.target,
-            format!("{}/{}", format_minutes(today), format_minutes(goal)),
-            if goal_met { theme.success } else { theme.text },
-            theme.panel_border,
-        ),
     ];
+    chips.extend(streak_goal_chips(app, theme, icons));
 
     if app.timer.state != TimerState::Idle {
         chips.extend([
@@ -75,10 +90,7 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     }
 
     chips.push(Span::raw(" "));
-    chips.push(Span::styled(
-        format!("{} {}", icons.timer, app.data.total_sessions),
-        Style::default().fg(theme.dim),
-    ));
+    chips.push(session_total_span(app, theme, icons, false));
 
     let title = Line::from(vec![
         Span::styled(
@@ -207,32 +219,9 @@ pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let today = app.today_focus_mins();
-    let goal = app.data.daily_goal_minutes;
-    let goal_met = app.daily_goal_met();
-
-    let chips: Vec<Span> = vec![
-        chip(
-            icons.fire,
-            format!("{}d", app.data.streak_days),
-            theme.success,
-            theme.panel_border,
-        ),
-        Span::raw(" "),
-        chip(
-            icons.target,
-            format!("{}/{}", format_minutes(today), format_minutes(goal)),
-            if goal_met { theme.success } else { theme.text },
-            theme.panel_border,
-        ),
-        Span::raw(" "),
-        chip(
-            icons.timer,
-            format!("{}", app.data.total_sessions),
-            theme.dim,
-            theme.panel_border,
-        ),
-    ];
+    let mut chips = streak_goal_chips(app, theme, icons);
+    chips.push(Span::raw(" "));
+    chips.push(session_total_span(app, theme, icons, true));
 
     let mut right_width: u16 = 0;
     let right_line = if let Some(spans) = active_task_spans(app, theme) {
