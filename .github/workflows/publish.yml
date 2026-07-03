@@ -16,11 +16,27 @@ jobs:
     name: Prepare and Release
     runs-on: ubuntu-latest
     steps:
+      - name: Require release PAT
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::error::TAP_GITHUB_TOKEN is required so version commits and tags trigger build-binaries."
+            exit 1
+          fi
+
+      - name: Verify release branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Run publish release from main (current branch: ${{ github.ref_name }})."
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.TAP_GITHUB_TOKEN || secrets.GITHUB_TOKEN }} # Needed to trigger build-binaries on push
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -57,8 +73,8 @@ jobs:
           git add Cargo.toml Cargo.lock CHANGELOG.md
           git commit -m "chore(release): prepare for v${{ env.NEW_VERSION }}"
           git tag v${{ env.NEW_VERSION }}
-          git push origin main
-          git push origin v${{ env.NEW_VERSION }}
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "v${{ env.NEW_VERSION }}"
 
       - name: Generate Release Notes
         uses: orhun/git-cliff-action@v4
