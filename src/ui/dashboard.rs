@@ -97,7 +97,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         f.render_stateful_widget(list, left_chunks[0], &mut app.dashboard_task_state);
 
         if let Some(id) = app.dashboard_selected_task_id() {
-            if let Some(task) = app.data.tasks.iter().find(|t| t.id == id) {
+            if let Some(task) = app.data.task(id) {
                 draw_dashboard_task_details(f, app, task, left_chunks[1]);
             }
         }
@@ -340,7 +340,7 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
 
     if let Some(mut spans) = active_task_spans(app, theme) {
         if let Some(id) = app.active_task {
-            if let Some(task) = app.data.tasks.iter().find(|t| t.id == id) {
+            if let Some(task) = app.data.task(id) {
                 let left = crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
                 if left > 0 {
                     spans.push(Span::styled(

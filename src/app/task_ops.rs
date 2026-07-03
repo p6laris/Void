@@ -67,7 +67,7 @@ impl App {
 
     pub fn active_task_progress(&self) -> Option<f64> {
         let id = self.active_task?;
-        let task = self.data.tasks.iter().find(|t| t.id == id)?;
+        let task = self.data.task(id)?;
         Some(task.progress_ratio())
     }
 
@@ -278,7 +278,7 @@ impl App {
         let next = storage::advance_to_next_task(&self.data, self.active_task);
         self.set_active_task(next);
         if let Some(id) = next {
-            if let Some(t) = self.data.tasks.iter().find(|t| t.id == id) {
+            if let Some(t) = self.data.task(id) {
                 self.set_status(format!("Next task: {}", t.title), false);
             }
         }
@@ -463,7 +463,7 @@ impl App {
             self.subtask_selected = 0;
             return;
         };
-        let Some(t) = self.data.tasks.iter().find(|t| t.id == id) else {
+        let Some(t) = self.data.task(id) else {
             self.subtask_selected = 0;
             return;
         };
@@ -533,7 +533,7 @@ impl App {
         self.persist_data(|db, data| storage::toggle_subtask(db, data, id, sub_id));
         self.bump_tasks();
         self.clamp_subtask_selection();
-        if let Some(t) = self.data.tasks.iter().find(|t| t.id == id) {
+        if let Some(t) = self.data.task(id) {
             if let Some(s) = t.subtasks.iter().find(|s| s.id == sub_id) {
                 let state = if s.done { "done" } else { "open" };
                 self.set_status(format!("Subtask \"{}\" marked {state}", s.title), false);

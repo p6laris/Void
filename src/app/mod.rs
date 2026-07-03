@@ -633,7 +633,7 @@ impl App {
             self.set_status("No task selected.", true);
             return;
         };
-        if let Some(t) = self.data.tasks.iter().find(|t| t.id == id).cloned() {
+        if let Some(t) = self.data.task(id).cloned() {
             self.input_buffer = t.title;
             self.input_due_date = t.due_date.unwrap_or_default();
             self.input_tags = t.tags.join(", ");

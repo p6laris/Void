@@ -93,7 +93,7 @@ pub fn add_task_full(db: &Database, data: &mut AppData, payload: TaskPayload) ->
 }
 
 pub fn update_task(db: &Database, data: &mut AppData, id: u64, payload: TaskPayload) -> Result<()> {
-    let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) else {
+    let Some(t) = data.task_mut(id) else {
         return Err(anyhow::anyhow!("task {id} not found"));
     };
     t.title = payload.title;
@@ -121,7 +121,7 @@ pub fn delete_task(db: &Database, data: &mut AppData, id: u64) -> Result<bool> {
 }
 
 pub fn promote_task_on_activate(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         if t.status == TaskStatus::Pending {
             t.status = TaskStatus::InProgress;
             db.upsert_task(t)?;
@@ -132,7 +132,7 @@ pub fn promote_task_on_activate(db: &Database, data: &mut AppData, id: u64) -> R
 
 pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
     let (recurrence, title, notes, priority, tags, due_date, estimated, subtasks, blocked_by) = {
-        let Some(t) = data.tasks.iter().find(|t| t.id == id) else {
+        let Some(t) = data.task(id) else {
             return Ok(());
         };
         (
@@ -147,7 +147,7 @@ pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> 
             t.blocked_by.clone(),
         )
     };
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.status = TaskStatus::Done;
         t.completed_at = Some(Utc::now());
         db.upsert_task(t)?;
@@ -248,7 +248,7 @@ fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<St
 }
 
 pub fn cycle_task_status(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         match t.status {
             TaskStatus::Pending => t.status = TaskStatus::InProgress,
             TaskStatus::InProgress => {
@@ -266,7 +266,7 @@ pub fn cycle_task_status(db: &Database, data: &mut AppData, id: u64) -> Result<(
 }
 
 pub fn toggle_today(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.today = !t.today;
         db.upsert_task(t)?;
     }
@@ -274,7 +274,7 @@ pub fn toggle_today(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
 }
 
 pub fn set_priority(db: &Database, data: &mut AppData, id: u64, priority: Priority) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.priority = priority;
         db.upsert_task(t)?;
     }
@@ -392,7 +392,7 @@ pub fn record_focus_session_with_meta(
     db.persist_session_stats(data)?;
 
     if let Some(id) = task_id {
-        if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+        if let Some(t) = data.task_mut(id) {
             t.actual_minutes = t.actual_minutes.saturating_add(mins);
             t.sessions = t.sessions.saturating_add(1);
             if t.status == TaskStatus::Pending {
@@ -543,7 +543,7 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
     }
     data.total_sessions = data.total_sessions.saturating_sub(1);
     if let Some(tid) = r.task_id {
-        if let Some(t) = data.tasks.iter_mut().find(|t| t.id == tid) {
+        if let Some(t) = data.task_mut(tid) {
             t.actual_minutes = t.actual_minutes.saturating_sub(r.minutes);
             t.sessions = t.sessions.saturating_sub(1);
             db.upsert_task(t)?;
@@ -582,7 +582,7 @@ pub fn adjust_session_minutes(
         }
     }
     if let Some(tid) = stored.record.task_id {
-        if let Some(t) = data.tasks.iter_mut().find(|t| t.id == tid) {
+        if let Some(t) = data.task_mut(tid) {
             if new_minutes > old {
                 t.actual_minutes = t.actual_minutes.saturating_add(new_minutes - old);
             } else {
@@ -607,7 +607,7 @@ pub fn sessions_remaining_hint(task: &Task, focus_minutes: u32) -> u32 {
 }
 
 pub fn archive_task(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.archived = true;
         db.upsert_task(t)?;
     }
@@ -615,7 +615,7 @@ pub fn archive_task(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
 }
 
 pub fn unarchive_task(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.archived = false;
         db.upsert_task(t)?;
     }
@@ -648,14 +648,14 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
     }
 
     for id in &to_archive {
-        if let Some(t) = data.tasks.iter_mut().find(|t| t.id == *id) {
+        if let Some(t) = data.task_mut(*id) {
             t.archived = true;
         }
     }
 
     let tasks_to_persist: Vec<&Task> = to_archive
         .iter()
-        .filter_map(|id| data.tasks.iter().find(|t| t.id == *id))
+        .filter_map(|id| data.task(*id))
         .collect();
     db.upsert_tasks(&tasks_to_persist)?;
 
@@ -672,7 +672,7 @@ pub fn toggle_subtask(
     task_id: u64,
     subtask_id: u64,
 ) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == task_id) {
+    if let Some(t) = data.task_mut(task_id) {
         if let Some(s) = t.subtasks.iter_mut().find(|s| s.id == subtask_id) {
             s.done = !s.done;
             db.upsert_task(t)?;
@@ -683,7 +683,7 @@ pub fn toggle_subtask(
 
 pub fn add_subtask(db: &Database, data: &mut AppData, task_id: u64, title: String) -> Result<()> {
     let id = next_id(db, data)?;
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == task_id) {
+    if let Some(t) = data.task_mut(task_id) {
         t.subtasks.push(Subtask {
             id,
             title,
@@ -700,7 +700,7 @@ pub fn delete_subtask(
     task_id: u64,
     subtask_id: u64,
 ) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == task_id) {
+    if let Some(t) = data.task_mut(task_id) {
         let before = t.subtasks.len();
         t.subtasks.retain(|s| s.id != subtask_id);
         if t.subtasks.len() != before {
@@ -716,7 +716,7 @@ pub fn set_task_recurrence(
     id: u64,
     recurrence: TaskRecurrence,
 ) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.recurrence = recurrence;
         db.upsert_task(t)?;
     }
@@ -729,7 +729,7 @@ pub fn set_blocked_by(
     id: u64,
     blockers: Vec<u64>,
 ) -> Result<()> {
-    if let Some(t) = data.tasks.iter_mut().find(|t| t.id == id) {
+    if let Some(t) = data.task_mut(id) {
         t.blocked_by = blockers;
         db.upsert_task(t)?;
     }
@@ -963,12 +963,12 @@ mod tests {
 
         let count = auto_archive_old_tasks(&db, &mut data).unwrap();
         assert_eq!(count, 1);
-        assert!(data.tasks.iter().find(|t| t.id == 1).unwrap().archived);
-        assert!(!data.tasks.iter().find(|t| t.id == 2).unwrap().archived);
+        assert!(data.task(1).unwrap().archived);
+        assert!(!data.task(2).unwrap().archived);
 
         let loaded = db.load_app_data().unwrap();
-        assert!(loaded.tasks.iter().find(|t| t.id == 1).unwrap().archived);
-        assert!(!loaded.tasks.iter().find(|t| t.id == 2).unwrap().archived);
+        assert!(loaded.task(1).unwrap().archived);
+        assert!(!loaded.task(2).unwrap().archived);
     }
 
     #[test]
@@ -997,7 +997,7 @@ mod tests {
 
         mark_task_done(&db, &mut data, 1).unwrap();
 
-        let spawned = data.tasks.iter().find(|t| t.id == 2).expect("spawned task");
+        let spawned = data.task(2).expect("spawned task");
         assert_eq!(spawned.subtasks.len(), 2);
         let ids: Vec<u64> = spawned.subtasks.iter().map(|s| s.id).collect();
         assert_eq!(ids, vec![3, 4]);

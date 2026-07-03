@@ -269,7 +269,7 @@ impl App {
                     _ => 0,
                 };
                 self.set_active_task(Some(ids[next_idx]));
-                if let Some(task) = self.data.tasks.iter().find(|t| t.id == ids[next_idx]) {
+                if let Some(task) = self.data.task(ids[next_idx]) {
                     self.set_status(format!("Active task: {}", task.title), false);
                 }
             }
@@ -387,7 +387,7 @@ impl App {
         self.timer.custom_minutes.hash(&mut hasher);
         self.active_task.hash(&mut hasher);
         if let Some(id) = self.active_task {
-            if let Some(task) = self.data.tasks.iter().find(|t| t.id == id) {
+            if let Some(task) = self.data.task(id) {
                 task.title.hash(&mut hasher);
             }
         }
@@ -455,7 +455,7 @@ impl App {
                 key: "Active task",
                 value: self
                     .active_task
-                    .and_then(|id| self.data.tasks.iter().find(|t| t.id == id))
+                    .and_then(|id| self.data.task(id))
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| "(none)".into()),
                 desc: "cycle with Enter",

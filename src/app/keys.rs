@@ -177,7 +177,7 @@ impl App {
                 if let Some(id) = target {
                     let idx = (c as u8 - b'1') as usize;
                     self.persist_data(|db, data| {
-                        if let Some(task) = data.tasks.iter().find(|t| t.id == id) {
+                        if let Some(task) = data.task(id) {
                             if let Some(sub) = task.subtasks.get(idx) {
                                 let sub_id = sub.id;
                                 return storage::toggle_subtask(db, data, id, sub_id);

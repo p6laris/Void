@@ -441,6 +441,16 @@ pub struct AppData {
     pub active_preset: Option<String>,
 }
 
+impl AppData {
+    pub fn task(&self, id: u64) -> Option<&Task> {
+        self.tasks.iter().find(|t| t.id == id)
+    }
+
+    pub fn task_mut(&mut self, id: u64) -> Option<&mut Task> {
+        self.tasks.iter_mut().find(|t| t.id == id)
+    }
+}
+
 fn default_archive_days() -> u32 {
     30
 }

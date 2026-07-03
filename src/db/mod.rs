@@ -422,7 +422,7 @@ impl Database {
         for row in rows {
             let (mins, task_id) = row?;
             if let Some(tid) = task_id {
-                if let Some(task) = data.tasks.iter().find(|t| t.id == tid) {
+                if let Some(task) = data.task(tid) {
                     if task.tags.is_empty() {
                         *tag_mins.entry("Untagged".to_string()).or_default() += mins;
                     } else {
@@ -509,77 +509,76 @@ pub(crate) fn load_settings(conn: &Connection, data: &mut AppData) -> Result<()>
 }
 
 fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
-    let pairs: Vec<(&str, String)> = vec![
-        ("next_id", data.next_id.to_string()),
-        ("total_focus_minutes", data.total_focus_minutes.to_string()),
-        ("total_sessions", data.total_sessions.to_string()),
-        ("streak_days", data.streak_days.to_string()),
-        (
-            "last_session_date",
-            data.last_session_date.clone().unwrap_or_default(),
-        ),
-        ("daily_goal_minutes", data.daily_goal_minutes.to_string()),
+    let next_id = data.next_id.to_string();
+    let total_focus_minutes = data.total_focus_minutes.to_string();
+    let total_sessions = data.total_sessions.to_string();
+    let streak_days = data.streak_days.to_string();
+    let last_session_date = data.last_session_date.clone().unwrap_or_default();
+    let daily_goal_minutes = data.daily_goal_minutes.to_string();
+    let today_focus_minutes = data.today_focus_minutes.to_string();
+    let today_date = data.today_date.clone().unwrap_or_default();
+    let focus_minutes = data.focus_minutes.to_string();
+    let short_break_minutes = data.short_break_minutes.to_string();
+    let long_break_minutes = data.long_break_minutes.to_string();
+    let long_break_every = data.long_break_every.to_string();
+    let theme = data.theme.clone();
+    let active_task_id = data
+        .active_task_id
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+    let goal_streak_days = data.goal_streak_days.to_string();
+    let last_goal_date = data.last_goal_date.clone().unwrap_or_default();
+    let auto_pause_idle_minutes = data.auto_pause_idle_minutes.to_string();
+    let archive_after_days = data.archive_after_days.to_string();
+    let weekly_streak_weeks = data.weekly_streak_weeks.to_string();
+    let monthly_streak_months = data.monthly_streak_months.to_string();
+    let last_weekly_streak_key = data.last_weekly_streak_key.clone().unwrap_or_default();
+    let last_monthly_streak_key = data.last_monthly_streak_key.clone().unwrap_or_default();
+    let timer_presets = serde_json::to_string(&data.timer_presets).unwrap_or_default();
+    let active_preset = data.active_preset.clone().unwrap_or_default();
+
+    let pairs: Vec<(&str, &str)> = vec![
+        ("next_id", &next_id),
+        ("total_focus_minutes", &total_focus_minutes),
+        ("total_sessions", &total_sessions),
+        ("streak_days", &streak_days),
+        ("last_session_date", &last_session_date),
+        ("daily_goal_minutes", &daily_goal_minutes),
         ("sound_enabled", bool_str(data.sound_enabled)),
         ("auto_start_breaks", bool_str(data.auto_start_breaks)),
         ("auto_start_focus", bool_str(data.auto_start_focus)),
-        ("today_focus_minutes", data.today_focus_minutes.to_string()),
-        ("today_date", data.today_date.clone().unwrap_or_default()),
-        ("focus_minutes", data.focus_minutes.to_string()),
-        ("short_break_minutes", data.short_break_minutes.to_string()),
-        ("long_break_minutes", data.long_break_minutes.to_string()),
-        ("long_break_every", data.long_break_every.to_string()),
+        ("today_focus_minutes", &today_focus_minutes),
+        ("today_date", &today_date),
+        ("focus_minutes", &focus_minutes),
+        ("short_break_minutes", &short_break_minutes),
+        ("long_break_minutes", &long_break_minutes),
+        ("long_break_every", &long_break_every),
         ("auto_pick_task", bool_str(data.auto_pick_task)),
         ("auto_advance_task", bool_str(data.auto_advance_task)),
-        ("theme", data.theme.clone()),
-        (
-            "active_task_id",
-            data.active_task_id
-                .map(|id| id.to_string())
-                .unwrap_or_default(),
-        ),
+        ("theme", &theme),
+        ("active_task_id", &active_task_id),
         ("notify_on_finish", bool_str(data.notify_on_finish)),
-        ("goal_streak_days", data.goal_streak_days.to_string()),
-        (
-            "last_goal_date",
-            data.last_goal_date.clone().unwrap_or_default(),
-        ),
+        ("goal_streak_days", &goal_streak_days),
+        ("last_goal_date", &last_goal_date),
         (
             "empty_queue_behavior",
-            encode_empty_queue(data.empty_queue_behavior).to_string(),
+            encode_empty_queue(data.empty_queue_behavior),
         ),
         ("log_breaks", bool_str(data.log_breaks)),
         (
             "estimate_complete",
-            encode_estimate_complete(data.estimate_complete).to_string(),
+            encode_estimate_complete(data.estimate_complete),
         ),
         ("show_terminal_title", bool_str(data.show_terminal_title)),
         ("warn_one_minute", bool_str(data.warn_one_minute)),
-        (
-            "auto_pause_idle_minutes",
-            data.auto_pause_idle_minutes.to_string(),
-        ),
-        ("archive_after_days", data.archive_after_days.to_string()),
-        ("weekly_streak_weeks", data.weekly_streak_weeks.to_string()),
-        (
-            "monthly_streak_months",
-            data.monthly_streak_months.to_string(),
-        ),
-        (
-            "last_weekly_streak_key",
-            data.last_weekly_streak_key.clone().unwrap_or_default(),
-        ),
-        (
-            "last_monthly_streak_key",
-            data.last_monthly_streak_key.clone().unwrap_or_default(),
-        ),
-        (
-            "timer_presets",
-            serde_json::to_string(&data.timer_presets).unwrap_or_default(),
-        ),
-        (
-            "active_preset",
-            data.active_preset.clone().unwrap_or_default(),
-        ),
+        ("auto_pause_idle_minutes", &auto_pause_idle_minutes),
+        ("archive_after_days", &archive_after_days),
+        ("weekly_streak_weeks", &weekly_streak_weeks),
+        ("monthly_streak_months", &monthly_streak_months),
+        ("last_weekly_streak_key", &last_weekly_streak_key),
+        ("last_monthly_streak_key", &last_monthly_streak_key),
+        ("timer_presets", &timer_presets),
+        ("active_preset", &active_preset),
     ];
 
     let mut stmt = conn.prepare(UPSERT_SETTING_SQL)?;
@@ -1018,8 +1017,8 @@ fn parse_datetime_sql(s: &str) -> rusqlite::Result<DateTime<Utc>> {
     })
 }
 
-fn bool_str(v: bool) -> String {
-    if v { "1" } else { "0" }.to_string()
+fn bool_str(v: bool) -> &'static str {
+    if v { "1" } else { "0" }
 }
 
 fn parse_bool(s: &str, default: bool) -> bool {
@@ -1112,7 +1111,7 @@ mod tests {
         let loaded = db.load_app_data().unwrap();
 
         assert_eq!(loaded.tasks.len(), 2);
-        let main = loaded.tasks.iter().find(|t| t.id == 2).expect("main task");
+        let main = loaded.task(2).expect("main task");
         assert_eq!(main.tags, vec!["focus", "work"]);
         assert_eq!(main.subtasks.len(), 2);
         assert_eq!(main.subtasks[0].title, "Step one");

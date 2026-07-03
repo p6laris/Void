@@ -112,7 +112,7 @@ impl App {
                     return;
                 }
                 self.bump_tasks();
-                if let Some(t) = self.data.tasks.iter().find(|t| t.id == id) {
+                if let Some(t) = self.data.task(id) {
                     self.subtask_selected = t.subtasks.len().saturating_sub(1);
                 }
                 self.input_buffer.clear();
