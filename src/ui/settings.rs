@@ -19,131 +19,11 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     app.sync_settings_scroll();
     let scroll_offset = app.settings_state.scroll_offset;
 
+    app.refresh_settings_labels_cache();
+    let settings_labels = app.settings_labels();
+
     let theme = &app.theme;
     let icons = app.icons;
-    let settings_labels: Vec<(&str, String, &str)> = vec![
-        (
-            "Focus minutes",
-            format!("{} min", app.data.focus_minutes),
-            "per focus session",
-        ),
-        (
-            "Short break",
-            format!("{} min", app.data.short_break_minutes),
-            "between sessions",
-        ),
-        (
-            "Long break",
-            format!("{} min", app.data.long_break_minutes),
-            "after cycle",
-        ),
-        (
-            "Long break every",
-            format!("{} sessions", app.data.long_break_every),
-            "focus sessions per cycle",
-        ),
-        (
-            "Daily goal",
-            format!("{} min", app.data.daily_goal_minutes),
-            "+/-15 per step",
-        ),
-        (
-            "Sound on finish",
-            if app.data.sound_enabled {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "plays on completion",
-        ),
-        (
-            "Notifications",
-            if app.data.notify_on_finish {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "desktop alerts",
-        ),
-        (
-            "Auto-start breaks",
-            if app.data.auto_start_breaks {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "begin break automatically",
-        ),
-        (
-            "Auto-start focus",
-            if app.data.auto_start_focus {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "begin focus after break",
-        ),
-        (
-            "Active task",
-            app.active_task
-                .and_then(|id| app.data.tasks.iter().find(|t| t.id == id))
-                .map(|t| t.title.clone())
-                .unwrap_or_else(|| "(none)".into()),
-            "cycle with Enter",
-        ),
-        (
-            "Theme",
-            app.theme_catalog.label(&app.data.theme),
-            "cycle themes",
-        ),
-        (
-            "Custom timer",
-            format!("{} min", app.timer.custom_minutes),
-            "freeform session",
-        ),
-        (
-            "Auto-pick task",
-            if app.data.auto_pick_task {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "pick best task on start",
-        ),
-        (
-            "Auto-advance task",
-            if app.data.auto_advance_task {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "next task after focus",
-        ),
-        (
-            "When queue empty",
-            app.data.empty_queue_behavior.label().to_string(),
-            "free focus / pause / ask",
-        ),
-        (
-            "Log breaks",
-            if app.data.log_breaks {
-                "on".into()
-            } else {
-                "off".into()
-            },
-            "record break sessions",
-        ),
-        (
-            "Estimate reached",
-            app.data.estimate_complete.label().to_string(),
-            "nudge / off / auto-done",
-        ),
-        (
-            "Export backup",
-            "Enter to export".into(),
-            "writes data.json for backup",
-        ),
-    ];
 
     let section_headers: &[(usize, &str, &str)] = &[
         (0, icons.timer, "Timer"),
@@ -189,7 +69,7 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
                 ]));
             }
             SettingsRow::Item(i) => {
-                let (k, v, desc) = &settings_labels[*i];
+                let row = &settings_labels[*i];
                 let is_selected = *i == selected;
                 let marker = if is_selected { icons.chevron } else { " " };
                 let row_style = if is_selected {
@@ -210,15 +90,15 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
                 } else {
                     Style::default().fg(theme.dim)
                 };
-                let value_with_desc = if desc.is_empty() {
-                    v.clone()
+                let value_with_desc = if row.desc.is_empty() {
+                    row.value.clone()
                 } else {
-                    format!("{} ({})", v, desc)
+                    format!("{} ({})", row.value, row.desc)
                 };
                 rows.push(
                     Row::new(vec![
                         Cell::from(marker.to_string()).style(key_style),
-                        Cell::from(k.to_string()).style(key_style),
+                        Cell::from(row.key.to_string()).style(key_style),
                         Cell::from(value_with_desc).style(val_style),
                     ])
                     .style(row_style),

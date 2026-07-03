@@ -185,6 +185,8 @@ pub struct App {
     frame_today_focus_mins: u32,
     window_title_sig: u64,
     cached_window_title: String,
+    settings_labels_sig: u64,
+    cached_settings_labels: Vec<CachedSettingsLabel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -323,6 +325,8 @@ impl App {
             frame_today_focus_mins: 0,
             window_title_sig: u64::MAX,
             cached_window_title: String::new(),
+            settings_labels_sig: u64::MAX,
+            cached_settings_labels: Vec::new(),
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();

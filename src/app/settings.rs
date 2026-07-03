@@ -1,6 +1,14 @@
 use super::*;
 use crate::model::{EmptyQueueBehavior, EstimateCompleteBehavior};
 use crossterm::event::{KeyCode, KeyEvent};
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone)]
+pub(crate) struct CachedSettingsLabel {
+    pub key: &'static str,
+    pub value: String,
+    pub desc: &'static str,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsItem {
@@ -358,5 +366,153 @@ impl App {
             SettingsItem::ExportBackup => {}
         }
         self.sync_timer_config_to_data();
+        self.settings_labels_sig = u64::MAX;
+    }
+
+    fn settings_labels_signature(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.data.focus_minutes.hash(&mut hasher);
+        self.data.short_break_minutes.hash(&mut hasher);
+        self.data.long_break_minutes.hash(&mut hasher);
+        self.data.long_break_every.hash(&mut hasher);
+        self.data.daily_goal_minutes.hash(&mut hasher);
+        self.data.sound_enabled.hash(&mut hasher);
+        self.data.notify_on_finish.hash(&mut hasher);
+        self.data.auto_start_breaks.hash(&mut hasher);
+        self.data.auto_start_focus.hash(&mut hasher);
+        self.data.auto_pick_task.hash(&mut hasher);
+        self.data.auto_advance_task.hash(&mut hasher);
+        self.data.log_breaks.hash(&mut hasher);
+        self.data.theme.hash(&mut hasher);
+        self.timer.custom_minutes.hash(&mut hasher);
+        self.active_task.hash(&mut hasher);
+        if let Some(id) = self.active_task {
+            if let Some(task) = self.data.tasks.iter().find(|t| t.id == id) {
+                task.title.hash(&mut hasher);
+            }
+        }
+        (self.data.empty_queue_behavior as u8).hash(&mut hasher);
+        (self.data.estimate_complete as u8).hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn build_settings_labels(&self) -> Vec<CachedSettingsLabel> {
+        fn on_off(enabled: bool) -> String {
+            if enabled {
+                "on".into()
+            } else {
+                "off".into()
+            }
+        }
+
+        vec![
+            CachedSettingsLabel {
+                key: "Focus minutes",
+                value: format!("{} min", self.data.focus_minutes),
+                desc: "per focus session",
+            },
+            CachedSettingsLabel {
+                key: "Short break",
+                value: format!("{} min", self.data.short_break_minutes),
+                desc: "between sessions",
+            },
+            CachedSettingsLabel {
+                key: "Long break",
+                value: format!("{} min", self.data.long_break_minutes),
+                desc: "after cycle",
+            },
+            CachedSettingsLabel {
+                key: "Long break every",
+                value: format!("{} sessions", self.data.long_break_every),
+                desc: "focus sessions per cycle",
+            },
+            CachedSettingsLabel {
+                key: "Daily goal",
+                value: format!("{} min", self.data.daily_goal_minutes),
+                desc: "+/-15 per step",
+            },
+            CachedSettingsLabel {
+                key: "Sound on finish",
+                value: on_off(self.data.sound_enabled),
+                desc: "plays on completion",
+            },
+            CachedSettingsLabel {
+                key: "Notifications",
+                value: on_off(self.data.notify_on_finish),
+                desc: "desktop alerts",
+            },
+            CachedSettingsLabel {
+                key: "Auto-start breaks",
+                value: on_off(self.data.auto_start_breaks),
+                desc: "begin break automatically",
+            },
+            CachedSettingsLabel {
+                key: "Auto-start focus",
+                value: on_off(self.data.auto_start_focus),
+                desc: "begin focus after break",
+            },
+            CachedSettingsLabel {
+                key: "Active task",
+                value: self
+                    .active_task
+                    .and_then(|id| self.data.tasks.iter().find(|t| t.id == id))
+                    .map(|t| t.title.clone())
+                    .unwrap_or_else(|| "(none)".into()),
+                desc: "cycle with Enter",
+            },
+            CachedSettingsLabel {
+                key: "Theme",
+                value: self.theme_catalog.label(&self.data.theme),
+                desc: "cycle themes",
+            },
+            CachedSettingsLabel {
+                key: "Custom timer",
+                value: format!("{} min", self.timer.custom_minutes),
+                desc: "freeform session",
+            },
+            CachedSettingsLabel {
+                key: "Auto-pick task",
+                value: on_off(self.data.auto_pick_task),
+                desc: "pick best task on start",
+            },
+            CachedSettingsLabel {
+                key: "Auto-advance task",
+                value: on_off(self.data.auto_advance_task),
+                desc: "next task after focus",
+            },
+            CachedSettingsLabel {
+                key: "When queue empty",
+                value: self.data.empty_queue_behavior.label().to_string(),
+                desc: "free focus / pause / ask",
+            },
+            CachedSettingsLabel {
+                key: "Log breaks",
+                value: on_off(self.data.log_breaks),
+                desc: "record break sessions",
+            },
+            CachedSettingsLabel {
+                key: "Estimate reached",
+                value: self.data.estimate_complete.label().to_string(),
+                desc: "nudge / off / auto-done",
+            },
+            CachedSettingsLabel {
+                key: "Export backup",
+                value: "Enter to export".into(),
+                desc: "writes data.json for backup",
+            },
+        ]
+    }
+
+    pub(crate) fn refresh_settings_labels_cache(&mut self) {
+        let sig = self.settings_labels_signature();
+        if sig == self.settings_labels_sig {
+            return;
+        }
+        self.settings_labels_sig = sig;
+        self.cached_settings_labels = self.build_settings_labels();
+    }
+
+    pub(crate) fn settings_labels(&self) -> &[CachedSettingsLabel] {
+        &self.cached_settings_labels
     }
 }
