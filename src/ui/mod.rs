@@ -21,7 +21,7 @@ use settings::*;
 use tasks::*;
 use zen::*;
 
-use chrono::Datelike;
+
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -32,8 +32,8 @@ use ratatui::Frame;
 
 use crate::app::{App, FocusTab, InputField, InputMode, TaskFilter};
 use crate::canvas_timer::{
-    draw_break_tip, draw_dashboard_canvas, draw_zen_canvas, format_time_stack,
-    session_dots, DashboardSceneOptions, ZenSceneOptions,
+    draw_break_tip, draw_dashboard_canvas, draw_zen_canvas, format_time_stack, session_dots,
+    DashboardSceneOptions, ZenSceneOptions,
 };
 use crate::model::TimerMode;
 

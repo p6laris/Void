@@ -42,10 +42,8 @@ pub fn normalize_due_date(input: &str, allow_past: bool) -> Result<Option<String
     }
     match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         Ok(parsed) => {
-            if !allow_past {
-                if parsed < crate::date::today_naive() {
-                    return Err("Due date cannot be in the past.".into());
-                }
+            if !allow_past && parsed < crate::date::today_naive() {
+                return Err("Due date cannot be in the past.".into());
             }
             Ok(Some(s.to_string()))
         }
@@ -215,16 +213,12 @@ fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<St
     let today = crate::date::today_naive();
     match recurrence {
         TaskRecurrence::None => current.map(String::from),
-        TaskRecurrence::Daily => Some(crate::date::format_date(
-            today + chrono::Duration::days(1),
-        )),
+        TaskRecurrence::Daily => Some(crate::date::format_date(today + chrono::Duration::days(1))),
         TaskRecurrence::Weekly => {
             let base = current
                 .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
                 .unwrap_or(today);
-            Some(crate::date::format_date(
-                base + chrono::Duration::days(7),
-            ))
+            Some(crate::date::format_date(base + chrono::Duration::days(7)))
         }
         TaskRecurrence::Weekdays => {
             let mut d = today + chrono::Duration::days(1);
@@ -603,9 +597,8 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
     if days == 0 {
         return Ok(0);
     }
-    let cutoff = crate::date::format_date(
-        crate::date::today_naive() - chrono::Duration::days(days as i64),
-    );
+    let cutoff =
+        crate::date::format_date(crate::date::today_naive() - chrono::Duration::days(days as i64));
 
     let to_archive: Vec<u64> = data
         .tasks
@@ -629,10 +622,7 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
         }
     }
 
-    let tasks_to_persist: Vec<&Task> = to_archive
-        .iter()
-        .filter_map(|id| data.task(*id))
-        .collect();
+    let tasks_to_persist: Vec<&Task> = to_archive.iter().filter_map(|id| data.task(*id)).collect();
     db.upsert_tasks(&tasks_to_persist)?;
 
     Ok(to_archive.len() as u32)
@@ -810,26 +800,23 @@ fn update_period_streaks(data: &mut AppData, today: &str) -> Result<()> {
 fn is_consecutive_week(prev: &str, cur: &str) -> bool {
     parse_week_key(prev)
         .and_then(|(year, week)| week_start(year, week))
-        .zip(
-            parse_week_key(cur)
-                .and_then(|(year, week)| week_start(year, week)),
-        )
+        .zip(parse_week_key(cur).and_then(|(year, week)| week_start(year, week)))
         .is_some_and(|(prev_start, cur_start)| {
             prev_start.checked_add_signed(chrono::TimeDelta::days(7)) == Some(cur_start)
         })
 }
 
 fn is_consecutive_month(prev: &str, cur: &str) -> bool {
-    parse_month_key(prev)
-        .zip(parse_month_key(cur))
-        .is_some_and(|((prev_year, prev_month), (cur_year, cur_month))| {
+    parse_month_key(prev).zip(parse_month_key(cur)).is_some_and(
+        |((prev_year, prev_month), (cur_year, cur_month))| {
             let (next_year, next_month) = if prev_month == 12 {
                 (prev_year + 1, 1)
             } else {
                 (prev_year, prev_month + 1)
             };
             next_year == cur_year && next_month == cur_month
-        })
+        },
+    )
 }
 
 fn parse_week_key(key: &str) -> Option<(i32, u32)> {
@@ -975,7 +962,9 @@ mod tests {
         assert_eq!(spawned.subtasks.len(), 2);
         let ids: Vec<u64> = spawned.subtasks.iter().map(|s| s.id).collect();
         assert_eq!(ids, vec![3, 4]);
-        assert!(ids.iter().all(|id| *id != 2 * 1000 + 1 && *id != 2 * 1000 + 2));
+        assert!(ids
+            .iter()
+            .all(|id| *id != 2 * 1000 + 1 && *id != 2 * 1000 + 2));
 
         let loaded = db.load_app_data().unwrap();
         let all_subtask_ids: Vec<u64> = loaded
@@ -985,7 +974,10 @@ mod tests {
             .collect();
         assert_eq!(
             all_subtask_ids.len(),
-            all_subtask_ids.iter().collect::<std::collections::HashSet<_>>().len()
+            all_subtask_ids
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
         );
     }
 
