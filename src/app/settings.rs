@@ -284,7 +284,8 @@ impl App {
                 }
                 let ids: Vec<u64> = self.data.tasks.keys().copied().collect();
                 let cur = self
-                    .task_ui.active_task
+                    .task_ui
+                    .active_task
                     .and_then(|id| ids.iter().position(|x| *x == id));
                 let next_idx = match (cur, dir) {
                     (Some(i), d) if d > 0 => (i + 1) % ids.len(),
@@ -484,7 +485,8 @@ impl App {
             CachedSettingsLabel {
                 key: "Active task",
                 value: self
-                    .task_ui.active_task
+                    .task_ui
+                    .active_task
                     .and_then(|id| self.data.task(id))
                     .map(|t| t.title.clone())
                     .unwrap_or_else(|| "(none)".into()),

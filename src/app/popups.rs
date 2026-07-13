@@ -52,7 +52,8 @@ impl App {
                 self.bump_tasks();
                 let indices = self.filtered_task_indices();
                 let sel = indices.len().saturating_sub(1);
-                self.task_ui.task_state
+                self.task_ui
+                    .task_state
                     .select(if indices.is_empty() { None } else { Some(sel) });
                 self.close_popup();
                 self.set_status("Task added.", false);
@@ -320,7 +321,8 @@ impl App {
             InputField::Estimate => match key.code {
                 KeyCode::Char(c) if c.is_ascii_digit() => {
                     let d = c.to_digit(10).unwrap_or(0);
-                    self.input.input_number = (self.input.input_number.saturating_mul(10) + d).min(480);
+                    self.input.input_number =
+                        (self.input.input_number.saturating_mul(10) + d).min(480);
                 }
                 KeyCode::Backspace => {
                     self.input.input_number /= 10;
@@ -329,7 +331,9 @@ impl App {
                     }
                 }
                 KeyCode::Up => self.input.input_number = (self.input.input_number + 5).min(480),
-                KeyCode::Down => self.input.input_number = self.input.input_number.saturating_sub(5).max(1),
+                KeyCode::Down => {
+                    self.input.input_number = self.input.input_number.saturating_sub(5).max(1)
+                }
                 _ => {}
             },
             InputField::Priority => {

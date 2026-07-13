@@ -504,7 +504,8 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     ));
 
     let recent_for_task: Vec<_> = app
-        .stats.recent_sessions
+        .stats
+        .recent_sessions
         .iter()
         .filter(|s| s.record.task_id == Some(task.id))
         .take(3)

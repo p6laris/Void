@@ -294,12 +294,12 @@ impl App {
 
     pub(crate) fn refresh_frame_today_cache(&mut self) {
         self.ui.frame_today = crate::date::today_str();
-        self.ui.frame_today_focus_mins = if self.data.today_date.as_deref() == Some(self.ui.frame_today.as_str())
-        {
-            self.data.today_focus_minutes
-        } else {
-            0
-        };
+        self.ui.frame_today_focus_mins =
+            if self.data.today_date.as_deref() == Some(self.ui.frame_today.as_str()) {
+                self.data.today_focus_minutes
+            } else {
+                0
+            };
     }
 
     pub fn frame_today(&self) -> &str {
@@ -682,7 +682,8 @@ impl App {
 
     pub fn selected_task_id(&self) -> Option<u64> {
         let indices = self.filtered_task_indices();
-        self.task_ui.task_state
+        self.task_ui
+            .task_state
             .selected()
             .and_then(|i| indices.get(i).copied())
             .and_then(|idx| self.data.task_at(idx).map(|t| t.id))

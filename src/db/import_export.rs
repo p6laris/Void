@@ -55,10 +55,7 @@ fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
     let mut out = Vec::new();
     for row in rows {
         let (id, mut record) = row?;
-        record.tags = tags_by_session
-            .get(&id)
-            .cloned()
-            .unwrap_or_default();
+        record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
         out.push(record);
     }
     Ok(out)

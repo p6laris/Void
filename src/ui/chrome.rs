@@ -32,12 +32,20 @@ fn streak_goal_chips(app: &App, theme: &crate::app::Theme, icons: IconSet) -> Ve
     ]
 }
 
-fn session_total_span(app: &App, theme: &crate::app::Theme, icons: IconSet, as_chip: bool) -> Span<'static> {
+fn session_total_span(
+    app: &App,
+    theme: &crate::app::Theme,
+    icons: IconSet,
+    as_chip: bool,
+) -> Span<'static> {
     let count = format!("{}", app.data.total_sessions);
     if as_chip {
         chip(icons.timer, count, theme.dim, theme.panel_border)
     } else {
-        Span::styled(format!("{} {count}", icons.timer), Style::default().fg(theme.dim))
+        Span::styled(
+            format!("{} {count}", icons.timer),
+            Style::default().fg(theme.dim),
+        )
     }
 }
 

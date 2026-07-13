@@ -30,11 +30,7 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 .subtask_progress()
                 .map(|(d, n)| format!(" ({d}/{n})"))
                 .unwrap_or_default();
-            let blocked_mark = if app.is_task_blocked_at(idx) {
-                "!"
-            } else {
-                ""
-            };
+            let blocked_mark = if app.is_task_blocked_at(idx) { "!" } else { "" };
             let is_reordering = app.task_ui.reordering_task == Some(t.id);
             let reorder_mark = if is_reordering { " ↕ " } else { "" };
             let is_cursor = selected_idx == Some(list_idx);
@@ -68,7 +64,11 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 Style::default().fg(app.theme.text)
             };
-            let overdue_mark = if t.is_overdue_on(frame_today) { icons.alert } else { " " };
+            let overdue_mark = if t.is_overdue_on(frame_today) {
+                icons.alert
+            } else {
+                " "
+            };
             let today_mark = if t.today { icons.star } else { " " };
             let active_mark = if is_active { icons.task_active } else { " " };
             let active_style = if is_active {
@@ -130,7 +130,10 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 ),
             ]);
             if !tags_label.is_empty() {
-                spans.push(Span::styled(tags_label, Style::default().fg(app.theme.info)));
+                spans.push(Span::styled(
+                    tags_label,
+                    Style::default().fg(app.theme.info),
+                ));
             }
             ListItem::new(Line::from(spans))
         })
@@ -145,7 +148,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_height = chunks[0].height.saturating_sub(2) as usize;
     let has_overflow = filtered_count > visible_height;
     let at_bottom = app
-        .task_ui.task_state
+        .task_ui
+        .task_state
         .selected()
         .map(|sel| sel + 1 >= filtered_count)
         .unwrap_or(true);
@@ -155,7 +159,11 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         ""
     };
 
-    let bulk_hint = if app.task_ui.bulk_mode { " · BULK" } else { "" };
+    let bulk_hint = if app.task_ui.bulk_mode {
+        " · BULK"
+    } else {
+        ""
+    };
     let block = dense_panel(
         &app.theme,
         Line::from(vec![
@@ -191,7 +199,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(chunks[1]);
     let progress_ratio = app
-        .task_ui.task_state
+        .task_ui
+        .task_state
         .selected()
         .and_then(|sel| indices.get(sel).copied())
         .map(|idx| app.data.tasks[idx].progress_ratio())
@@ -211,7 +220,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         detail_layout[0],
     );
     let has_subtasks = app
-        .task_ui.task_state
+        .task_ui
+        .task_state
         .selected()
         .and_then(|s| indices.get(s).copied())
         .map(|idx| !app.data.tasks[idx].subtasks.is_empty())
@@ -224,7 +234,10 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             .split(detail_layout[1]);
         let meta_block = dense_panel(
             &app.theme,
-            Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
+            Line::from(Span::styled(
+                " Details ",
+                Style::default().fg(app.theme.accent),
+            )),
         );
         f.render_widget(
             Paragraph::new(build_task_detail_meta(app))
@@ -233,7 +246,8 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
             sub_chunks[0],
         );
         if let Some(task_idx) = app
-            .task_ui.task_state
+            .task_ui
+            .task_state
             .selected()
             .and_then(|s| indices.get(s).copied())
         {
@@ -242,7 +256,10 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         let detail_block = dense_panel(
             &app.theme,
-            Line::from(Span::styled(" Details ", Style::default().fg(app.theme.accent))),
+            Line::from(Span::styled(
+                " Details ",
+                Style::default().fg(app.theme.accent),
+            )),
         );
         f.render_widget(
             Paragraph::new(build_task_detail(app))
@@ -287,7 +304,8 @@ pub(crate) fn build_task_detail(app: &App) -> Vec<Line<'_>> {
         return lines;
     }
     let sel = app
-        .task_ui.task_state
+        .task_ui
+        .task_state
         .selected()
         .unwrap_or(0)
         .min(indices.len() - 1);
@@ -318,7 +336,8 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
         ))];
     }
     let sel = app
-        .task_ui.task_state
+        .task_ui
+        .task_state
         .selected()
         .unwrap_or(0)
         .min(indices.len() - 1);
@@ -337,7 +356,9 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
     let status_color = task_status_color(&app.theme, t.status);
     lines.push(Line::from(Span::styled(
         t.title.clone(),
-        Style::default().fg(app.theme.text).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(app.theme.text)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.extend(vec![
         Line::from(""),
@@ -386,7 +407,11 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
             Span::styled("Today:     ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 if t.today { "yes" } else { "no" },
-                Style::default().fg(if t.today { app.theme.success } else { app.theme.dim }),
+                Style::default().fg(if t.today {
+                    app.theme.success
+                } else {
+                    app.theme.dim
+                }),
             ),
         ]),
         Line::from(vec![
@@ -412,7 +437,11 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
             Span::styled("Due:       ", Style::default().fg(app.theme.dim)),
             Span::styled(
                 due.clone(),
-                Style::default().fg(if overdue { app.theme.error } else { app.theme.text }),
+                Style::default().fg(if overdue {
+                    app.theme.error
+                } else {
+                    app.theme.text
+                }),
             ),
         ]));
     }
@@ -460,16 +489,15 @@ fn build_task_detail_meta(app: &App) -> Vec<Line<'_>> {
     lines
 }
 
-fn draw_subtask_panel(
-    f: &mut Frame,
-    app: &mut App,
-    area: Rect,
-    task_idx: usize,
-) {
+fn draw_subtask_panel(f: &mut Frame, app: &mut App, area: Rect, task_idx: usize) {
     let theme = &app.theme;
     let task = &app.data.tasks[task_idx];
     let (done, total) = task.subtask_progress().unwrap_or((0, 0));
-    let focus_label = if app.task_ui.subtask_focus { " · FOCUS" } else { "" };
+    let focus_label = if app.task_ui.subtask_focus {
+        " · FOCUS"
+    } else {
+        ""
+    };
     let border_color = if app.task_ui.subtask_focus {
         theme.accent
     } else {
@@ -494,7 +522,9 @@ fn draw_subtask_panel(
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    app.task_ui.subtask_state.select(Some(app.task_ui.subtask_selected));
+    app.task_ui
+        .subtask_state
+        .select(Some(app.task_ui.subtask_selected));
     let items: Vec<ListItem> = task
         .subtasks
         .iter()

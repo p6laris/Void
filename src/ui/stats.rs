@@ -449,7 +449,8 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let bars: Vec<(&str, u64)> = app
-        .stats.tag_analytics
+        .stats
+        .tag_analytics
         .iter()
         .take(10)
         .map(|(k, v)| (k.as_str(), *v as u64))

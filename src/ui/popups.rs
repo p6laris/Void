@@ -97,7 +97,10 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             } else {
                 app.input.input_due_date.clone()
             };
-            let tags_display = cursor(matches!(app.input.input_field, InputField::Tags), &app.input.input_tags);
+            let tags_display = cursor(
+                matches!(app.input.input_field, InputField::Tags),
+                &app.input.input_tags,
+            );
             let value_max = left_area.width.saturating_sub(22) as usize;
             let p = Paragraph::new(vec![
                 popup_field_line(
@@ -146,12 +149,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             f.render_widget(p, left_area);
 
             if let Some(r) = right_area {
-                super::calendar::render_due_date_calendar(
-                    f,
-                    r,
-                    app.stats.calendar_date,
-                    theme,
-                );
+                super::calendar::render_due_date_calendar(f, r, app.stats.calendar_date, theme);
             }
             let hint = if matches!(app.input.input_field, InputField::DueDate) {
                 "←→ day · ↑↓ week · Tab field · Enter save · Esc cancel"

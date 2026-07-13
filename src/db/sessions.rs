@@ -6,7 +6,10 @@ use super::encoding::decode_timer_mode;
 use super::{parse_datetime_sql, read_opt_u64};
 
 /// Map a `focus_sessions` row where columns start at `base` (date, minutes, …).
-pub(crate) fn focus_session_from_row(row: &Row<'_>, base: usize) -> rusqlite::Result<FocusSessionRecord> {
+pub(crate) fn focus_session_from_row(
+    row: &Row<'_>,
+    base: usize,
+) -> rusqlite::Result<FocusSessionRecord> {
     let mode_str: String = row.get(base + 3)?;
     Ok(FocusSessionRecord {
         date: row.get(base)?,
@@ -22,7 +25,9 @@ pub(crate) fn focus_session_from_row(row: &Row<'_>, base: usize) -> rusqlite::Re
 }
 
 /// Map a `focus_sessions` row that includes `id` in column 0.
-pub(crate) fn focus_session_id_and_record(row: &Row<'_>) -> rusqlite::Result<(i64, FocusSessionRecord)> {
+pub(crate) fn focus_session_id_and_record(
+    row: &Row<'_>,
+) -> rusqlite::Result<(i64, FocusSessionRecord)> {
     let id: i64 = row.get(0)?;
     let record = focus_session_from_row(row, 1)?;
     Ok((id, record))

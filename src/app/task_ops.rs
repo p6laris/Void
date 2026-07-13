@@ -15,7 +15,8 @@ impl App {
             None
         } else {
             let idx = self
-                .task_ui.dashboard_task_state
+                .task_ui
+                .dashboard_task_state
                 .selected()
                 .unwrap_or(0)
                 .min(indices.len() - 1);
@@ -28,7 +29,12 @@ impl App {
         if n == 0 {
             self.task_ui.dashboard_task_state.select(None);
         } else {
-            let sel = self.task_ui.dashboard_task_state.selected().unwrap_or(0).min(n - 1);
+            let sel = self
+                .task_ui
+                .dashboard_task_state
+                .selected()
+                .unwrap_or(0)
+                .min(n - 1);
             self.task_ui.dashboard_task_state.select(Some(sel));
         }
     }
@@ -89,9 +95,7 @@ impl App {
             TaskFilter::All => true,
             TaskFilter::Pending => t.is_open(),
             TaskFilter::Done => t.status == crate::model::TaskStatus::Done && !t.archived,
-            TaskFilter::Today => {
-                t.today && t.is_open()
-            }
+            TaskFilter::Today => t.today && t.is_open(),
             TaskFilter::Archived => t.archived,
         }
     }
@@ -151,7 +155,8 @@ impl App {
     }
 
     pub fn is_task_blocked_at(&self, task_idx: usize) -> bool {
-        self.task_ui.cached_task_blocked
+        self.task_ui
+            .cached_task_blocked
             .get(task_idx)
             .copied()
             .unwrap_or(false)
@@ -178,7 +183,8 @@ impl App {
     }
 
     pub fn dashboard_task(&self, index: usize) -> Option<&crate::model::Task> {
-        self.task_ui.cached_dashboard_tasks
+        self.task_ui
+            .cached_dashboard_tasks
             .get(index)
             .map(|&i| &self.data.tasks[i])
     }
@@ -322,7 +328,10 @@ impl App {
         self.task_ui.task_filter = self.task_ui.task_filter.next();
         self.recompute_task_caches();
         self.task_ui.task_state.select(Some(0));
-        self.set_status(format!("Filter: {}", self.task_ui.task_filter.label()), false);
+        self.set_status(
+            format!("Filter: {}", self.task_ui.task_filter.label()),
+            false,
+        );
     }
 
     pub fn toggle_bulk_mode(&mut self) {
@@ -370,9 +379,13 @@ impl App {
             self.task_ui.subtask_state.select(None);
         } else if self.task_ui.subtask_selected >= n {
             self.task_ui.subtask_selected = n - 1;
-            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
+            self.task_ui
+                .subtask_state
+                .select(Some(self.task_ui.subtask_selected));
         } else {
-            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
+            self.task_ui
+                .subtask_state
+                .select(Some(self.task_ui.subtask_selected));
         }
     }
 
@@ -415,7 +428,9 @@ impl App {
         }
         let cur = self.task_ui.subtask_selected as i32;
         self.task_ui.subtask_selected = (cur + delta).rem_euclid(n as i32) as usize;
-        self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
+        self.task_ui
+            .subtask_state
+            .select(Some(self.task_ui.subtask_selected));
         if let Some(s) = self
             .data
             .task(id)
@@ -439,7 +454,9 @@ impl App {
             self.task_ui.subtask_state.select(None);
         } else {
             self.task_ui.subtask_selected = t.subtasks.iter().position(|s| !s.done).unwrap_or(0);
-            self.task_ui.subtask_state.select(Some(self.task_ui.subtask_selected));
+            self.task_ui
+                .subtask_state
+                .select(Some(self.task_ui.subtask_selected));
         }
     }
 

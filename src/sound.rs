@@ -216,11 +216,17 @@ pub fn play_pause() {
 }
 
 pub fn play_resume() {
-    play_sound(include_bytes!("../assets/sounds/resume.mp3"), fallback_click);
+    play_sound(
+        include_bytes!("../assets/sounds/resume.mp3"),
+        fallback_click,
+    );
 }
 
 pub fn play_warning() {
-    play_sound(include_bytes!("../assets/sounds/warning.mp3"), fallback_soft);
+    play_sound(
+        include_bytes!("../assets/sounds/warning.mp3"),
+        fallback_soft,
+    );
 }
 
 pub fn play_skip() {

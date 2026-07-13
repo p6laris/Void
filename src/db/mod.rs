@@ -103,15 +103,15 @@ impl Database {
              ORDER BY completed_at DESC
              LIMIT ?1 OFFSET ?2",
         )?;
-        let rows = stmt.query_map(params![limit as i64, offset as i64], focus_session_id_and_record)?;
+        let rows = stmt.query_map(
+            params![limit as i64, offset as i64],
+            focus_session_id_and_record,
+        )?;
         let tags_by_session = load_all_session_tags(&self.conn)?;
         let mut out = Vec::new();
         for row in rows {
             let (id, mut record) = row?;
-            record.tags = tags_by_session
-                .get(&id)
-                .cloned()
-                .unwrap_or_default();
+            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
             out.push(StoredSession { id, record });
         }
         Ok(out)
@@ -129,10 +129,7 @@ impl Database {
             .conn
             .prepare("SELECT completed_at, minutes FROM focus_sessions")?;
         let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, u32>(1)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
         })?;
 
         let mut hours = [0u32; 24];
@@ -157,10 +154,7 @@ impl Database {
         let mut out = Vec::new();
         for row in rows {
             let (id, mut record) = row?;
-            record.tags = tags_by_session
-                .get(&id)
-                .cloned()
-                .unwrap_or_default();
+            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
             out.push(StoredSession { id, record });
         }
         Ok(out)
@@ -254,8 +248,7 @@ impl Database {
     pub fn sync_sort_orders(&self, tasks: &IndexMap<u64, Task>) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         {
-            let mut stmt =
-                tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
+            let mut stmt = tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
             for task in tasks.values() {
                 stmt.execute(params![task.sort_order, task.id as i64])?;
             }
@@ -266,7 +259,11 @@ impl Database {
 
     pub fn persist_session_stats(&self, data: &AppData) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
-        set_setting_conn(&tx, "total_focus_minutes", data.total_focus_minutes.to_string())?;
+        set_setting_conn(
+            &tx,
+            "total_focus_minutes",
+            data.total_focus_minutes.to_string(),
+        )?;
         set_setting_conn(&tx, "total_sessions", data.total_sessions.to_string())?;
         set_setting_conn(&tx, "streak_days", data.streak_days.to_string())?;
         set_setting_conn(
@@ -274,7 +271,11 @@ impl Database {
             "last_session_date",
             data.last_session_date.clone().unwrap_or_default(),
         )?;
-        set_setting_conn(&tx, "today_focus_minutes", data.today_focus_minutes.to_string())?;
+        set_setting_conn(
+            &tx,
+            "today_focus_minutes",
+            data.today_focus_minutes.to_string(),
+        )?;
         set_setting_conn(
             &tx,
             "today_date",
@@ -422,11 +423,7 @@ impl Database {
         Ok(out)
     }
 
-    fn focus_minutes_in_range(
-        &self,
-        start: &str,
-        end: &str,
-    ) -> Result<HashMap<String, u32>> {
+    fn focus_minutes_in_range(&self, start: &str, end: &str) -> Result<HashMap<String, u32>> {
         let mut stmt = self.conn.prepare(
             "SELECT date, COALESCE(SUM(minutes), 0) AS mins
              FROM focus_sessions
@@ -677,18 +674,9 @@ pub(crate) fn load_tasks(conn: &Connection) -> Result<IndexMap<u64, Task>> {
     let mut tasks = IndexMap::new();
     for row in rows {
         let mut task = row?;
-        task.tags = tags_by_task
-            .get(&task.id)
-            .cloned()
-            .unwrap_or_default();
-        task.subtasks = subtasks_by_task
-            .get(&task.id)
-            .cloned()
-            .unwrap_or_default();
-        task.blocked_by = blocked_by_task
-            .get(&task.id)
-            .cloned()
-            .unwrap_or_default();
+        task.tags = tags_by_task.get(&task.id).cloned().unwrap_or_default();
+        task.subtasks = subtasks_by_task.get(&task.id).cloned().unwrap_or_default();
+        task.blocked_by = blocked_by_task.get(&task.id).cloned().unwrap_or_default();
         tasks.insert(task.id, task);
     }
     Ok(tasks)
@@ -866,10 +854,11 @@ fn load_session_tags(conn: &Connection, session_id: i64) -> Result<Vec<String>> 
 }
 
 fn load_all_session_tags(conn: &Connection) -> Result<HashMap<i64, Vec<String>>> {
-    let mut stmt = conn.prepare(
-        "SELECT session_id, tag FROM session_tags ORDER BY session_id ASC, tag ASC",
-    )?;
-    let rows = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+    let mut stmt =
+        conn.prepare("SELECT session_id, tag FROM session_tags ORDER BY session_id ASC, tag ASC")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
     let mut map: HashMap<i64, Vec<String>> = HashMap::new();
     for row in rows {
         let (session_id, tag) = row?;
@@ -973,13 +962,20 @@ fn parse_datetime_sql(s: &str) -> rusqlite::Result<DateTime<Utc>> {
         rusqlite::Error::FromSqlConversionFailure(
             0,
             rusqlite::types::Type::Text,
-            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string())),
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e.to_string(),
+            )),
         )
     })
 }
 
 fn bool_str(v: bool) -> &'static str {
-    if v { "1" } else { "0" }
+    if v {
+        "1"
+    } else {
+        "0"
+    }
 }
 
 fn parse_bool(s: &str, default: bool) -> bool {
@@ -1150,7 +1146,10 @@ mod tests {
         let series = db.focus_minutes_series(7).unwrap();
         let today_key = crate::date::format_date(today);
         assert_eq!(
-            series.iter().find(|(key, _)| key == &today_key).map(|(_, m)| *m),
+            series
+                .iter()
+                .find(|(key, _)| key == &today_key)
+                .map(|(_, m)| *m),
             Some(0)
         );
     }

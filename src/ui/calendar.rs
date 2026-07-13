@@ -7,12 +7,7 @@ use ratatui::Frame;
 use crate::app::Theme;
 
 /// Ratatui's calendar widget uses `time::Date`; this module isolates that from chrono elsewhere.
-pub fn render_due_date_calendar(
-    frame: &mut Frame,
-    area: Rect,
-    date: NaiveDate,
-    theme: &Theme,
-) {
+pub fn render_due_date_calendar(frame: &mut Frame, area: Rect, date: NaiveDate, theme: &Theme) {
     let Ok(time_date) = time::Date::from_calendar_date(
         date.year(),
         time::Month::try_from(date.month() as u8).unwrap_or(time::Month::January),

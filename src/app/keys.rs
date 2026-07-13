@@ -214,7 +214,8 @@ impl App {
                 };
 
                 let earliest = self
-                    .stats.heatmap_data
+                    .stats
+                    .heatmap_data
                     .first()
                     .and_then(|(d, _)| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
                     .unwrap_or(today);
@@ -278,7 +279,8 @@ impl App {
                 self.refresh_recent_sessions();
             }
             KeyCode::Char(']') => {
-                let max_page = self.stats.stats_session_total.saturating_sub(1) / App::SESSIONS_PER_PAGE;
+                let max_page =
+                    self.stats.stats_session_total.saturating_sub(1) / App::SESSIONS_PER_PAGE;
                 if self.stats.stats_session_page < max_page {
                     self.stats.stats_session_page += 1;
                     self.stats.stats_session_selected = 0;
