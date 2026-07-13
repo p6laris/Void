@@ -161,7 +161,7 @@ cargo run
 Before submitting a pull request, please ensure the code is formatted and passes all lints:
 ```bash
 cargo fmt
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 ```
 
 ## 📄 License
