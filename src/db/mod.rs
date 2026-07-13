@@ -1199,15 +1199,17 @@ mod tests {
     #[test]
     fn persist_session_stats_round_trips_all_fields() {
         let db = Database::open_in_memory().unwrap();
-        let mut data = AppData::default();
-        data.total_focus_minutes = 120;
-        data.total_sessions = 5;
-        data.streak_days = 3;
-        data.last_session_date = Some("2026-07-02".into());
-        data.today_focus_minutes = 50;
-        data.today_date = Some("2026-07-03".into());
-        data.goal_streak_days = 2;
-        data.last_goal_date = Some("2026-07-02".into());
+        let data = AppData {
+            total_focus_minutes: 120,
+            total_sessions: 5,
+            streak_days: 3,
+            last_session_date: Some("2026-07-02".into()),
+            today_focus_minutes: 50,
+            today_date: Some("2026-07-03".into()),
+            goal_streak_days: 2,
+            last_goal_date: Some("2026-07-02".into()),
+            ..Default::default()
+        };
 
         db.persist_session_stats(&data).unwrap();
         let loaded = db.load_app_data().unwrap();

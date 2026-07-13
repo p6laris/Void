@@ -906,8 +906,10 @@ mod tests {
     #[test]
     fn auto_archive_old_tasks_persists_archived_tasks() {
         let db = Database::open_in_memory().unwrap();
-        let mut data = AppData::default();
-        data.archive_after_days = 30;
+        let mut data = AppData {
+            archive_after_days: 30,
+            ..Default::default()
+        };
 
         let mut old = Task::new(1, "Old done".into());
         old.status = TaskStatus::Done;
@@ -935,8 +937,10 @@ mod tests {
     #[test]
     fn recurring_spawn_assigns_unique_subtask_ids() {
         let db = Database::open_in_memory().unwrap();
-        let mut data = AppData::default();
-        data.next_id = 2;
+        let mut data = AppData {
+            next_id: 2,
+            ..Default::default()
+        };
 
         let mut task = Task::new(1, "Daily".into());
         task.recurrence = TaskRecurrence::Daily;
