@@ -17,7 +17,6 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(if on_break { 3 } else { 0 }),
             Constraint::Length(2),
         ])
         .split(area);
@@ -122,8 +121,14 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
     );
 
     if on_break {
-        draw_break_tip(f, chunks[1], t, mc, theme.text, theme.dim, icons.heart);
+        let tip_area = Rect {
+            x: chunks[0].x,
+            y: chunks[0].y + chunks[0].height.saturating_sub(1),
+            width: chunks[0].width,
+            height: 1,
+        };
+        draw_break_tip(f, tip_area, t, mc, theme.text, theme.dim, icons.heart);
     }
 
-    chrome::draw_zen_footer(f, app, chunks[2]);
+    chrome::draw_zen_footer(f, app, chunks[1]);
 }
