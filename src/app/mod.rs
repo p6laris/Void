@@ -400,10 +400,8 @@ impl App {
 
     pub fn tick_rate(&self) -> Duration {
         match self.timer.state {
-            TimerState::Running => Duration::from_millis(50),
-            TimerState::Paused => Duration::from_millis(100),
-            TimerState::Idle => Duration::from_millis(100),
-            _ => Duration::from_millis(200),
+            TimerState::Running | TimerState::Finished => Duration::from_millis(100),
+            TimerState::Idle | TimerState::Paused => Duration::from_millis(150),
         }
     }
 

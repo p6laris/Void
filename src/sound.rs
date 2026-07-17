@@ -13,22 +13,38 @@ use std::thread;
 static AUDIO_TX: OnceLock<mpsc::Sender<&'static [u8]>> = OnceLock::new();
 
 pub fn init_audio() {
+    // Just register the channel — audio thread starts lazily on first sound
     let (tx, rx) = mpsc::channel();
     if AUDIO_TX.set(tx).is_err() {
-        return; // Already initialized
+        return;
     }
 
     thread::spawn(move || {
+        // Block until the very first sound request arrives
+        let first = match rx.recv() {
+            Ok(bytes) => bytes,
+            Err(_) => return,
+        };
+
         #[cfg(target_os = "linux")]
         let _silencer = StderrSilencer::new();
 
         let (_stream, stream_handle) = match OutputStream::try_default() {
             Ok(s) => s,
-            Err(_) => return, // No audio device available
+            Err(_) => return,
         };
 
         #[cfg(target_os = "linux")]
         drop(_silencer);
+
+        // Play the first sound that triggered initialization
+        if let Ok(sink) = Sink::try_new(&stream_handle) {
+            let cursor = Cursor::new(first);
+            if let Ok(decoder) = Decoder::new(cursor) {
+                sink.append(decoder);
+                sink.detach();
+            }
+        }
 
         // Keep receiving sounds as long as the app runs
         while let Ok(bytes) = rx.recv() {
