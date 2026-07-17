@@ -116,14 +116,21 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     let dim_style = Style::default().fg(theme.dim);
     let val_style = Style::default().fg(theme.text).add_modifier(Modifier::BOLD);
 
-    let summary_rows: [(&str, &str, String); 6] = [
+    let summary_rows: [(&str, &str, String); 7] = [
         (
             icons.fire,
             "Streak",
             format!(
-                "{}d / {}d goal {}{}",
-                app.data.streak_days, app.data.goal_streak_days,
-                icons.shield, app.data.streak_freezes
+                "{}d / {}d goal",
+                app.data.streak_days, app.data.goal_streak_days
+            ),
+        ),
+        (
+            icons.shield,
+            "Freezes",
+            format!(
+                "{} / {}",
+                app.data.streak_freezes, crate::model::STREAK_FREEZE_MAX
             ),
         ),
         (
