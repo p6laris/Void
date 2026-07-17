@@ -34,6 +34,7 @@ pub enum SettingsItem {
     WarnOneMinute,
     AutoPauseIdle,
     ArchiveAfterDays,
+    RestDays,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,6 +79,7 @@ impl SettingsState {
                 SettingsItem::EmptyQueueBehavior,
                 SettingsItem::LogBreaks,
                 SettingsItem::EstimateComplete,
+                SettingsItem::RestDays,
                 SettingsItem::TerminalTitle,
                 SettingsItem::WarnOneMinute,
                 SettingsItem::AutoPauseIdle,
@@ -394,6 +396,31 @@ impl App {
                     |d| &mut d.archive_after_days,
                 );
             }
+            SettingsItem::RestDays => {
+                // Cycle through weekdays: each press toggles the next day.
+                const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                // Find the next day to toggle based on direction.
+                let idx = if dir > 0 {
+                    // Find first non-rest day to add, or first rest day to remove.
+                    (0u8..7).find(|d| !self.data.streak_rest_days.contains(d)).unwrap_or(0)
+                } else {
+                    // Find last rest day to remove.
+                    (0u8..7).rev().find(|d| self.data.streak_rest_days.contains(d)).unwrap_or(0)
+                };
+                if self.data.streak_rest_days.contains(&idx) {
+                    self.data.streak_rest_days.retain(|d| *d != idx);
+                } else {
+                    self.data.streak_rest_days.push(idx);
+                    self.data.streak_rest_days.sort();
+                }
+                let label: Vec<&str> = self.data.streak_rest_days.iter()
+                    .filter_map(|d| DAYS.get(*d as usize).copied())
+                    .collect();
+                let display = if label.is_empty() { "none".to_string() } else { label.join(", ") };
+                self.persist_setting("streak_rest_days",
+                    self.data.streak_rest_days.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","));
+                self.set_status(format!("Rest days: {display}"), false);
+            }
             SettingsItem::ExportBackup => {}
         }
         self.sync_timer_config_to_data();
@@ -424,6 +451,7 @@ impl App {
         }
         (self.data.empty_queue_behavior as u8).hash(&mut hasher);
         (self.data.estimate_complete as u8).hash(&mut hasher);
+        self.data.streak_rest_days.hash(&mut hasher);
         hasher.finish()
     }
 
@@ -526,6 +554,18 @@ impl App {
                 key: "Estimate reached",
                 value: self.data.estimate_complete.label().to_string(),
                 desc: "nudge / off / auto-done",
+            },
+            {
+                const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                let names: Vec<&str> = self.data.streak_rest_days.iter()
+                    .filter_map(|d| DAYS.get(*d as usize).copied())
+                    .collect();
+                let rest_val = if names.is_empty() { "none".to_string() } else { names.join(", ") };
+                CachedSettingsLabel {
+                    key: "Rest days",
+                    value: rest_val,
+                    desc: "+/- to toggle days",
+                }
             },
             CachedSettingsLabel {
                 key: "Export backup",
