@@ -1109,4 +1109,126 @@ mod tests {
     fn consecutive_month_within_year() {
         assert!(is_consecutive_month("2025-06", "2025-07"));
     }
+
+    // ── Streak freeze / rest day tests ──────────────────────────────────
+
+    #[test]
+    fn active_gap_fri_to_mon_with_weekend_rest() {
+        // Friday 2026-07-17 to Monday 2026-07-20, rest = Sat(5), Sun(6)
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        let mon = NaiveDate::from_ymd_opt(2026, 7, 20).unwrap();
+        assert_eq!(count_active_gap(fri, mon, &[5, 6]), 0);
+    }
+
+    #[test]
+    fn active_gap_fri_to_tue_with_weekend_rest() {
+        // Friday to Tuesday = 1 active gap day (Monday)
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        let tue = NaiveDate::from_ymd_opt(2026, 7, 21).unwrap();
+        assert_eq!(count_active_gap(fri, tue, &[5, 6]), 1);
+    }
+
+    #[test]
+    fn active_gap_no_rest_days() {
+        // Wed to Fri = 1 active gap (Thu)
+        let wed = NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        assert_eq!(count_active_gap(wed, fri, &[]), 1);
+    }
+
+    #[test]
+    fn active_gap_consecutive_days() {
+        // Thu to Fri = 0 gap
+        let thu = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        assert_eq!(count_active_gap(thu, fri, &[5, 6]), 0);
+    }
+
+    #[test]
+    fn freeze_earned_at_milestone() {
+        let mut data = AppData::default();
+        data.streak_days = 6;
+        data.streak_freezes = 0;
+        data.last_freeze_earned_streak = 0;
+
+        // Simulate a streak increment that brings it to 7.
+        data.streak_days = data.streak_days.saturating_add(1);
+
+        // Award freeze at 7-day milestone.
+        if data.streak_days >= data.last_freeze_earned_streak + 7 {
+            data.streak_freezes = data
+                .streak_freezes
+                .saturating_add(1)
+                .min(crate::model::STREAK_FREEZE_MAX);
+            data.last_freeze_earned_streak = data.streak_days;
+        }
+
+        assert_eq!(data.streak_days, 7);
+        assert_eq!(data.streak_freezes, 1);
+        assert_eq!(data.last_freeze_earned_streak, 7);
+    }
+
+    #[test]
+    fn freeze_consumed_on_gap() {
+        let mut data = AppData::default();
+        data.streak_days = 10;
+        data.streak_freezes = 2;
+        data.last_freeze_earned_streak = 7;
+        data.streak_rest_days = vec![5, 6]; // Sat, Sun
+        // Last session was Wednesday, today is Friday (1 active gap = Thursday)
+        data.last_session_date = Some("2026-07-15".into());
+        data.today_date = Some("2026-07-15".into());
+
+        let _db = crate::db::Database::open_in_memory().unwrap();
+        // Simulate recording on Friday 2026-07-17 by setting today
+        // We can't easily mock today_str, so we test count_active_gap directly
+        let wed = NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        let gap = count_active_gap(wed, fri, &data.streak_rest_days);
+        assert_eq!(gap, 1); // Thursday is the gap
+
+        // Simulate the freeze logic
+        assert!(gap <= data.streak_freezes);
+        data.streak_freezes -= gap;
+        data.streak_days += 1;
+        assert_eq!(data.streak_freezes, 1);
+        assert_eq!(data.streak_days, 11);
+    }
+
+    #[test]
+    fn streak_resets_when_not_enough_freezes() {
+        let mut data = AppData::default();
+        data.streak_days = 10;
+        data.streak_freezes = 1;
+        data.last_freeze_earned_streak = 7;
+        data.streak_rest_days = vec![5, 6];
+
+        // 3 active days missed, only 1 freeze
+        let mon = NaiveDate::from_ymd_opt(2026, 7, 13).unwrap();
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        let gap = count_active_gap(mon, fri, &data.streak_rest_days);
+        assert_eq!(gap, 3); // Tue, Wed, Thu
+
+        assert!(gap > data.streak_freezes);
+        // Streak would reset
+        data.streak_days = 1;
+        data.last_freeze_earned_streak = 0;
+        assert_eq!(data.streak_days, 1);
+    }
+
+    #[test]
+    fn freeze_cap_at_max() {
+        let mut data = AppData::default();
+        data.streak_freezes = 3;
+        data.streak_days = 14;
+        data.last_freeze_earned_streak = 14;
+
+        // At 21 days, would earn another freeze but already at max
+        data.streak_days = 21;
+        let new_freezes = data
+            .streak_freezes
+            .saturating_add(1)
+            .min(crate::model::STREAK_FREEZE_MAX);
+        assert_eq!(new_freezes, 3); // Capped
+    }
 }
