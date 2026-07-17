@@ -24,7 +24,7 @@ pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
         Line::from("  r           Reset timer"),
         Line::from("  n           Skip (logs elapsed; does not advance pomodoro cycle)"),
         Line::from("  E           End session (pause + summary)"),
-        Line::from("  m           Cycle mode (Focus / Short / Long / Custom)"),
+        Line::from("  m           Toggle mode (Focus / Custom)"),
         Line::from("  + / =       Increase duration by 1 min"),
         Line::from("  -           Decrease duration by 1 min"),
         Line::from("  z           Toggle Zen mode (distraction-free timer)"),
