@@ -501,6 +501,10 @@ impl App {
                 Ok(counts) => self.stats.session_counts = counts,
                 Err(e) => self.set_status(format!("Stats error: {e}"), true),
             }
+            match storage::tag_analytics(&self.db, &self.data, 30) {
+                Ok(data) => self.stats.tag_analytics = data,
+                Err(e) => self.set_status(format!("Tag analytics error: {e}"), true),
+            }
             self.stats.chart_dirty = false;
         }
     }
