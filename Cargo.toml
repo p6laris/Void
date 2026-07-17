@@ -41,6 +41,12 @@ indexmap = { version = "2.14.0", features = ["serde"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2.186"
 
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 opt-level = 3
 lto = true
