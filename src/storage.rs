@@ -338,16 +338,34 @@ pub fn record_focus_session_with_meta(
             let last_date = chrono::NaiveDate::parse_from_str(last, "%Y-%m-%d").ok();
             let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").ok();
             if let (Some(l), Some(t)) = (last_date, today_date) {
-                if l.succ_opt() == Some(t) {
+                let gap = count_active_gap(l, t, &data.streak_rest_days);
+                if gap == 0 {
+                    // Only rest days in between — streak continues.
                     data.streak_days = data.streak_days.saturating_add(1);
-                } else if t != l {
+                } else if gap <= data.streak_freezes {
+                    // Consume freezes to cover missed active days.
+                    data.streak_freezes -= gap;
+                    data.streak_days = data.streak_days.saturating_add(1);
+                } else {
+                    // Not enough freezes — streak resets.
                     data.streak_days = 1;
+                    data.last_freeze_earned_streak = 0;
                 }
             } else {
                 data.streak_days = 1;
+                data.last_freeze_earned_streak = 0;
             }
         }
-        None => data.streak_days = 1,
+        None => {
+            data.streak_days = 1;
+            data.last_freeze_earned_streak = 0;
+        }
+    }
+    // Award a freeze at every 7-day milestone.
+    if data.streak_days >= data.last_freeze_earned_streak + 7 {
+        data.streak_freezes =
+            data.streak_freezes.saturating_add(1).min(crate::model::STREAK_FREEZE_MAX);
+        data.last_freeze_earned_streak = data.streak_days;
     }
     data.last_session_date = Some(today.clone());
     data.today_date = Some(today.clone());
@@ -795,6 +813,25 @@ fn update_period_streaks(data: &mut AppData, today: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+/// Counts non-rest days strictly between `last` and `today` (exclusive of both).
+fn count_active_gap(last: NaiveDate, today: NaiveDate, rest_days: &[u8]) -> u32 {
+    let mut gap = 0u32;
+    let mut d = last;
+    loop {
+        d = match d.succ_opt() {
+            Some(next) => next,
+            None => break,
+        };
+        if d >= today {
+            break;
+        }
+        let weekday = d.weekday().num_days_from_monday() as u8;
+        if !rest_days.contains(&weekday) {
+            gap += 1;
+        }
+    }
+    gap
 }
 
 fn is_consecutive_week(prev: &str, cur: &str) -> bool {
