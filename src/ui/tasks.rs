@@ -515,16 +515,20 @@ fn draw_subtask_panel(f: &mut Frame, app: &mut App, area: Rect, task_idx: usize)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "[Tab] focus · j/k nav · x toggle · q back · - remove",
+                "[Tab] focus · j/k nav · Ctrl+j/k reorder · e edit · x toggle · - rm",
                 Style::default().fg(theme.dim),
             ),
         ]));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    app.task_ui
-        .subtask_state
-        .select(Some(app.task_ui.subtask_selected));
+    if app.task_ui.subtask_focus {
+        app.task_ui
+            .subtask_state
+            .select(Some(app.task_ui.subtask_selected));
+    } else {
+        app.task_ui.subtask_state.select(None);
+    }
     let items: Vec<ListItem> = task
         .subtasks
         .iter()

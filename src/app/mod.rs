@@ -66,6 +66,7 @@ pub enum Popup {
     ConfirmDelete(u64),
     EmptyQueueChoice,
     AddSubtask(u64),
+    EditSubtask(u64, u64), // (task_id, subtask_id)
     BulkConfirm(BulkAction),
 }
 

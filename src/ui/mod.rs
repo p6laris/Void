@@ -92,6 +92,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
             Some(crate::app::Popup::AddTask)
                 | Some(crate::app::Popup::EditTask(_))
                 | Some(crate::app::Popup::AddSubtask(_))
+                | Some(crate::app::Popup::EditSubtask(_, _))
         )
     {
         draw_input(f, app, chunks[2]);

@@ -35,7 +35,7 @@ impl App {
             KeyCode::Char('4') => self.ui.tab = FocusTab::Settings,
             KeyCode::Char('5') | KeyCode::Char('h') => self.ui.tab = FocusTab::Help,
             KeyCode::Char('6') => self.ui.tab = FocusTab::About,
-            KeyCode::Tab if self.ui.tab == FocusTab::Tasks && self.selected_subtask_count() > 0 => {
+            KeyCode::Tab if self.ui.tab == FocusTab::Tasks => {
                 self.toggle_subtask_focus();
             }
             KeyCode::Tab => self.next_tab(),
@@ -345,6 +345,9 @@ impl App {
                 }
             }
             KeyCode::Char('a') => self.open_add_task(),
+            KeyCode::Char('e') if self.task_ui.subtask_focus => {
+                self.open_edit_subtask();
+            }
             KeyCode::Char('e') => self.open_edit_task(),
             KeyCode::Char('d') => self.open_confirm_delete(),
             KeyCode::Char('v') => {
@@ -382,8 +385,13 @@ impl App {
                 }
             }
             KeyCode::Char('c') => self.open_add_subtask(),
-            KeyCode::Char('x') | KeyCode::Char('X') => self.toggle_subtask_on_selected(),
-            KeyCode::Char('-') | KeyCode::Char('_') => self.delete_subtask_on_selected(),
+            KeyCode::Char('x') | KeyCode::Char('X') if self.task_ui.subtask_focus => {
+                self.toggle_subtask_on_selected()
+            }
+            KeyCode::Char('-') | KeyCode::Char('_') if self.task_ui.subtask_focus => {
+                self.delete_subtask_on_selected()
+            }
+
             KeyCode::Enter if self.task_ui.bulk_mode => self.toggle_bulk_item(),
             KeyCode::Enter if self.task_ui.subtask_focus => self.toggle_subtask_on_selected(),
             KeyCode::Enter => {
@@ -426,6 +434,12 @@ impl App {
             }
             KeyCode::Up | KeyCode::Char('k') if !ctrl && self.task_ui.subtask_focus => {
                 self.move_subtask_selection(-1);
+            }
+            KeyCode::Down | KeyCode::Char('j') if ctrl && self.task_ui.subtask_focus => {
+                self.reorder_subtask(1);
+            }
+            KeyCode::Up | KeyCode::Char('k') if ctrl && self.task_ui.subtask_focus => {
+                self.reorder_subtask(-1);
             }
             KeyCode::Down | KeyCode::Char('j') if !ctrl => self.move_task_selection(1),
             KeyCode::Up | KeyCode::Char('k') if !ctrl => self.move_task_selection(-1),
