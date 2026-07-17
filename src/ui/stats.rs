@@ -120,17 +120,11 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
         (
             icons.fire,
             "Streak",
-            {
-                let base = format!(
-                    "{}d / {}d goal",
-                    app.data.streak_days, app.data.goal_streak_days
-                );
-                if app.data.streak_freezes > 0 {
-                    format!("{} {}{}",  base, icons.shield, app.data.streak_freezes)
-                } else {
-                    base
-                }
-            },
+            format!(
+                "{}d / {}d goal {}{}",
+                app.data.streak_days, app.data.goal_streak_days,
+                icons.shield, app.data.streak_freezes
+            ),
         ),
         (
             icons.timer,
