@@ -555,7 +555,7 @@ impl Default for AppData {
             timer_presets: default_timer_presets(),
             active_preset: None,
             streak_rest_days: default_rest_days(),
-            streak_freezes: 0,
+            streak_freezes: STREAK_FREEZE_MAX,
             last_freeze_earned_streak: 0,
         }
     }
