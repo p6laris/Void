@@ -224,7 +224,7 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     let block = section_panel(
         theme,
         Line::from(Span::styled(
-            format!(" {} This week ", icons.chart),
+            format!(" {} Last 7 days ", icons.chart),
             Style::default()
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
@@ -236,7 +236,7 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     if data.is_empty() {
         f.render_widget(
             Paragraph::new(Span::styled(
-                "No sessions this week",
+                "No sessions in the last 7 days",
                 Style::default().fg(theme.dim),
             ))
             .alignment(Alignment::Center),
@@ -284,6 +284,9 @@ fn render_week_chart(
         .saturating_sub(3)
         .min(7)
         .min(data.len());
+    if visible_days == 0 {
+        return;
+    }
     let start_idx = data.len() - visible_days;
 
     // Pre-compute shared styles.
