@@ -694,6 +694,39 @@ pub fn delete_subtask(
     Ok(())
 }
 
+pub fn move_subtask(
+    db: &Database,
+    data: &mut AppData,
+    task_id: u64,
+    from: usize,
+    to: usize,
+) -> Result<()> {
+    if let Some(t) = data.task_mut(task_id) {
+        if from < t.subtasks.len() && to < t.subtasks.len() && from != to {
+            let item = t.subtasks.remove(from);
+            t.subtasks.insert(to, item);
+            db.upsert_task(t)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn rename_subtask(
+    db: &Database,
+    data: &mut AppData,
+    task_id: u64,
+    subtask_id: u64,
+    new_title: String,
+) -> Result<()> {
+    if let Some(t) = data.task_mut(task_id) {
+        if let Some(s) = t.subtask_mut(subtask_id) {
+            s.title = new_title;
+            db.upsert_task(t)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn set_task_recurrence(
     db: &Database,
     data: &mut AppData,

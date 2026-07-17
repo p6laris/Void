@@ -2,7 +2,7 @@ use super::*;
 
 fn popup_size(popup: &crate::app::Popup) -> (u16, u16) {
     match popup {
-        crate::app::Popup::AddSubtask(_) => (48, 24),
+        crate::app::Popup::AddSubtask(_) | crate::app::Popup::EditSubtask(_, _) => (48, 24),
         crate::app::Popup::ConfirmDelete(_)
         | crate::app::Popup::BulkConfirm(_)
         | crate::app::Popup::EmptyQueueChoice => (50, 28),
@@ -12,7 +12,7 @@ fn popup_size(popup: &crate::app::Popup) -> (u16, u16) {
 
 fn popup_min_size(popup: &crate::app::Popup) -> (u16, u16) {
     match popup {
-        crate::app::Popup::AddSubtask(_) => (36, 10),
+        crate::app::Popup::AddSubtask(_) | crate::app::Popup::EditSubtask(_, _) => (36, 10),
         _ => (32, 10),
     }
 }
@@ -50,6 +50,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
                 crate::app::Popup::ConfirmDelete(_) => format!(" {} Confirm Delete ", icons.delete),
                 crate::app::Popup::EmptyQueueChoice => format!(" {} All Tasks Done ", icons.check),
                 crate::app::Popup::AddSubtask(_) => format!(" {} Add Subtask ", icons.plus),
+                crate::app::Popup::EditSubtask(_, _) => format!(" {} Edit Subtask ", icons.edit),
                 crate::app::Popup::BulkConfirm(_) => format!(" {} Bulk Action ", icons.tasks),
             },
             Style::default()
@@ -221,6 +222,9 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
         }
         crate::app::Popup::AddSubtask(id) => {
             draw_add_subtask_popup(f, app, body, *id);
+        }
+        crate::app::Popup::EditSubtask(task_id, _sub_id) => {
+            draw_add_subtask_popup(f, app, body, *task_id);
         }
         crate::app::Popup::BulkConfirm(action) => {
             let theme = &app.theme;
