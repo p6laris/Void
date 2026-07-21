@@ -5,84 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-beta.1] - 2026-07-13
 
-## [0.3.0-alpha.7](https://github.com/p6laris/Void/compare/v0.3.0-alpha.6...v0.3.0-alpha.7) - 2026-06-22
+### 🚀 Features
 
-### Added
+- *(ui)* Detach dashboard task view from tasks tab filters
+- *(db)* Add cli export and import support for full database state
 
-- *(audio)* embed rich audio notifications via rodio
-- *(ui)* add About tab with Ursa Minor art
+### 🐛 Bug Fixes
 
-### Other
+- *(ui)* Improve task filter behavior and header count display
+- *(ui)* Remove inactive filter keybindings from dashboard view
+- *(db)* Preserve full session metadata in export and import
+- *(keys)* Remove duplicate bulk-mode Esc handler
+- *(storage)* Exclude archived tasks from auto-pick
+- *(storage)* Only adjust today focus for same-day sessions
+- *(db)* Return errors from parse_datetime instead of silently replacing
+- *(storage)* Correct weekly and monthly streaks across year boundaries
+- *(stats)* Avoid panics when selecting stats sessions
+- *(ui)* Guard heatmap month labels and empty week chart
+- *(ui)* Give Help and About separate scroll state
+- *(storage)* Return error when update_task id is missing
+- *(cli)* Reject invalid task ids and handle import flush errors
+- *(storage)* Assign unique subtask ids on recurring spawn
+- *(ci)* Harden publish release workflow push and token handling
 
-- Enhance Stats tab with heatmap filter, tag analytics, and gamified goals. Fixes #37
-- Add mouse scrolling support and update help footer hint
-- Add scrollable Help tab and update dashboard key hints
-- Improved dashboard task handling with Details pane and subtask toggling (Fixes #37)
-- Heatmap cell alignment using centered block
-- Reset timer mode to Focus on fresh launch (Fixes #40)
-- Update footer hint for Zen mode keybindings
-- Enhance Zen mode task handling (Fixes #35, Fixes #36)
-- Enable auto_advance_task by default
-- Improve daily timeline and summary panel graphs
+### 🚜 Refactor
 
-## [0.3.0-alpha.6](https://github.com/p6laris/Void/compare/v0.3.0-alpha.5...v0.3.0-alpha.6) - 2026-06-14
+- *(popups)* Centralize confirmed task delete handling
+- Add today_str helper for local date formatting
+- Centralize task lookup and static bool settings
+- *(model)* Add TimerMode::is_break method
+- *(sound)* Send clips directly to the audio worker
+- *(data)* Drop in-memory session_history from AppData
+- *(theme)* Remove ThemeTokens in favor of Theme
+- *(app)* Split App into UiState, InputState, TaskUiState, StatsState
+- *(db)* Extract timer mode encode/decode to encoding.rs
+- *(db)* Centralize FocusSessionRecord row mapping
+- *(app)* Dedupe stats session refresh after heatmap edits
+- Dedupe mark-done, themed_panel, and task status colors
+- *(settings)* Dedupe persisted timer setting adjustments
+- Centralize open-task checks and date formatting
+- *(ui)* Share streak, goal, and session chips in chrome
+- *(ui)* Share footer layout between normal and zen modes
+- *(ui)* Centralize inline subtask line rendering
 
-### Other
+### 📚 Documentation
 
-- release v0.3.0-alpha.5
-- release v0.3.0-alpha.4
-- gitignore Cursor project config
-- Initial commit: Void terminal focus timer
+- Update screenshots and add Zen Mode to README
+- Add custom theme documentation to README
+- Add data import and export section to README
+- Update clippy command to include --all-targets
 
-## [0.3.0-alpha.5](https://github.com/p6laris/Void/compare/v0.3.0-alpha.4...v0.3.0-alpha.5) - 2026-06-14
+### ⚡ Performance
 
-### Other
+- *(db)* Bulk-load task tags, subtasks, and blockers
+- *(db)* Bulk-load session tags for session queries
+- *(app)* Split bump helpers and drop duplicate cache recompute
+- *(db)* Load chart focus minutes with one grouped query
+- *(db)* Load session mode counts with one grouped query
+- *(db)* Persist session stats in one transaction
+- *(db)* Reuse prepared statement when saving settings
+- *(storage)* Batch auto-archive task writes in one transaction
+- *(app)* Avoid allocating dashboard task list each call
+- *(ui)* Cache today date and focus minutes per frame
+- *(app)* Cache sorted task tags for tag filter cycling
+- *(db)* Reuse prepared statement in sync_sort_orders
+- *(app)* Throttle terminal window title updates
+- *(app)* Cache task blocked status in recompute_task_caches
+- *(ui)* Avoid cloning theme in draw_tasks each frame
+- *(ui)* Clone popup only when one is open
+- *(ui)* Cache settings label strings between redraws
+- *(ui)* Reuse date key buffer in heatmap grid build
+- *(ui)* Avoid cloning task for subtask panel each frame
+- *(db)* Run PRAGMA optimize after migrations and imports
+- *(model)* Store tasks in IndexMap for O(1) ID lookups
 
-- release v0.3.0-alpha.4
-- gitignore Cursor project config
-- Initial commit: Void terminal focus timer
+### 🎨 Styling
 
-## [0.3.0-alpha.4](https://github.com/p6laris/Void/compare/v0.3.0-alpha.3...v0.3.0-alpha.4) - 2026-06-14
+- Fix clippy warnings and unused imports
+- Apply cargo fmt
 
-### Other
+### 🧪 Testing
 
-- gitignore Cursor project config
-- Initial commit: Void terminal focus timer
+- Fix clippy test warnings for struct defaults
 
-## [0.3.0-alpha.3](https://github.com/p6laris/Void/compare/v0.3.0-alpha.2...v0.3.0-alpha.3) - 2026-06-14
 
-### Fixed
-
-- make Duration import windows-only to avoid unused_import warning on unix
-- add missing Duration import for windows build
-
-### Other
-
-- pack the long fucntion param
-- deduplicate task selection and settings helpers
-- add editorconfig, rust-toolchain, and contributing guide
-- split ui/mod.rs into focused sub-modules
-- split app.rs into focused sub-modules
-- release v0.3.0-alpha.2
-- remove chocolatey support and fix rustfmt issues
-- remove Chocolatey packaging scripts and configuration
-- introduce TaskPayload struct to consolidate task creation and update arguments
-- group drawing parameters to resolve too_many_arguments warning
-- initial commit
-
-## [0.3.0-alpha.2](https://github.com/p6laris/Void/compare/v0.3.0-alpha.1...v0.3.0-alpha.2) - 2026-06-13
-
-### Fixed
-
-- make Duration import windows-only to avoid unused_import warning on unix
-- add missing Duration import for windows build
-
-### Other
-
-- remove chocolatey support and fix rustfmt issues
-- remove Chocolatey packaging scripts and configuration
-- introduce TaskPayload struct to consolidate task creation and update arguments
-- group drawing parameters to resolve too_many_arguments warning
-- initial commit
