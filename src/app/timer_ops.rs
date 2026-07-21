@@ -283,10 +283,8 @@ impl App {
             return;
         }
         let next = match self.timer.mode {
-            TimerMode::Focus => TimerMode::ShortBreak,
-            TimerMode::ShortBreak => TimerMode::LongBreak,
-            TimerMode::LongBreak => TimerMode::Custom,
             TimerMode::Custom => TimerMode::Focus,
+            _ => TimerMode::Custom,
         };
         self.timer.configure(next);
         self.set_status(format!("Mode: {}", next.label()), false);

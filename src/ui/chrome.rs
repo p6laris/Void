@@ -24,6 +24,17 @@ fn streak_goal_chips(app: &App, theme: &crate::app::Theme, icons: IconSet) -> Ve
         ),
         Span::raw(" "),
         chip(
+            icons.shield,
+            format!(
+                "{}/{}",
+                app.data.streak_freezes,
+                crate::model::STREAK_FREEZE_MAX
+            ),
+            theme.dim,
+            theme.panel_border,
+        ),
+        Span::raw(" "),
+        chip(
             icons.target,
             format!("{}/{}", format_minutes(today), format_minutes(goal)),
             if goal_met { theme.success } else { theme.text },

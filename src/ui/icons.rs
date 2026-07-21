@@ -48,6 +48,7 @@ pub struct IconSet {
     pub focus: &'static str,
     pub heart: &'static str,
     pub dot: &'static str,
+    pub shield: &'static str,
 }
 
 const NERD: IconSet = IconSet {
@@ -86,6 +87,7 @@ const NERD: IconSet = IconSet {
     focus: md::MD_CROSSHAIRS,
     heart: md::MD_HEART,
     dot: "·",
+    shield: md::MD_SHIELD,
 };
 
 const ASCII: IconSet = IconSet {
@@ -124,6 +126,7 @@ const ASCII: IconSet = IconSet {
     focus: "*",
     heart: "<3",
     dot: ".",
+    shield: "S",
 };
 
 impl IconSet {

@@ -66,6 +66,7 @@ pub enum Popup {
     ConfirmDelete(u64),
     EmptyQueueChoice,
     AddSubtask(u64),
+    EditSubtask(u64, u64), // (task_id, subtask_id)
     BulkConfirm(BulkAction),
 }
 
@@ -399,10 +400,8 @@ impl App {
 
     pub fn tick_rate(&self) -> Duration {
         match self.timer.state {
-            TimerState::Running => Duration::from_millis(50),
-            TimerState::Paused => Duration::from_millis(100),
-            TimerState::Idle => Duration::from_millis(100),
-            _ => Duration::from_millis(200),
+            TimerState::Running | TimerState::Finished => Duration::from_millis(100),
+            TimerState::Idle | TimerState::Paused => Duration::from_millis(150),
         }
     }
 
@@ -500,6 +499,10 @@ impl App {
             match self.db.session_counts_by_mode() {
                 Ok(counts) => self.stats.session_counts = counts,
                 Err(e) => self.set_status(format!("Stats error: {e}"), true),
+            }
+            match storage::tag_analytics(&self.db, &self.data, 30) {
+                Ok(data) => self.stats.tag_analytics = data,
+                Err(e) => self.set_status(format!("Tag analytics error: {e}"), true),
             }
             self.stats.chart_dirty = false;
         }

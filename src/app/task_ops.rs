@@ -529,4 +529,42 @@ impl App {
         self.clamp_task_selection_after_mutation();
         self.set_status("Task archived.", false);
     }
+
+    pub fn reorder_subtask(&mut self, dir: i32) {
+        let Some(task_id) = self.selected_task_id() else {
+            return;
+        };
+        let Some(t) = self.data.task(task_id) else {
+            return;
+        };
+        let n = t.subtasks.len();
+        if n < 2 {
+            return;
+        }
+        let idx = self.task_ui.subtask_selected;
+        let new_idx = (idx as i32 + dir).clamp(0, n as i32 - 1) as usize;
+        if idx == new_idx {
+            return;
+        }
+        self.persist_data(|db, data| storage::move_subtask(db, data, task_id, idx, new_idx));
+        self.task_ui.subtask_selected = new_idx;
+        self.task_ui.subtask_state.select(Some(new_idx));
+        self.bump_tasks();
+    }
+
+    pub fn open_edit_subtask(&mut self) {
+        let Some(task_id) = self.selected_task_id() else {
+            return;
+        };
+        let Some(t) = self.data.task(task_id) else {
+            return;
+        };
+        let Some(sub) = t.subtasks.get(self.task_ui.subtask_selected) else {
+            self.set_status("No subtask selected.", true);
+            return;
+        };
+        self.input.input_buffer = sub.title.clone();
+        self.input.popup = Some(Popup::EditSubtask(task_id, sub.id));
+        self.input.input_mode = InputMode::Editing;
+    }
 }

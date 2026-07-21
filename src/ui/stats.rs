@@ -116,13 +116,22 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     let dim_style = Style::default().fg(theme.dim);
     let val_style = Style::default().fg(theme.text).add_modifier(Modifier::BOLD);
 
-    let summary_rows: [(&str, &str, String); 6] = [
+    let summary_rows: [(&str, &str, String); 7] = [
         (
             icons.fire,
             "Streak",
             format!(
                 "{}d / {}d goal",
                 app.data.streak_days, app.data.goal_streak_days
+            ),
+        ),
+        (
+            icons.shield,
+            "Freezes",
+            format!(
+                "{} / {}",
+                app.data.streak_freezes,
+                crate::model::STREAK_FREEZE_MAX
             ),
         ),
         (
@@ -224,7 +233,7 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     let block = section_panel(
         theme,
         Line::from(Span::styled(
-            format!(" {} This week ", icons.chart),
+            format!(" {} Last 7 days ", icons.chart),
             Style::default()
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
@@ -236,7 +245,7 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     if data.is_empty() {
         f.render_widget(
             Paragraph::new(Span::styled(
-                "No sessions this week",
+                "No sessions in the last 7 days",
                 Style::default().fg(theme.dim),
             ))
             .alignment(Alignment::Center),
@@ -284,6 +293,9 @@ fn render_week_chart(
         .saturating_sub(3)
         .min(7)
         .min(data.len());
+    if visible_days == 0 {
+        return;
+    }
     let start_idx = data.len() - visible_days;
 
     // Pre-compute shared styles.

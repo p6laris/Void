@@ -122,6 +122,26 @@ impl App {
                     false,
                 );
             }
+            Some(Popup::EditSubtask(task_id, sub_id)) => {
+                let title = self.input.input_buffer.trim().to_string();
+                if title.is_empty() {
+                    self.set_status("Subtask title cannot be empty.", true);
+                    return;
+                }
+                if let Err(e) = storage::rename_subtask(
+                    &self.db,
+                    &mut self.data,
+                    task_id,
+                    sub_id,
+                    title.clone(),
+                ) {
+                    self.set_status(format!("Save error: {e}"), true);
+                    return;
+                }
+                self.bump_tasks();
+                self.close_popup();
+                self.set_status(format!("Subtask renamed to \"{title}\""), false);
+            }
             Some(Popup::BulkConfirm(action)) => {
                 let ids: Vec<u64> = self.task_ui.bulk_selected.iter().copied().collect();
                 let result = match action {
@@ -217,7 +237,10 @@ impl App {
             }
             return;
         }
-        if matches!(self.input.popup, Some(Popup::AddSubtask(_))) {
+        if matches!(
+            self.input.popup,
+            Some(Popup::AddSubtask(_)) | Some(Popup::EditSubtask(_, _))
+        ) {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.close_popup(),

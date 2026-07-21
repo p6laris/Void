@@ -287,6 +287,21 @@ impl Database {
             "last_goal_date",
             data.last_goal_date.clone().unwrap_or_default(),
         )?;
+        set_setting_conn(&tx, "streak_freezes", data.streak_freezes.to_string())?;
+        set_setting_conn(
+            &tx,
+            "last_freeze_earned_streak",
+            data.last_freeze_earned_streak.to_string(),
+        )?;
+        set_setting_conn(
+            &tx,
+            "streak_rest_days",
+            data.streak_rest_days
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -512,6 +527,14 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
     let last_monthly_streak_key = data.last_monthly_streak_key.clone().unwrap_or_default();
     let timer_presets = serde_json::to_string(&data.timer_presets).unwrap_or_default();
     let active_preset = data.active_preset.clone().unwrap_or_default();
+    let streak_rest_days_str = data
+        .streak_rest_days
+        .iter()
+        .map(|d| d.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let streak_freezes = data.streak_freezes.to_string();
+    let last_freeze_earned_streak = data.last_freeze_earned_streak.to_string();
 
     let pairs: Vec<(&str, &str)> = vec![
         ("next_id", &next_id),
@@ -555,6 +578,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ("last_monthly_streak_key", &last_monthly_streak_key),
         ("timer_presets", &timer_presets),
         ("active_preset", &active_preset),
+        ("streak_rest_days", &streak_rest_days_str),
+        ("streak_freezes", &streak_freezes),
+        ("last_freeze_earned_streak", &last_freeze_earned_streak),
     ];
 
     let mut stmt = conn.prepare(UPSERT_SETTING_SQL)?;
@@ -627,6 +653,17 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
             }
         }
         "active_preset" => data.active_preset = opt_string(value),
+        "streak_rest_days" => {
+            data.streak_rest_days = value
+                .split(',')
+                .filter_map(|s| s.trim().parse::<u8>().ok())
+                .filter(|d| *d <= 6)
+                .collect();
+        }
+        "streak_freezes" => data.streak_freezes = parse_u32(value, data.streak_freezes),
+        "last_freeze_earned_streak" => {
+            data.last_freeze_earned_streak = parse_u32(value, data.last_freeze_earned_streak)
+        }
         _ => {}
     }
 }

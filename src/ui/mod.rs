@@ -21,7 +21,6 @@ use settings::*;
 use tasks::*;
 use zen::*;
 
-
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -92,6 +91,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
             Some(crate::app::Popup::AddTask)
                 | Some(crate::app::Popup::EditTask(_))
                 | Some(crate::app::Popup::AddSubtask(_))
+                | Some(crate::app::Popup::EditSubtask(_, _))
         )
     {
         draw_input(f, app, chunks[2]);

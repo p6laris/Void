@@ -474,6 +474,15 @@ pub struct AppData {
     pub timer_presets: Vec<TimerPreset>,
     #[serde(default)]
     pub active_preset: Option<String>,
+    /// Days of the week excluded from streak tracking (0=Mon .. 6=Sun).
+    #[serde(default = "default_rest_days")]
+    pub streak_rest_days: Vec<u8>,
+    /// Currently available streak freezes (max 3).
+    #[serde(default)]
+    pub streak_freezes: u32,
+    /// Streak value when the last freeze was awarded.
+    #[serde(default)]
+    pub last_freeze_earned_streak: u32,
 }
 
 impl AppData {
@@ -493,6 +502,14 @@ impl AppData {
 fn default_archive_days() -> u32 {
     30
 }
+
+/// Saturday (5) and Sunday (6) are rest days by default.
+fn default_rest_days() -> Vec<u8> {
+    vec![5, 6]
+}
+
+/// Hard cap on streak freezes.
+pub const STREAK_FREEZE_MAX: u32 = 3;
 
 fn default_timer_presets() -> Vec<TimerPreset> {
     vec![TimerPreset::deep_work(), TimerPreset::quick()]
@@ -537,6 +554,9 @@ impl Default for AppData {
             last_monthly_streak_key: None,
             timer_presets: default_timer_presets(),
             active_preset: None,
+            streak_rest_days: default_rest_days(),
+            streak_freezes: STREAK_FREEZE_MAX,
+            last_freeze_earned_streak: 0,
         }
     }
 }
