@@ -546,13 +546,9 @@ impl App {
         if idx == new_idx {
             return;
         }
-        self.persist_data(|db, data| {
-            storage::move_subtask(db, data, task_id, idx, new_idx)
-        });
+        self.persist_data(|db, data| storage::move_subtask(db, data, task_id, idx, new_idx));
         self.task_ui.subtask_selected = new_idx;
-        self.task_ui
-            .subtask_state
-            .select(Some(new_idx));
+        self.task_ui.subtask_state.select(Some(new_idx));
         self.bump_tasks();
     }
 

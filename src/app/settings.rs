@@ -402,10 +402,15 @@ impl App {
                 // Find the next day to toggle based on direction.
                 let idx = if dir > 0 {
                     // Find first non-rest day to add, or first rest day to remove.
-                    (0u8..7).find(|d| !self.data.streak_rest_days.contains(d)).unwrap_or(0)
+                    (0u8..7)
+                        .find(|d| !self.data.streak_rest_days.contains(d))
+                        .unwrap_or(0)
                 } else {
                     // Find last rest day to remove.
-                    (0u8..7).rev().find(|d| self.data.streak_rest_days.contains(d)).unwrap_or(0)
+                    (0u8..7)
+                        .rev()
+                        .find(|d| self.data.streak_rest_days.contains(d))
+                        .unwrap_or(0)
                 };
                 if self.data.streak_rest_days.contains(&idx) {
                     self.data.streak_rest_days.retain(|d| *d != idx);
@@ -413,12 +418,26 @@ impl App {
                     self.data.streak_rest_days.push(idx);
                     self.data.streak_rest_days.sort();
                 }
-                let label: Vec<&str> = self.data.streak_rest_days.iter()
+                let label: Vec<&str> = self
+                    .data
+                    .streak_rest_days
+                    .iter()
                     .filter_map(|d| DAYS.get(*d as usize).copied())
                     .collect();
-                let display = if label.is_empty() { "none".to_string() } else { label.join(", ") };
-                self.persist_setting("streak_rest_days",
-                    self.data.streak_rest_days.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","));
+                let display = if label.is_empty() {
+                    "none".to_string()
+                } else {
+                    label.join(", ")
+                };
+                self.persist_setting(
+                    "streak_rest_days",
+                    self.data
+                        .streak_rest_days
+                        .iter()
+                        .map(|d| d.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                );
                 self.set_status(format!("Rest days: {display}"), false);
             }
             SettingsItem::ExportBackup => {}
@@ -557,10 +576,17 @@ impl App {
             },
             {
                 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-                let names: Vec<&str> = self.data.streak_rest_days.iter()
+                let names: Vec<&str> = self
+                    .data
+                    .streak_rest_days
+                    .iter()
                     .filter_map(|d| DAYS.get(*d as usize).copied())
                     .collect();
-                let rest_val = if names.is_empty() { "none".to_string() } else { names.join(", ") };
+                let rest_val = if names.is_empty() {
+                    "none".to_string()
+                } else {
+                    names.join(", ")
+                };
                 CachedSettingsLabel {
                     key: "Rest days",
                     value: rest_val,

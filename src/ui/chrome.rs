@@ -25,7 +25,11 @@ fn streak_goal_chips(app: &App, theme: &crate::app::Theme, icons: IconSet) -> Ve
         Span::raw(" "),
         chip(
             icons.shield,
-            format!("{}/{}", app.data.streak_freezes, crate::model::STREAK_FREEZE_MAX),
+            format!(
+                "{}/{}",
+                app.data.streak_freezes,
+                crate::model::STREAK_FREEZE_MAX
+            ),
             theme.dim,
             theme.panel_border,
         ),

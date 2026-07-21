@@ -363,8 +363,10 @@ pub fn record_focus_session_with_meta(
     }
     // Award a freeze at every 7-day milestone.
     if data.streak_days >= data.last_freeze_earned_streak + 7 {
-        data.streak_freezes =
-            data.streak_freezes.saturating_add(1).min(crate::model::STREAK_FREEZE_MAX);
+        data.streak_freezes = data
+            .streak_freezes
+            .saturating_add(1)
+            .min(crate::model::STREAK_FREEZE_MAX);
         data.last_freeze_earned_streak = data.streak_days;
     }
     data.last_session_date = Some(today.clone());
@@ -1208,7 +1210,7 @@ mod tests {
         data.streak_freezes = 2;
         data.last_freeze_earned_streak = 7;
         data.streak_rest_days = vec![5, 6]; // Sat, Sun
-        // Last session was Wednesday, today is Friday (1 active gap = Thursday)
+                                            // Last session was Wednesday, today is Friday (1 active gap = Thursday)
         data.last_session_date = Some("2026-07-15".into());
         data.today_date = Some("2026-07-15".into());
 

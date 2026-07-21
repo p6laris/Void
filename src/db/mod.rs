@@ -293,7 +293,15 @@ impl Database {
             "last_freeze_earned_streak",
             data.last_freeze_earned_streak.to_string(),
         )?;
-        set_setting_conn(&tx, "streak_rest_days", data.streak_rest_days.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(","))?;
+        set_setting_conn(
+            &tx,
+            "streak_rest_days",
+            data.streak_rest_days
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -654,8 +662,7 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
         }
         "streak_freezes" => data.streak_freezes = parse_u32(value, data.streak_freezes),
         "last_freeze_earned_streak" => {
-            data.last_freeze_earned_streak =
-                parse_u32(value, data.last_freeze_earned_streak)
+            data.last_freeze_earned_streak = parse_u32(value, data.last_freeze_earned_streak)
         }
         _ => {}
     }

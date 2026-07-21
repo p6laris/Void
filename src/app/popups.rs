@@ -128,9 +128,13 @@ impl App {
                     self.set_status("Subtask title cannot be empty.", true);
                     return;
                 }
-                if let Err(e) =
-                    storage::rename_subtask(&self.db, &mut self.data, task_id, sub_id, title.clone())
-                {
+                if let Err(e) = storage::rename_subtask(
+                    &self.db,
+                    &mut self.data,
+                    task_id,
+                    sub_id,
+                    title.clone(),
+                ) {
                     self.set_status(format!("Save error: {e}"), true);
                     return;
                 }
@@ -233,7 +237,10 @@ impl App {
             }
             return;
         }
-        if matches!(self.input.popup, Some(Popup::AddSubtask(_)) | Some(Popup::EditSubtask(_, _))) {
+        if matches!(
+            self.input.popup,
+            Some(Popup::AddSubtask(_)) | Some(Popup::EditSubtask(_, _))
+        ) {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => self.close_popup(),

@@ -130,7 +130,8 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
             "Freezes",
             format!(
                 "{} / {}",
-                app.data.streak_freezes, crate::model::STREAK_FREEZE_MAX
+                app.data.streak_freezes,
+                crate::model::STREAK_FREEZE_MAX
             ),
         ),
         (

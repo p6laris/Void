@@ -21,7 +21,6 @@ use settings::*;
 use tasks::*;
 use zen::*;
 
-
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};

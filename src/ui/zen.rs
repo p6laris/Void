@@ -15,10 +15,7 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let chunks = Layout::default()
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(2),
-        ])
+        .constraints([Constraint::Min(1), Constraint::Length(2)])
         .split(area);
 
     let cycle = t.config.long_break_every.max(1);
