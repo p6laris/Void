@@ -10,7 +10,7 @@ homepage = "https://github.com/p6laris/Void"
 readme = "README.md"
 keywords = ["pomodoro", "focus", "timer", "terminal", "tui"]
 categories = ["command-line-utilities", "development-tools"]
-exclude = [".github/", "docs/", "assets/", ".idea/", "packaging/"]
+exclude = [".github/", "docs/", "assets/*.png", ".idea/", "packaging/"]
 
 [lib]
 name = "void"
