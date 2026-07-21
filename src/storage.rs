@@ -1205,14 +1205,16 @@ mod tests {
 
     #[test]
     fn freeze_consumed_on_gap() {
-        let mut data = AppData::default();
-        data.streak_days = 10;
-        data.streak_freezes = 2;
-        data.last_freeze_earned_streak = 7;
-        data.streak_rest_days = vec![5, 6]; // Sat, Sun
-                                            // Last session was Wednesday, today is Friday (1 active gap = Thursday)
-        data.last_session_date = Some("2026-07-15".into());
-        data.today_date = Some("2026-07-15".into());
+        let mut data = AppData {
+            streak_days: 10,
+            streak_freezes: 2,
+            last_freeze_earned_streak: 7,
+            streak_rest_days: vec![5, 6], // Sat, Sun
+            // Last session was Wednesday, today is Friday (1 active gap = Thursday)
+            last_session_date: Some("2026-07-15".into()),
+            today_date: Some("2026-07-15".into()),
+            ..Default::default()
+        };
 
         let _db = crate::db::Database::open_in_memory().unwrap();
         // Simulate recording on Friday 2026-07-17 by setting today
@@ -1232,11 +1234,13 @@ mod tests {
 
     #[test]
     fn streak_resets_when_not_enough_freezes() {
-        let mut data = AppData::default();
-        data.streak_days = 10;
-        data.streak_freezes = 1;
-        data.last_freeze_earned_streak = 7;
-        data.streak_rest_days = vec![5, 6];
+        let mut data = AppData {
+            streak_days: 10,
+            streak_freezes: 1,
+            last_freeze_earned_streak: 7,
+            streak_rest_days: vec![5, 6],
+            ..Default::default()
+        };
 
         // 3 active days missed, only 1 freeze
         let mon = NaiveDate::from_ymd_opt(2026, 7, 13).unwrap();
@@ -1253,10 +1257,12 @@ mod tests {
 
     #[test]
     fn freeze_cap_at_max() {
-        let mut data = AppData::default();
-        data.streak_freezes = 3;
-        data.streak_days = 14;
-        data.last_freeze_earned_streak = 14;
+        let mut data = AppData {
+            streak_freezes: 3,
+            streak_days: 14,
+            last_freeze_earned_streak: 14,
+            ..Default::default()
+        };
 
         // At 21 days, would earn another freeze but already at max
         data.streak_days = 21;
