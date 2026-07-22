@@ -1,8 +1,5 @@
-[![Release](https://img.shields.io/github/v/release/p6laris/Void?label=release&sort=semver)](https://github.com/p6laris/Void/releases)
 [![License: MIT](https://img.shields.io/github/license/p6laris/Void)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![Crates.io](https://img.shields.io/crates/v/void-focus)](https://crates.io/crates/void-focus)
-[![CI](https://img.shields.io/github/actions/workflow/status/p6laris/Void/ci.yml?branch=main&label=ci)](https://github.com/p6laris/Void/actions/workflows/ci.yml)
 [![Built With Ratatui](https://ratatui.rs/built-with-ratatui/badge.svg)](https://ratatui.rs/)
 
 # Void
