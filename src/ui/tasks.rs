@@ -1,15 +1,17 @@
 use super::*;
+use crate::model::Priority;
+use crate::ui::widgets::bracket_toggle;
 
 // Row column widths. Fixed so titles, counts, minutes and tags line up down the list
 // instead of drifting with the length of whatever is to their left.
-const ACTIVE_W: usize = 2; // active marker + gap
-const FLAG_W: usize = 2; // overdue + today
-const CHECK_W: usize = 3; // [x]
-const PRIO_W: usize = 5; // "high " — "high" is already four characters
-const BULK_W: usize = 2; // selection circle + gap, only in bulk mode
-const SUB_W: usize = 7; // " (9/9)"
-const TIME_W: usize = 10; // " 999/999m"
-const HIGHLIGHT_W: usize = 2; // "▸ ", which the List takes out of the item area
+const ACTIVE_W: usize = 2;   // active marker + gap
+const FLAG_W: usize = 2;     // overdue + today
+const CHECK_W: usize = 3;    // [x]
+const PRIO_W: usize = 2;     // "★ " — compact 1-char symbol + space
+const BULK_W: usize = 2;     // selection circle + gap, only in bulk mode
+const SUB_W: usize = 7;      // "(9/9) "
+const TIME_W: usize = 10;    // " 999/999m"
+const HIGHLIGHT_W: usize = 2;// "▸ ", which the List takes out of the item area
 const MIN_TITLE_W: usize = 12;
 
 /// Widest tag column we will ever give up.
@@ -17,10 +19,7 @@ const TAG_W_MAX: usize = 26;
 /// Below this a tag column shows nothing useful — just a bare `+2` — so it is dropped.
 const TAG_W_MIN: usize = 7;
 /// Title width to protect before handing space to any other column.
-const COMFY_TITLE_W: usize = 26;
-
-/// Subtasks shown under the selected task before the rest are summarised.
-const INLINE_SUBTASK_MAX: usize = 12;
+const COMFY_TITLE_W: usize = 24;
 
 pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     // A gutter column between list and details; without it the task rows run straight
@@ -29,9 +28,9 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .margin(1)
         .constraints([
-            Constraint::Percentage(60),
+            Constraint::Percentage(58),
             Constraint::Length(3),
-            Constraint::Percentage(40),
+            Constraint::Percentage(42),
         ])
         .split(area);
     let (list_area, detail_area) = (outer[0], outer[2]);
@@ -49,9 +48,6 @@ pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
 
 /// Column widths for one task row, given the width the list has to render into.
 struct RowLayout {
-    /// Where a subtask line starts, and how much room it then has.
-    subtask_indent: usize,
-    subtask_body: usize,
     title: usize,
     tags: usize,
     show_subtask_count: bool,
@@ -66,9 +62,6 @@ impl RowLayout {
         let lead = ACTIVE_W + FLAG_W + CHECK_W + 1 + PRIO_W + if bulk { BULK_W } else { 0 };
         let mut avail = usable.saturating_sub(lead);
 
-        // The title is the only column you cannot do without, so every other column has to
-        // buy its space and only while a comfortable title still fits. Reserving fixed
-        // widths first was leaving twelve columns for the title on a narrow pane.
         let show_minutes = avail >= COMFY_TITLE_W + TIME_W;
         if show_minutes {
             avail -= TIME_W;
@@ -85,11 +78,7 @@ impl RowLayout {
         }
         avail -= tags;
 
-        let subtask_indent = ACTIVE_W + FLAG_W;
         Self {
-            subtask_indent,
-            // spine, caret, checkbox and the gap after it.
-            subtask_body: usable.saturating_sub(subtask_indent + 2 + 2 + CHECK_W + 1),
             title: avail.max(MIN_TITLE_W),
             tags,
             show_subtask_count,
@@ -109,6 +98,38 @@ fn tag_run_width(tags: &[String]) -> usize {
         + tags.len()
 }
 
+/// Interactive filter tabs in the task list header: `[g] [open] [today] [done] [all] [archive]`
+fn tasks_filter_tabs(theme: &Theme, current: TaskFilter, width: u16) -> Line<'static> {
+    if width < 54 {
+        return Line::from(vec![
+            Span::styled("[g] ", Style::default().fg(theme.dim)),
+            Span::styled(
+                format!("[{}]", current.label().to_lowercase()),
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+        ]);
+    }
+
+    let mut spans = Vec::with_capacity(16);
+    spans.push(Span::styled("[g] ", Style::default().fg(theme.dim)));
+    for filter in [
+        TaskFilter::Pending,
+        TaskFilter::Today,
+        TaskFilter::Done,
+        TaskFilter::All,
+        TaskFilter::Archived,
+    ] {
+        spans.extend(bracket_toggle(
+            theme,
+            filter.label().to_lowercase().as_str(),
+            filter == current,
+        ));
+        spans.push(Span::raw(" "));
+    }
+    Line::from(spans)
+}
+
 fn draw_task_list(f: &mut Frame, app: &mut App, area: Rect) {
     let icons = app.icons;
     let theme = &app.theme;
@@ -123,63 +144,37 @@ fn draw_task_list(f: &mut Frame, app: &mut App, area: Rect) {
         .unwrap_or(0);
     let cols = RowLayout::build(area.width as usize, app.task_ui.bulk_mode, tags_want);
 
-    let mut extra_rows = 0usize;
     let items: Vec<ListItem> = indices
         .iter()
         .enumerate()
         .map(|(list_idx, &idx)| {
             let task = &app.data.tasks[idx];
             let is_cursor = selected_idx == Some(list_idx);
-            let mut lines = vec![task_row(app, task, idx, is_cursor, frame_today, &cols)];
-            if is_cursor {
-                let sub = subtask_lines(app, task, &cols);
-                extra_rows += sub.len();
-                lines.extend(sub);
-            }
-            ListItem::new(lines)
+            let line = task_row(app, task, idx, is_cursor, frame_today, &cols);
+            ListItem::new(vec![line])
         })
         .collect();
-
-    let filter_label = if app.task_ui.task_search.is_empty() {
-        app.task_ui.task_filter.label().to_string()
-    } else {
-        format!("'{}'", app.task_ui.task_search)
-    };
-
-    // The expanded subtasks are part of the selected item, so the list is taller than the
-    // task count — counting rows rather than tasks is what keeps "more" honest.
-    let rendered_rows = filtered_count + extra_rows;
-    let visible = area.height.saturating_sub(1) as usize;
-    let at_bottom = selected_idx
-        .map(|sel| sel + 1 >= filtered_count)
-        .unwrap_or(true);
-    let more = if rendered_rows > visible && !at_bottom {
-        " ↓ more "
-    } else {
-        ""
-    };
 
     let title_color = if app.task_ui.bulk_mode {
         theme.info
     } else {
         theme.accent
     };
-    let block = dense_panel(
-        theme,
-        Line::from(vec![
-            Span::styled(
-                format!(
-                    " {} tasks [{}] ({}){} ",
-                    icons.tasks,
-                    filter_label.to_lowercase(),
-                    filtered_count,
-                    if app.task_ui.bulk_mode { " · bulk" } else { "" }
-                ),
-                Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+
+    let title_spans = vec![
+        Span::styled(
+            format!(
+                " {} tasks ({}){} ",
+                icons.tasks,
+                filtered_count,
+                if app.task_ui.bulk_mode { " · bulk" } else { "" }
             ),
-            Span::styled(more, Style::default().fg(theme.comment)),
-        ]),
-    );
+            Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+        ),
+    ];
+
+    let block = dense_panel(theme, Line::from(title_spans))
+        .title(tasks_filter_tabs(theme, app.task_ui.task_filter, area.width).alignment(Alignment::Right));
 
     let list = List::new(items)
         .block(block)
@@ -191,6 +186,14 @@ fn draw_task_list(f: &mut Frame, app: &mut App, area: Rect) {
         )
         .highlight_symbol("▸ ");
     f.render_stateful_widget(list, area, &mut app.task_ui.task_state);
+}
+
+fn priority_glyph(p: Priority) -> &'static str {
+    match p {
+        Priority::High => "★",
+        Priority::Medium => "◆",
+        Priority::Low => "·",
+    }
 }
 
 fn task_row<'a>(
@@ -219,8 +222,7 @@ fn task_row<'a>(
     } else {
         Style::default().fg(theme.text)
     };
-    // Marks keep the row's own styling when it is active or bulk-selected, so the row
-    // reads as one band rather than a run of differently coloured glyphs.
+
     let mark_style = if is_active {
         Style::default()
             .fg(theme.accent)
@@ -254,8 +256,8 @@ fn task_row<'a>(
         ),
         mark_style,
     ));
-    // A `[x]` checkbox instead of a bare status glyph — reads as a checklist, and the
-    // state stays legible when the row is selected or colour is unavailable.
+
+    // A `[x]` checkbox instead of a bare status glyph — reads as a clean checklist.
     spans.extend(status_checkbox(
         theme,
         icons,
@@ -263,9 +265,11 @@ fn task_row<'a>(
         (is_active || bulk_selected).then_some(mark_style),
     ));
     spans.push(Span::raw(" "));
+
+    // Compact priority glyph
     spans.push(Span::styled(
-        format!("{:<PRIO_W$}", task.priority.label().to_lowercase()),
-        Style::default().fg(priority_color(theme, task.priority)),
+        format!("{} ", priority_glyph(task.priority)),
+        Style::default().fg(priority_color(theme, task.priority)).add_modifier(Modifier::BOLD),
     ));
 
     let reorder = if app.task_ui.reordering_task == Some(task.id) {
@@ -289,15 +293,21 @@ fn task_row<'a>(
     ));
 
     if cols.show_subtask_count {
-        let text = task
-            .subtask_progress()
-            .map(|(d, n)| format!("({d}/{n})"))
-            .unwrap_or_default();
-        spans.push(Span::styled(
-            format!("{:>SUB_W$}", text),
-            Style::default().fg(theme.comment),
-        ));
+        if let Some((d, n)) = task.subtask_progress() {
+            let sub_style = if d == n && n > 0 {
+                Style::default().fg(theme.success)
+            } else {
+                Style::default().fg(theme.comment)
+            };
+            spans.push(Span::styled(
+                format!(" ({d}/{n})"),
+                sub_style,
+            ));
+        } else {
+            spans.push(Span::raw(" ".repeat(SUB_W)));
+        }
     }
+
     if cols.show_minutes {
         spans.push(Span::styled(
             format!(
@@ -315,10 +325,6 @@ fn task_row<'a>(
 }
 
 /// Tags that fit the budget whole, plus a `+N` for the rest.
-///
-/// The previous version truncated the joined string, which cut through a tag name and left
-/// rows reading `#acc #fres` — worse than not showing the tag at all, because a clipped tag
-/// looks like a different tag.
 fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> Vec<Span<'a>> {
     let mut spans = Vec::new();
     let mut used = 0usize;
@@ -353,113 +359,14 @@ fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> Vec<Span<'a>> 
     spans
 }
 
-/// Subtasks of the selected task, indented under it on a spine.
-///
-/// They used to live in a panel under the details column, which meant they were invisible
-/// until you selected a task that had some, and shared 45% of the narrower column with
-/// nothing to anchor them to. Inline they sit against the task they belong to, and the list
-/// pane has the vertical room to spare.
-fn subtask_lines<'a>(app: &App, task: &crate::model::Task, cols: &RowLayout) -> Vec<Line<'a>> {
-    let theme = &app.theme;
-    let focused = app.task_ui.subtask_focus;
-    let spine_color = if focused { theme.accent } else { theme.panel_border };
-    let indent = " ".repeat(cols.subtask_indent);
-    let spine = |extra: &str| {
-        vec![
-            Span::raw(indent.clone()),
-            Span::styled("│ ", Style::default().fg(spine_color)),
-            Span::raw(extra.to_string()),
-        ]
-    };
-    let body_w = cols.subtask_body;
-
-    if task.subtasks.is_empty() {
-        return vec![Line::from(
-            [
-                spine(""),
-                vec![comment_span(theme, "no subtasks · [c] to add")],
-            ]
-            .concat(),
-        )];
-    }
-
-    // Window around the cursor rather than always the first N. `subtask_selected` can be
-    // any index, so a flat `take(N)` let the cursor sit on a row that was never drawn —
-    // nothing looked selected and [x] toggled something invisible.
-    let total = task.subtasks.len();
-    let start = if !focused || total <= INLINE_SUBTASK_MAX {
-        0
-    } else {
-        app.task_ui
-            .subtask_selected
-            .saturating_sub(INLINE_SUBTASK_MAX / 2)
-            .min(total - INLINE_SUBTASK_MAX)
-    };
-    let end = (start + INLINE_SUBTASK_MAX).min(total);
-
-    let mut lines: Vec<Line> = Vec::new();
-    if start > 0 {
-        lines.push(Line::from(
-            [
-                spine("  "),
-                vec![comment_span(theme, format!("+{start} above"))],
-            ]
-            .concat(),
-        ));
-    }
-    lines.extend(task.subtasks[start..end]
-        .iter()
-        .enumerate()
-        .map(|(offset, sub)| {
-            let i = start + offset;
-            let on_cursor = focused && app.task_ui.subtask_selected == i;
-            let status = if sub.done {
-                crate::model::TaskStatus::Done
-            } else {
-                crate::model::TaskStatus::Pending
-            };
-            let mut spans = spine(if on_cursor { "▸ " } else { "  " });
-            spans.extend(status_checkbox(theme, app.icons, status, None));
-            spans.push(Span::raw(" "));
-            let mut title_style = super::widgets::subtask_line_style(theme, sub.done);
-            if on_cursor {
-                title_style = title_style
-                    .fg(theme.select_fg)
-                    .add_modifier(Modifier::BOLD);
-            }
-            spans.push(Span::styled(truncate(&sub.title, body_w), title_style));
-            Line::from(spans)
-        }));
-
-    if end < total {
-        let rest = total - end;
-        lines.push(Line::from(
-            [
-                spine("  "),
-                vec![comment_span(theme, format!("+{rest} below"))],
-            ]
-            .concat(),
-        ));
-    }
-
-    let (done, total) = task.subtask_progress().unwrap_or((0, 0));
-    let hint = if focused {
-        format!("{done}/{total} done · [x] toggle · [e] edit · [c] add · [Tab] back")
-    } else {
-        format!("{done}/{total} done · [Tab] to edit them")
-    };
-    lines.push(Line::from(
-        [spine("  "), vec![comment_span(theme, hint)]].concat(),
-    ));
-    lines
-}
-
-// ── details column ───────────────────────────────────────────────────────────
+// ── details column & interactive subtasks workspace ──────────────────────────
 
 fn draw_task_details(f: &mut Frame, app: &App, area: Rect) {
+    let focused = app.task_ui.subtask_focus;
+    let title_str = if focused { "Subtasks [Active]" } else { "Details" };
     let block = dense_panel(
         &app.theme,
-        section_title(&app.theme, app.icons.about, "Details"),
+        section_title(&app.theme, if focused { app.icons.tasks } else { app.icons.about }, title_str),
     );
     let inner_w = block.inner(area).width;
     f.render_widget(
@@ -495,13 +402,19 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
     let t = &app.data.tasks[task_idx];
     let mut lines = Vec::new();
 
-    // Identity first: title, then the tags that qualify it, then the state chips. These
-    // are what the task *is*; the numbers below are what has happened to it.
+    // ── Task Header ──────────────────────────────────────────────────────────
     lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        t.title.clone(),
-        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-    )));
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("{} ", priority_glyph(t.priority)),
+            Style::default().fg(priority_color(theme, t.priority)).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            t.title.clone(),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+    ]));
+
     if !t.tags.is_empty() {
         let mut spans = Vec::new();
         for (i, tag) in t.tags.iter().enumerate() {
@@ -513,15 +426,7 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
         lines.push(Line::from(spans));
     }
 
-    // Notes were not shown anywhere on this page. Somewhere to write what a task actually
-    // involves is most of what the notes field is for.
-    if !t.notes.trim().is_empty() {
-        lines.push(Line::from(""));
-        for para in t.notes.lines() {
-            lines.push(comment_line(theme, para.to_string()));
-        }
-    }
-
+    // State Chips
     let mut chips: Vec<Span> = Vec::new();
     let push_chip = |chips: &mut Vec<Span>, spans: Vec<Span<'static>>| {
         if !chips.is_empty() {
@@ -568,13 +473,115 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
     lines.push(Line::from(""));
     lines.push(Line::from(chips));
 
-    // Progress. Labelled, because an unlabelled bar hanging at the top of the panel reads
-    // as decoration rather than as this task's completion.
+    // ── Interactive Subtasks Workspace ───────────────────────────────────────
+    lines.push(Line::from(""));
+    let focused = app.task_ui.subtask_focus;
+    let (done, total) = t.subtask_progress().unwrap_or((0, 0));
+    let sub_pct = if total > 0 { (done * 100) / total } else { 0 };
+
+    let sub_header_style = if focused {
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
+    };
+
+    lines.push(Line::from(vec![
+        Span::styled(format!("{} subtasks: ", app.icons.tasks), sub_header_style),
+        Span::styled(
+            format!("{done} of {total} done ({sub_pct}%)"),
+            Style::default().fg(if focused { theme.accent } else { theme.comment }),
+        ),
+        if focused {
+            Span::styled(" [FOCUS]", Style::default().fg(theme.success).add_modifier(Modifier::BOLD))
+        } else {
+            Span::raw("")
+        },
+    ]));
+
+    if total > 0 {
+        const SUB_BAR_MAX: usize = 32;
+        let bar_w = (width as usize).saturating_sub(10).clamp(4, SUB_BAR_MAX);
+        let ratio = done as f64 / total as f64;
+        let fill = if done == total { theme.success } else { theme.accent };
+        let mut sub_gauge = text_gauge(theme, ratio, bar_w, fill);
+        sub_gauge.push(Span::styled(
+            format!(" {:>3}%", sub_pct),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(sub_gauge));
+    }
+
+    if t.subtasks.is_empty() {
+        lines.push(comment_line(theme, "no subtasks yet · press [c] to add"));
+    } else {
+        const MAX_SUB_VISIBLE: usize = 8;
+        let start = if !focused || total <= MAX_SUB_VISIBLE {
+            0
+        } else {
+            app.task_ui
+                .subtask_selected
+                .saturating_sub(MAX_SUB_VISIBLE / 2)
+                .min(total.saturating_sub(MAX_SUB_VISIBLE))
+        };
+        let end = (start + MAX_SUB_VISIBLE).min(total);
+
+        if start > 0 {
+            lines.push(comment_line(theme, format!("  +{start} above...")));
+        }
+
+        for (offset, sub) in t.subtasks[start..end].iter().enumerate() {
+            let i = start + offset;
+            let on_cursor = focused && app.task_ui.subtask_selected == i;
+            let status = if sub.done {
+                crate::model::TaskStatus::Done
+            } else {
+                crate::model::TaskStatus::Pending
+            };
+
+            let marker = if on_cursor { "▸ " } else { "  " };
+            let marker_style = if on_cursor {
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.dim)
+            };
+
+            let mut spans = vec![Span::styled(marker, marker_style)];
+            spans.extend(status_checkbox(theme, app.icons, status, None));
+            spans.push(Span::raw(" "));
+
+            let title_style = if on_cursor {
+                Style::default()
+                    .fg(theme.select_fg)
+                    .bg(theme.select_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else if sub.done {
+                Style::default().fg(theme.dim)
+            } else {
+                Style::default().fg(theme.text)
+            };
+
+            let body_w = (width as usize).saturating_sub(10);
+            spans.push(Span::styled(truncate(&sub.title, body_w), title_style));
+            lines.push(Line::from(spans));
+        }
+
+        if end < total {
+            let rest = total - end;
+            lines.push(comment_line(theme, format!("  +{rest} below...")));
+        }
+
+        let hint = if focused {
+            "[j/k] nav · [x] check · [c] add · [e] edit · [-] del · [Tab] done"
+        } else {
+            "[Tab] focus subtasks · [c] add subtask"
+        };
+        lines.push(comment_line(theme, hint));
+    }
+
+    // ── Effort & Focus Progress ──────────────────────────────────────────────
     let ratio = t.progress_ratio();
     let pct = format!(" {}%", (ratio * 100.0) as u32);
-    // Capped: stretched across a wide column the bar stops reading as a measurement and
-    // starts reading as a coloured band across the panel.
-    const BAR_W_MAX: usize = 40;
+    const BAR_W_MAX: usize = 36;
     let bar_w = (width as usize)
         .saturating_sub(pct.chars().count())
         .clamp(4, BAR_W_MAX);
@@ -591,8 +598,6 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
     ));
     lines.push(Line::from(bar));
 
-    // Effort, then dates, then relations — blank lines between so the panel is three short
-    // blocks instead of one wall of colons.
     lines.push(Line::from(""));
     lines.push(meta_row(
         theme,
@@ -621,19 +626,8 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
         ),
         theme.info,
     ));
-    if let Some((done, total)) = t.subtask_progress() {
-        lines.push(meta_row(
-            theme,
-            "subtasks",
-            format!("{done} of {total} done"),
-            if done == total {
-                theme.success
-            } else {
-                theme.text
-            },
-        ));
-    }
 
+    // ── Dates & Recurrence ───────────────────────────────────────────────────
     lines.push(Line::from(""));
     lines.push(meta_row(
         theme,
@@ -689,6 +683,14 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
                     theme.text
                 },
             ));
+        }
+    }
+
+    // ── Notes ────────────────────────────────────────────────────────────────
+    if !t.notes.trim().is_empty() {
+        lines.push(Line::from(""));
+        for para in t.notes.lines() {
+            lines.push(comment_line(theme, para.to_string()));
         }
     }
 
