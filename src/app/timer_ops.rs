@@ -65,6 +65,9 @@ impl App {
         if let Ok(true) = storage::ensure_today_reset(&self.db, &mut self.data) {
             self.timer.completed_focus_sessions = 0;
             self.persist_timer_state();
+            self.stats.chart_dirty = true;
+            self.refresh_frame_today_cache();
+            self.recompute_task_caches();
         }
         if self.data.auto_pause_idle_minutes > 0
             && self.timer.state == TimerState::Running
@@ -351,6 +354,36 @@ impl App {
                 self.timer.duration_seconds() / 60
             ),
             false,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    #[test]
+    fn on_tick_resets_metrics_and_marks_dirty_on_midnight_rollover() {
+        let db = Database::open_in_memory().unwrap();
+        let mut app = App::with_database(db).unwrap();
+
+        // Simulate yesterday's state
+        app.data.today_date = Some("2020-01-01".into());
+        app.data.today_focus_minutes = 120;
+        app.timer.completed_focus_sessions = 4;
+        app.stats.chart_dirty = false;
+
+        // Run tick (which detects today != 2020-01-01)
+        app.on_tick();
+
+        assert_eq!(app.data.today_focus_minutes, 0);
+        assert_eq!(app.today_focus_mins(), 0);
+        assert_eq!(app.timer.completed_focus_sessions, 0);
+        assert!(app.stats.chart_dirty);
+        assert_eq!(
+            app.data.today_date.as_deref(),
+            Some(crate::date::today_str().as_str())
         );
     }
 }
