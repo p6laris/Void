@@ -107,10 +107,8 @@ fn tasks_renders() {
     // meta_row keys are lowercase now. Priority and status moved to chips beside the
     // title, so the rows that remain are the numbers.
     assert!(all.contains("estimate:"), "meta rows missing");
-    assert!(all.contains("subtasks:"), "subtask summary missing");
-    // Subtasks of the selected task expand inline under it in the list.
-    assert!(all.contains("Draft the outline"), "inline subtasks missing");
-    // A gutter must separate the list from the details column.
+    assert!(all.contains("subtasks"), "subtask panel missing");
+    assert!(all.contains("Draft the outline"), "subtasks missing");
     assert!(all.contains('│'), "column gutter missing");
 }
 
