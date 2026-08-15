@@ -36,7 +36,8 @@ pub enum SettingsItem {
     WarnOneMinute,
     AutoPauseIdle,
     ArchiveAfterDays,
-    ExportBackup,
+    ExportBackupJson,
+    ExportSessionsCsv,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -88,7 +89,8 @@ impl SettingsState {
                 SettingsItem::WarnOneMinute,
                 SettingsItem::AutoPauseIdle,
                 SettingsItem::ArchiveAfterDays,
-                SettingsItem::ExportBackup,
+                SettingsItem::ExportBackupJson,
+                SettingsItem::ExportSessionsCsv,
             ],
         }
     }
@@ -162,10 +164,10 @@ impl App {
             }
             KeyCode::Enter => {
                 let item = self.settings_state.items[self.settings_state.selected];
-                if item == SettingsItem::ExportBackup {
-                    self.export_backup();
-                } else {
-                    self.adjust_setting(1);
+                match item {
+                    SettingsItem::ExportBackupJson => self.export_backup(),
+                    SettingsItem::ExportSessionsCsv => self.export_sessions_csv(),
+                    _ => self.adjust_setting(1),
                 }
             }
             KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
@@ -175,7 +177,12 @@ impl App {
                 self.adjust_setting(-1);
             }
             KeyCode::Char('e') => {
-                self.export_backup();
+                let item = self.settings_state.items[self.settings_state.selected];
+                if item == SettingsItem::ExportSessionsCsv {
+                    self.export_sessions_csv();
+                } else {
+                    self.export_backup();
+                }
             }
             _ => {}
         }
@@ -482,7 +489,12 @@ impl App {
                 );
                 self.set_status(format!("Rest days: {display}"), false);
             }
-            SettingsItem::ExportBackup => {}
+            SettingsItem::ExportBackupJson => {
+                self.export_backup();
+            }
+            SettingsItem::ExportSessionsCsv => {
+                self.export_sessions_csv();
+            }
         }
         self.sync_timer_config_to_data();
         self.ui.settings_labels_sig = u64::MAX;
@@ -673,9 +685,14 @@ impl App {
                 }
             },
             CachedSettingsLabel {
-                key: "Export backup",
+                key: "Export JSON",
                 value: "Enter to export".into(),
-                desc: "writes data.json for backup",
+                desc: "writes data.json backup",
+            },
+            CachedSettingsLabel {
+                key: "Export CSV",
+                value: "Enter to export".into(),
+                desc: "writes sessions.csv for sheets",
             },
         ]
     }
