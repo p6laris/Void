@@ -424,14 +424,10 @@ fn canvas_extent(xb: [f64; 2], yb: [f64; 2]) -> f64 {
 
 fn fit_base_r(extent: f64, layout: SceneLayout) -> f64 {
     let frac = match layout {
-        // Kept well under half the shorter axis: the zen wreath sits at 1.18x this and the
-        // ring used to run off the top and bottom of a tall terminal.
-        SceneLayout::Zen => 0.30,
-        SceneLayout::Dashboard => 0.30,
+        SceneLayout::Zen => 0.32,
+        SceneLayout::Dashboard => 0.40,
     };
-    // Floor is low because a short dashboard strip has very little vertical room; the old
-    // floor of 7 forced the orb taller than the band and clipped it.
-    (extent * frac).clamp(3.0, 34.0)
+    (extent * frac).clamp(3.5, 36.0)
 }
 
 /// Golden angle — spacing successive stars by it keeps them from clumping.
@@ -452,30 +448,30 @@ fn draw_star_halo(
     count: usize,
 ) {
     let (cx, cy, base, t) = geom;
-    let (particle, bg) = colors;
+    let (particle, _bg) = colors;
     let count = count.min(PARTICLE_COUNT + 4);
-    // Clear of the wreath and of the task markers that sit just outside it.
-    let inner = base * 1.62;
-    let band = base * 0.5;
+    let inner = base * 1.55;
+    let band = base * 0.45;
+
+    let mut star_pts: Vec<(f64, f64)> = Vec::with_capacity(count);
 
     for i in 0..count {
         let seed = i as f64 * GOLDEN_ANGLE;
         let twinkle = 0.5 + 0.5 * (t * 1.6 + seed).sin();
-        if twinkle < 0.35 {
+        if twinkle < 0.30 {
             continue;
         }
-        // Each star keeps its own orbit and drifts at its own rate, so the halo turns
-        // slowly instead of pulsing in lockstep.
         let a = seed + t * motion.speed * (0.012 + i as f64 * 0.0015);
         let r = inner + band * (0.5 + 0.5 * (seed * 3.1).sin());
-        draw_dot(
-            ctx,
-            cx + a.cos() * r,
-            cy + a.sin() * r,
-            0.6 + twinkle * 0.9 * motion.glow,
-            blend_color(bg, particle, twinkle * 0.85 * motion.glow),
-        );
+        let px = cx + a.cos() * r;
+        let py = cy + a.sin() * r;
+        star_pts.push((px, py));
     }
+
+    ctx.draw(&Points {
+        coords: &star_pts,
+        color: particle,
+    });
 }
 
 fn draw_idle_marker(
@@ -644,29 +640,8 @@ fn draw_soft_progress_wreath(
     }
 }
 
-/// Where the outermost contour sits, as a fraction of the orb radius.
-const OUTER_CONTOUR: f64 = 0.96;
 /// Smallest gap between contours, in canvas units, that still reads as two rings.
-///
-/// Bounds are scaled so one unit is half a braille dot, and braille packs 4 dots per row,
-/// so this is about a row and a half of clearance — below that the rings touch.
 const MIN_RING_GAP: f64 = 3.0;
-/// Never more than this many, however large the orb gets: past four the rim rings are too
-/// faint to see and only cost frame time.
-const MAX_CONTOURS: usize = 4;
-
-/// How many contour rings fit inside an orb of radius `outer` sitting `wreath_gap` below
-/// the progress wreath.
-///
-/// Returns zero on a small orb. The dashboard band is about five rows tall; there the rim
-/// contour landed within a dot or two of the wreath and the two merged, which is what made
-/// the orb a solid mass. With no contours the wreath is left alone to be the ring.
-fn contour_count(outer: f64, wreath_gap: f64) -> usize {
-    if wreath_gap < MIN_RING_GAP {
-        return 0;
-    }
-    ((outer * OUTER_CONTOUR / MIN_RING_GAP).floor() as usize).clamp(1, MAX_CONTOURS)
-}
 
 fn draw_timer_orb(
     ctx: &mut ratatui::widgets::canvas::Context,
@@ -685,45 +660,13 @@ fn draw_timer_orb(
     } else {
         blend_color(mode, glow, 0.35)
     };
-    let scale = 0.9 + 0.1 * breath;
     let intensity = motion.glow;
 
-    // Widely spaced contour rings, not a filled gradient.
-    //
-    // A braille canvas stores one colour per *cell* while the dots are 1-bit, so densely
-    // nested rings do not blend into a gradient — they interleave into a hatch. Tried it;
-    // it read as noise. A few rings with clear gaps between them stay legible as circles
-    // and leave the wreath free to be the thing you actually look at.
-    //
-    // How many fit depends on the radius. The dashboard orb is only a few rows tall, and
-    // four rings there landed inside one cell of each other and merged into a solid blob.
-    let rim = if compact { 0.82 } else { 0.92 };
-    let wreath = if compact {
-        WREATH_RADIUS_DASH
-    } else {
-        WREATH_RADIUS_ZEN
-    };
-    let outer = base * rim * scale;
-    // Counted off the unbreathed radii on purpose. `scale` swings with the breath, and
-    // deciding per frame against a moving radius made the ring count flip between four and
-    // none as the orb inhaled — the contours blinked.
-    let rings = contour_count(base * rim, base * (wreath - rim));
-
-    for i in 1..=rings {
-        let frac = OUTER_CONTOUR * i as f64 / rings as f64;
-        // Faint at the rim, denser towards the core.
-        let alpha = 0.55 - 0.41 * (i - 1) as f64 / (rings.max(2) - 1) as f64;
-        draw_ring(
-            ctx,
-            cx,
-            cy,
-            outer * frac,
-            blend_color(bg, warm, alpha * intensity),
-        );
+    // In Zen mode, draw a subtle outer rim aura that gracefully frames the center plate
+    if !compact {
+        let halo_r = base * 0.94;
+        draw_ring(ctx, cx, cy, halo_r, blend_color(bg, warm, 0.22 * intensity));
     }
-
-    // Solid centre so the core does not read as a hole.
-    draw_dot(ctx, cx, cy, outer * 0.16, blend_color(core, mode, 0.35));
 
     if timer_state == TimerState::Running {
         let halo_r = base * (1.06 + 0.05 * breath);

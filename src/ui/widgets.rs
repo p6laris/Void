@@ -60,23 +60,22 @@ pub fn subtask_line_style(theme: &Theme, done: bool) -> Style {
 pub fn subtask_inline_lines(
     subtasks: &[Subtask],
     theme: &Theme,
-    icons: IconSet,
+    _icons: IconSet,
     indent: &str,
     title_max_chars: Option<usize>,
 ) -> Vec<Line<'static>> {
     subtasks
         .iter()
-        .enumerate()
         .take(9)
-        .map(|(i, subtask)| {
-            let icon = if subtask.done { icons.check } else { icons.dot };
+        .map(|subtask| {
+            let mark = if subtask.done { "✓" } else { " " };
             let style = subtask_line_style(theme, subtask.done);
             let title = match title_max_chars {
                 Some(max) => truncate(&subtask.title, max),
                 None => subtask.title.clone(),
             };
             Line::from(vec![
-                Span::styled(format!("{indent}[{}] {} ", i + 1, icon), style),
+                Span::styled(format!("{indent}[{mark}] "), if subtask.done { Style::default().fg(theme.success) } else { Style::default().fg(theme.dim) }),
                 Span::styled(title, style),
             ])
         })
