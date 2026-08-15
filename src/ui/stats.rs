@@ -20,14 +20,12 @@ use super::widgets::{
 pub fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
 
-    // The heatmap holds a fixed amount of information; `Min(10)` handed it every spare row
-    // and it spent them on blanks under the caption. +1 for the panel's title rule.
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(heatmap::PREFERRED_HEIGHT + 1),
+            Constraint::Percentage(50),
             Constraint::Length(1),
-            Constraint::Min(6),
+            Constraint::Percentage(50),
         ])
         .split(area);
 
