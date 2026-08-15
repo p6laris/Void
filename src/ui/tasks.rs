@@ -22,55 +22,30 @@ const TAG_W_MIN: usize = 7;
 const COMFY_TITLE_W: usize = 22;
 
 pub(crate) fn draw_tasks(f: &mut Frame, app: &mut App, area: Rect) {
-    // Responsive 3-panel layout:
-    // On wide screens (>= 110 cols): 3 side-by-side columns: [ Tasks ] | [ Subtasks ] | [ Details ]
-    // On narrow screens (< 110 cols): 2 columns: [ Tasks ] | [ Subtasks (top) / Details (bottom) ]
-    if area.width >= 110 {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .margin(1)
-            .constraints([
-                Constraint::Percentage(40),
-                Constraint::Length(3),
-                Constraint::Percentage(32),
-                Constraint::Length(3),
-                Constraint::Percentage(28),
-            ])
-            .split(area);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(52),
+            Constraint::Length(1),
+            Constraint::Percentage(48),
+        ])
+        .split(area);
 
-        vertical_rule(f, &app.theme, cols[1]);
-        vertical_rule(f, &app.theme, cols[3]);
+    draw_task_list(f, app, rows[0]);
+    draw_divider(f, rows[1], &app.theme);
 
-        draw_task_list(f, app, cols[0]);
-        draw_subtasks_panel(f, app, cols[2]);
-        draw_task_details(f, app, cols[4]);
-    } else {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .margin(1)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(3),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
+    let bottom_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(3),
+            Constraint::Percentage(50),
+        ])
+        .split(rows[2]);
 
-        vertical_rule(f, &app.theme, cols[1]);
-        draw_task_list(f, app, cols[0]);
-
-        let right_rows = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(cols[2]);
-
-        draw_subtasks_panel(f, app, right_rows[0]);
-        draw_divider(f, right_rows[1], &app.theme);
-        draw_task_details(f, app, right_rows[2]);
-    }
+    draw_subtasks_panel(f, app, bottom_cols[0]);
+    vertical_rule(f, &app.theme, bottom_cols[1]);
+    draw_task_details(f, app, bottom_cols[2]);
 
     if app.task_ui.searching {
         draw_search_popup(f, app, area);
@@ -338,8 +313,9 @@ fn task_row<'a>(
             } else {
                 Style::default().fg(theme.comment)
             };
+            let s = format!("({d}/{n})");
             spans.push(Span::styled(
-                format!(" ({d}/{n})"),
+                format!("{:>SUB_W$}", s),
                 sub_style,
             ));
         } else {
@@ -348,23 +324,28 @@ fn task_row<'a>(
     }
 
     if cols.show_minutes {
+        let mins_str = format!("{}/{}m", task.actual_minutes, task.estimated_minutes);
         spans.push(Span::styled(
-            format!(
-                "{:>TIME_W$}",
-                format!("{}/{}m", task.actual_minutes, task.estimated_minutes)
-            ),
+            format!(" {:>TIME_W$}", mins_str),
             Style::default().fg(theme.comment),
         ));
     }
-    if cols.tags > 0 && !task.tags.is_empty() {
+    if cols.tags > 0 {
         spans.push(Span::raw(" "));
-        spans.extend(fit_tags(theme, &task.tags, cols.tags.saturating_sub(1)));
+        let (tag_spans, used_w) = fit_tags(theme, &task.tags, cols.tags.saturating_sub(1));
+        spans.extend(tag_spans);
+        if used_w < cols.tags.saturating_sub(1) {
+            spans.push(Span::raw(" ".repeat(cols.tags.saturating_sub(1) - used_w)));
+        }
     }
     Line::from(spans)
 }
 
 /// Tags that fit the budget whole, plus a `+N` for the rest.
-fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> Vec<Span<'a>> {
+fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> (Vec<Span<'a>>, usize) {
+    if tags.is_empty() {
+        return (Vec::new(), 0);
+    }
     let mut spans = Vec::new();
     let mut used = 0usize;
     let mut shown = 0usize;
@@ -379,9 +360,10 @@ fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> Vec<Span<'a>> 
         }
         if sep > 0 {
             spans.push(Span::raw(" "));
+            used += 1;
         }
         spans.extend(tag_span(theme, tag));
-        used += sep + w;
+        used += w;
         shown += 1;
     }
 
@@ -389,13 +371,16 @@ fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> Vec<Span<'a>> 
         let rest = tags.len() - shown;
         if shown > 0 {
             spans.push(Span::raw(" "));
+            used += 1;
         }
+        let rest_str = format!("+{rest}");
+        used += rest_str.chars().count();
         spans.push(Span::styled(
-            format!("+{rest}"),
+            rest_str,
             Style::default().fg(theme.comment),
         ));
     }
-    spans
+    (spans, used)
 }
 
 // ── dedicated subtasks panel ─────────────────────────────────────────────────

@@ -161,20 +161,20 @@ pub fn section_title<'a>(theme: &Theme, icon: &str, label: &str) -> Line<'a> {
 /// carries the colour, the way a terminal checklist reads.
 pub fn status_checkbox<'a>(
     theme: &Theme,
-    icons: IconSet,
+    _icons: IconSet,
     status: TaskStatus,
     override_style: Option<Style>,
 ) -> Vec<Span<'a>> {
     let (mark, color) = match status {
-        TaskStatus::Done => (icons.check, theme.success),
-        TaskStatus::InProgress => (icons.task_progress, theme.warning),
+        TaskStatus::Done => ("✓", theme.success),
+        TaskStatus::InProgress => ("~", theme.warning),
         TaskStatus::Pending => (" ", theme.dim),
     };
     let bracket = override_style.unwrap_or(Style::default().fg(theme.comment));
     let mark_style = override_style.unwrap_or(Style::default().fg(color));
     vec![
         Span::styled("[", bracket),
-        Span::styled(mark.to_string(), mark_style),
+        Span::styled(mark, mark_style),
         Span::styled("]", bracket),
     ]
 }
