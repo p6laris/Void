@@ -9,7 +9,6 @@ enum SettingsRow {
 pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
         .constraints([Constraint::Min(8), Constraint::Length(3)])
         .split(area);
 
@@ -28,10 +27,10 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     let section_headers: &[(usize, &str, &str)] = &[
         (0, icons.timer, "Timer"),
         (5, icons.cycle, "Behavior"),
-        (9, icons.tasks, "Tasks"),
-        (10, icons.star, "Appearance"),
-        (14, icons.play, "Sessions"),
-        (17, icons.export, "Data"),
+        (10, icons.tasks, "Tasks"),
+        (15, icons.star, "Appearance"),
+        (18, icons.play, "Sessions"),
+        (24, icons.export, "Data"),
     ];
 
     let mut layout: Vec<SettingsRow> = Vec::new();
@@ -148,6 +147,7 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
         Span::styled(" adjust", Style::default().fg(theme.dim)),
         Span::styled(scroll_hint, Style::default().fg(theme.dim)),
     ]))
+    .style(Style::default().bg(theme.bg))
     .alignment(Alignment::Center);
     f.render_widget(hint, chunks[1]);
 }

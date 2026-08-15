@@ -275,9 +275,21 @@ impl App {
         let hourly_distribution = db.session_minutes_by_local_hour().unwrap_or([0; 24]);
         let session_counts = db.session_counts_by_mode().unwrap_or((0, 0, 0));
         let theme_catalog = ThemeCatalog::load();
-        let theme_id = theme::normalize_theme_id(&data.theme);
+        let effective_theme_id = match data.theme_mode {
+            crate::model::ThemeMode::Dark => data.dark_theme.clone(),
+            crate::model::ThemeMode::Light => data.light_theme.clone(),
+            crate::model::ThemeMode::Auto => {
+                let sys = theme::detect_system_theme();
+                if sys.is_light() {
+                    data.light_theme.clone()
+                } else {
+                    data.dark_theme.clone()
+                }
+            }
+        };
+        let theme_id = theme::normalize_theme_id(&effective_theme_id);
         data.theme = theme_id.clone();
-        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::matrix());
+        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::dark());
         let icons = IconSet::detect();
         let active_task = data.active_task_id.filter(|id| {
             data.tasks
@@ -411,6 +423,35 @@ impl App {
     }
 
     pub const SESSIONS_PER_PAGE: usize = 15;
+
+    pub fn resolve_effective_theme_id(&self) -> String {
+        match self.data.theme_mode {
+            crate::model::ThemeMode::Dark => self.data.dark_theme.clone(),
+            crate::model::ThemeMode::Light => self.data.light_theme.clone(),
+            crate::model::ThemeMode::Auto => {
+                let sys = theme::detect_system_theme();
+                if sys.is_light() {
+                    self.data.light_theme.clone()
+                } else {
+                    self.data.dark_theme.clone()
+                }
+            }
+        }
+    }
+
+    pub fn refresh_theme(&mut self) {
+        let effective = self.resolve_effective_theme_id();
+        let id = theme::normalize_theme_id(&effective);
+        match theme::resolve(&id, &self.theme_catalog) {
+            Ok(resolved) => {
+                self.theme = resolved;
+                self.data.theme = id.clone();
+            }
+            Err(err) => {
+                self.set_status(format!("Theme `{id}` unavailable: {err:#}"), true);
+            }
+        }
+    }
 
     pub fn apply_theme(&mut self, id: &str) {
         let id = theme::normalize_theme_id(id);
