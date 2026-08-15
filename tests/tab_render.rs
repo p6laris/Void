@@ -404,3 +404,40 @@ fn about_tab_renders_with_ursa_minor_constellation() {
     }
 }
 
+#[test]
+fn all_popups_render_cleanly_on_various_resolutions() {
+    let mut app = app_with_tasks();
+    let task_id = app.data.tasks[0].id;
+    app.task_ui.bulk_selected.insert(task_id);
+
+    let popups = vec![
+        void::app::Popup::AddTask,
+        void::app::Popup::EditTask(task_id),
+        void::app::Popup::AddSubtask(task_id),
+        void::app::Popup::EditSubtask(task_id, 1),
+        void::app::Popup::ConfirmDelete(task_id),
+        void::app::Popup::BulkConfirm(void::app::BulkAction::Delete),
+        void::app::Popup::BulkConfirm(void::app::BulkAction::MarkDone),
+        void::app::Popup::EmptyQueueChoice,
+    ];
+
+    for popup in popups {
+        app.input.popup = Some(popup.clone());
+        for (w, h) in [(120, 36), (80, 24)] {
+            let lines = render_tab(&mut app, FocusTab::Tasks, w, h);
+            assert!(!lines.is_empty());
+            let full = lines.join("\n");
+            match &popup {
+                void::app::Popup::AddTask => assert!(full.contains("Add Task")),
+                void::app::Popup::EditTask(_) => assert!(full.contains("Edit Task")),
+                void::app::Popup::AddSubtask(_) => assert!(full.contains("Add Subtask")),
+                void::app::Popup::EditSubtask(_, _) => assert!(full.contains("Edit Subtask")),
+                void::app::Popup::ConfirmDelete(_) => assert!(full.contains("Delete")),
+                void::app::Popup::BulkConfirm(void::app::BulkAction::Delete) => assert!(full.contains("Bulk Delete")),
+                void::app::Popup::BulkConfirm(void::app::BulkAction::MarkDone) => assert!(full.contains("Bulk Complete")),
+                void::app::Popup::EmptyQueueChoice => assert!(full.contains("Queue Cleared")),
+            }
+        }
+    }
+}
+
