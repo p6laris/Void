@@ -363,12 +363,17 @@ where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
     let mut last_tick = std::time::Instant::now();
+    let mut needs_draw = true;
+
     loop {
-        app.refresh_chart_if_needed();
-        if let Some(title) = app.poll_window_title() {
-            set_window_title(title);
+        if needs_draw {
+            app.refresh_chart_if_needed();
+            if let Some(title) = app.poll_window_title() {
+                set_window_title(title);
+            }
+            terminal.draw(|f| ui::render(f, app))?;
+            needs_draw = false;
         }
-        terminal.draw(|f| ui::render(f, app))?;
 
         let tick_rate = app.tick_rate();
         let timeout = tick_rate
@@ -380,10 +385,21 @@ where
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
                         app.handle_key(key);
+                        needs_draw = true;
                     }
                 }
                 Event::Mouse(mouse) => {
-                    app.handle_mouse(mouse);
+                    if matches!(
+                        mouse.kind,
+                        crossterm::event::MouseEventKind::ScrollUp
+                            | crossterm::event::MouseEventKind::ScrollDown
+                    ) {
+                        app.handle_mouse(mouse);
+                        needs_draw = true;
+                    }
+                }
+                Event::Resize(_, _) => {
+                    needs_draw = true;
                 }
                 _ => {}
             }
@@ -391,6 +407,7 @@ where
         if last_tick.elapsed() >= tick_rate {
             app.on_tick();
             last_tick = std::time::Instant::now();
+            needs_draw = true;
         }
         if app.ui.should_quit {
             return Ok(());

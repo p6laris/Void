@@ -463,7 +463,8 @@ fn draw_star_halo(
     let inner = base * 1.55;
     let band = base * 0.45;
 
-    let mut star_pts: Vec<(f64, f64)> = Vec::with_capacity(count);
+    let mut star_pts = [(0.0, 0.0); PARTICLE_COUNT + 4];
+    let mut star_len = 0;
 
     for i in 0..count {
         let seed = i as f64 * GOLDEN_ANGLE;
@@ -475,11 +476,12 @@ fn draw_star_halo(
         let r = inner + band * (0.5 + 0.5 * (seed * 3.1).sin());
         let px = cx + a.cos() * r;
         let py = cy + a.sin() * r;
-        star_pts.push((px, py));
+        star_pts[star_len] = (px, py);
+        star_len += 1;
     }
 
     ctx.draw(&Points {
-        coords: &star_pts,
+        coords: &star_pts[..star_len],
         color: particle,
     });
 }
