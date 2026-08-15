@@ -74,6 +74,7 @@ pub struct SceneOptions {
     pub sessions_done: u32,
     pub sessions_total: u32,
     pub layout: SceneLayout,
+    pub animated: bool,
 }
 
 pub type DashboardSceneOptions = SceneOptions;
@@ -233,10 +234,19 @@ pub fn draw_scene_canvas(
     }
 
     let remaining = (1.0 - timer.progress()).clamp(0.0, 1.0);
-    let motion = scene_motion(timer);
+    let motion = if options.animated {
+        scene_motion(timer)
+    } else {
+        SceneMotion {
+            breath: 0.5,
+            speed: 0.0,
+            scale: 1.0,
+            glow: 1.0,
+        }
+    };
     let marker = canvas_marker(area);
     let (xb, yb) = square_bounds(area, marker);
-    let t = time_s();
+    let t = if options.animated { time_s() } else { 0.0 };
     let zen = options.layout == SceneLayout::Zen;
     let compact = !zen;
     let extent = canvas_extent(xb, yb);
@@ -832,6 +842,7 @@ pub fn draw_timer_canvas(
             sessions_done: 0,
             sessions_total: 0,
             layout: SceneLayout::Zen,
+            animated: options.breathe,
         },
     );
 }

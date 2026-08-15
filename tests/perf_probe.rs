@@ -101,6 +101,7 @@ fn time_canvas_scene() {
             sessions_done: 2,
             sessions_total: 4,
             layout: if zen { SceneLayout::Zen } else { SceneLayout::Dashboard },
+            animated: true,
         };
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
 

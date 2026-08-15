@@ -368,3 +368,28 @@ fn preview_stats() {
     }
 }
 
+#[test]
+fn dashboard_renders_with_all_canvas_modes() {
+    let mut app = app_with_tasks();
+    for mode in [void::model::CanvasMode::Animated, void::model::CanvasMode::Static, void::model::CanvasMode::Off] {
+        app.data.canvas_mode = mode;
+        let lines = render_tab(&mut app, FocusTab::Dashboard, 120, 30);
+        assert!(!lines.is_empty());
+        let full = lines.join("\n");
+        assert!(full.contains("focus"), "Dashboard missing focus in mode {mode:?}");
+    }
+}
+
+#[test]
+fn zen_renders_with_all_canvas_modes() {
+    let mut app = app_with_tasks();
+    app.ui.zen_mode = true;
+    for mode in [void::model::CanvasMode::Animated, void::model::CanvasMode::Static, void::model::CanvasMode::Off] {
+        app.data.canvas_mode = mode;
+        let lines = render_tab(&mut app, FocusTab::Dashboard, 120, 30);
+        assert!(!lines.is_empty());
+        let full = lines.join("\n");
+        assert!(full.contains("25:00") || full.contains("focus"), "Zen missing content in mode {mode:?}");
+    }
+}
+

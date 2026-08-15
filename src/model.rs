@@ -420,6 +420,40 @@ impl ThemeMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum CanvasMode {
+    #[default]
+    Animated,
+    Static,
+    Off,
+}
+
+impl CanvasMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            CanvasMode::Animated => "Animated",
+            CanvasMode::Static => "Static",
+            CanvasMode::Off => "Off (Minimal)",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            CanvasMode::Animated => CanvasMode::Static,
+            CanvasMode::Static => CanvasMode::Off,
+            CanvasMode::Off => CanvasMode::Animated,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            CanvasMode::Animated => CanvasMode::Off,
+            CanvasMode::Static => CanvasMode::Animated,
+            CanvasMode::Off => CanvasMode::Static,
+        }
+    }
+}
+
 fn default_dark_theme_id() -> String {
     "catppuccin-mocha".into()
 }
@@ -483,6 +517,8 @@ pub struct AppData {
     pub auto_advance_task: bool,
     #[serde(default)]
     pub theme_mode: ThemeMode,
+    #[serde(default)]
+    pub canvas_mode: CanvasMode,
     #[serde(default = "default_dark_theme_id")]
     pub dark_theme: String,
     #[serde(default = "default_light_theme_id")]
@@ -586,6 +622,7 @@ impl Default for AppData {
             auto_pick_task: true,
             auto_advance_task: true,
             theme_mode: ThemeMode::Auto,
+            canvas_mode: CanvasMode::Animated,
             dark_theme: default_dark_theme_id(),
             light_theme: default_light_theme_id(),
             theme: default_theme_id(),

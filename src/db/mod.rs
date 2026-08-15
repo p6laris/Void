@@ -601,6 +601,14 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ("streak_rest_days", &streak_rest_days_str),
         ("streak_freezes", &streak_freezes),
         ("last_freeze_earned_streak", &last_freeze_earned_streak),
+        (
+            "canvas_mode",
+            match data.canvas_mode {
+                crate::model::CanvasMode::Animated => "animated",
+                crate::model::CanvasMode::Static => "static",
+                crate::model::CanvasMode::Off => "off",
+            },
+        ),
     ];
 
     let mut stmt = conn.prepare(UPSERT_SETTING_SQL)?;
@@ -683,6 +691,13 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
         "streak_freezes" => data.streak_freezes = parse_u32(value, data.streak_freezes),
         "last_freeze_earned_streak" => {
             data.last_freeze_earned_streak = parse_u32(value, data.last_freeze_earned_streak)
+        }
+        "canvas_mode" => {
+            data.canvas_mode = match value {
+                "static" => crate::model::CanvasMode::Static,
+                "off" => crate::model::CanvasMode::Off,
+                _ => crate::model::CanvasMode::Animated,
+            };
         }
         _ => {}
     }

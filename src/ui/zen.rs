@@ -26,19 +26,28 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
 
     let cycle = t.config.long_break_every.max(1);
     let style = theme.scene_style(mc);
-    let options = ZenSceneOptions {
-        task_progress: app.active_task_progress(),
-        sessions_done: t.completed_focus_sessions % cycle,
-        sessions_total: cycle,
-        pending_tasks: app.pending_task_count(),
-        active_task_index: app.active_task_pending_index(),
-        layout: crate::canvas_timer::SceneLayout::Zen,
-    };
-    draw_zen_canvas(f, chunks[0], t, &style, &options);
+    let is_canvas_off = app.data.canvas_mode == crate::model::CanvasMode::Off;
+
+    if !is_canvas_off {
+        let options = ZenSceneOptions {
+            task_progress: app.active_task_progress(),
+            sessions_done: t.completed_focus_sessions % cycle,
+            sessions_total: cycle,
+            pending_tasks: app.pending_task_count(),
+            active_task_index: app.active_task_pending_index(),
+            layout: crate::canvas_timer::SceneLayout::Zen,
+            animated: app.data.canvas_mode == crate::model::CanvasMode::Animated,
+        };
+        draw_zen_canvas(f, chunks[0], t, &style, &options);
+    }
 
     // Everything below is laid out to fit inside the wreath, so the ring stays a whole
     // circle instead of being cut in half by the plate that clears the canvas behind it.
-    let plate_w = crate::canvas_timer::scene_plate_width(chunks[0]);
+    let plate_w = if is_canvas_off {
+        chunks[0].width
+    } else {
+        crate::canvas_timer::scene_plate_width(chunks[0])
+    };
     let text_cap = plate_w.saturating_sub(PLATE_PAD_X * 2).max(12) as usize;
 
     let (main_time, tenths, _) = format_time_stack(t);
@@ -62,8 +71,22 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
             session_dots(cycle_done, cycle, on_focus_cycle),
             Style::default().fg(mc),
         )),
-        Line::from(""),
     ];
+
+    if is_canvas_off {
+        let progress_ratio = t.progress().clamp(0.0, 1.0);
+        let bar_width = 20.min((chunks[0].width as usize).saturating_sub(10)).max(6);
+        let filled = (progress_ratio * bar_width as f64).round() as usize;
+        let bar_str: String = (0..bar_width)
+            .map(|i| if i < filled { '━' } else { '─' })
+            .collect();
+        let pct = (progress_ratio * 100.0) as u32;
+        overlay_lines.push(Line::from(vec![
+            Span::styled(bar_str, Style::default().fg(mc)),
+            Span::styled(format!(" {:>3}%", pct), Style::default().fg(theme.dim)),
+        ]));
+    }
+    overlay_lines.push(Line::from(""));
 
     if let Some(task) = active_task_ref {
         overlay_lines.push(Line::from(vec![

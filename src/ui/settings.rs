@@ -29,8 +29,8 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
         (5, icons.cycle, "Behavior"),
         (10, icons.tasks, "Tasks"),
         (15, icons.star, "Appearance"),
-        (18, icons.play, "Sessions"),
-        (24, icons.export, "Data"),
+        (19, icons.play, "Sessions"),
+        (25, icons.export, "Data"),
     ];
 
     let mut layout: Vec<SettingsRow> = Vec::new();

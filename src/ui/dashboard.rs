@@ -296,6 +296,121 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let on_break = t.mode.is_break();
+    let (main_time, tenths, _) = format_time_stack(t);
+    let today_logged = app.today_focus_mins();
+
+    if app.data.canvas_mode == crate::model::CanvasMode::Off {
+        let minimal_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(if on_break {
+                [
+                    Constraint::Length(1),
+                    Constraint::Length(2),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Min(1),
+                ]
+            } else {
+                [
+                    Constraint::Length(1),
+                    Constraint::Length(2),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Min(1),
+                ]
+            })
+            .split(inner);
+
+        let time_line = Line::from(vec![
+            Span::styled(
+                format!("{main_time} "),
+                Style::default()
+                    .fg(if is_finished { theme.success } else { theme.text })
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(tenths, Style::default().fg(theme.dim)),
+        ]);
+        f.render_widget(
+            Paragraph::new(time_line).alignment(Alignment::Center),
+            minimal_layout[1],
+        );
+
+        let mut sub_spans = vec![
+            Span::styled(
+                format!("{} logged today", super::widgets::format_minutes(today_logged)),
+                Style::default().fg(theme.comment),
+            ),
+        ];
+        if t.mode == TimerMode::Focus {
+            let (quality_label, quality_color) = match t.session_pause_count {
+                0 => ("uninterrupted", theme.success),
+                1 | 2 => ("minor pauses", theme.warning),
+                _ => ("interrupted", theme.error),
+            };
+            sub_spans.push(Span::styled(" · ", Style::default().fg(theme.comment)));
+            sub_spans.push(Span::styled(
+                format!("{} {}", app.icons.chart, quality_label),
+                Style::default().fg(quality_color),
+            ));
+        }
+        f.render_widget(
+            Paragraph::new(Line::from(sub_spans)).alignment(Alignment::Center),
+            minimal_layout[2],
+        );
+
+        let progress_ratio = t.progress().clamp(0.0, 1.0);
+        let bar_width = (inner.width as usize).saturating_sub(14).max(8);
+        let filled = (progress_ratio * bar_width as f64).round() as usize;
+        let bar_str: String = (0..bar_width)
+            .map(|i| if i < filled { '━' } else { '─' })
+            .collect();
+        let pct_str = if is_finished {
+            "done".to_string()
+        } else {
+            format!("{:>3}%", (progress_ratio * 100.0) as u32)
+        };
+        let bar_line = Line::from(vec![
+            Span::styled(format!("{pct_str} "), Style::default().fg(theme.dim)),
+            Span::styled(bar_str, Style::default().fg(if is_finished { theme.success } else { mc })),
+            Span::styled(
+                format!(" {}m", (t.remaining_seconds() / 60)),
+                Style::default().fg(theme.dim),
+            ),
+        ]);
+        f.render_widget(
+            Paragraph::new(bar_line).alignment(Alignment::Center),
+            minimal_layout[3],
+        );
+
+        if on_break {
+            crate::canvas_timer::draw_break_tip(
+                f,
+                minimal_layout[4],
+                t,
+                mc,
+                theme.text,
+                theme.dim,
+                app.icons.heart,
+            );
+        } else if let Some(id) = app.task_ui.active_task {
+            if let Some(task) = app.data.task(id) {
+                let task_line = Line::from(vec![
+                    Span::styled(format!("{} ", app.icons.task_active), Style::default().fg(theme.accent)),
+                    Span::styled(&task.title, Style::default().fg(theme.text)),
+                ]);
+                f.render_widget(
+                    Paragraph::new(task_line).alignment(Alignment::Center),
+                    minimal_layout[4],
+                );
+            }
+        }
+
+        draw_timer_footer(f, app, &minimal_layout[5..], mc);
+        return;
+    }
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if on_break {
@@ -326,6 +441,7 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
         sessions_done: t.completed_focus_sessions % cycle,
         sessions_total: cycle,
         layout: crate::canvas_timer::SceneLayout::Dashboard,
+        animated: app.data.canvas_mode == crate::model::CanvasMode::Animated,
     };
     draw_dashboard_canvas(f, layout[0], t, &style, &options);
 
@@ -372,6 +488,9 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
 }
 
 pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Color) {
+    if areas.is_empty() {
+        return;
+    }
     let theme = &app.theme;
     let t = &app.timer;
 
@@ -395,32 +514,34 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
         areas[0],
     );
 
-    if let Some(mut spans) = active_task_spans(app, theme) {
-        if let Some(id) = app.task_ui.active_task {
-            if let Some(task) = app.data.task(id) {
-                let left = crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
-                if left > 0 {
-                    spans.push(Span::styled(
-                        format!("  ~{} left", left),
-                        Style::default().fg(theme.dim),
-                    ));
+    if areas.len() > 1 {
+        if let Some(mut spans) = active_task_spans(app, theme) {
+            if let Some(id) = app.task_ui.active_task {
+                if let Some(task) = app.data.task(id) {
+                    let left = crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
+                    if left > 0 {
+                        spans.push(Span::styled(
+                            format!("  ~{} left", left),
+                            Style::default().fg(theme.dim),
+                        ));
+                    }
+                    f.render_widget(
+                        Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
+                        areas[1],
+                    );
                 }
-                f.render_widget(
-                    Paragraph::new(Line::from(spans)).alignment(Alignment::Center),
-                    areas[1],
-                );
             }
-        }
-    } else if areas.len() > 1 {
-        let msg = if app.queue_empty() {
-            "all tasks done — free focus, logging general sessions"
         } else {
-            "no active task — pick one on the tasks tab with [space]"
-        };
-        f.render_widget(
-            Paragraph::new(comment_line(theme, msg)).alignment(Alignment::Center),
-            areas[1],
-        );
+            let msg = if app.queue_empty() {
+                "all tasks done — free focus, logging general sessions"
+            } else {
+                "no active task — pick one on the tasks tab with [space]"
+            };
+            f.render_widget(
+                Paragraph::new(comment_line(theme, msg)).alignment(Alignment::Center),
+                areas[1],
+            );
+        }
     }
 
     if areas.len() > 2 && t.mode.is_break() {

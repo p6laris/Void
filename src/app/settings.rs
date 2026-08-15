@@ -30,6 +30,7 @@ pub enum SettingsItem {
     ThemeMode,
     DarkTheme,
     LightTheme,
+    CanvasMode,
     LogBreaks,
     RestDays,
     TerminalTitle,
@@ -83,6 +84,7 @@ impl SettingsState {
                 SettingsItem::ThemeMode,
                 SettingsItem::DarkTheme,
                 SettingsItem::LightTheme,
+                SettingsItem::CanvasMode,
                 SettingsItem::LogBreaks,
                 SettingsItem::RestDays,
                 SettingsItem::TerminalTitle,
@@ -361,6 +363,21 @@ impl App {
                 let label = self.theme_catalog.label(&next);
                 self.set_status(format!("Preferred Light theme: {label}"), false);
             }
+            SettingsItem::CanvasMode => {
+                let next = if dir >= 0 {
+                    self.data.canvas_mode.next()
+                } else {
+                    self.data.canvas_mode.prev()
+                };
+                self.data.canvas_mode = next;
+                let key = match next {
+                    crate::model::CanvasMode::Animated => "animated",
+                    crate::model::CanvasMode::Static => "static",
+                    crate::model::CanvasMode::Off => "off",
+                };
+                self.persist_setting("canvas_mode", key);
+                self.set_status(format!("Dashboard art: {}", next.label()), false);
+            }
             SettingsItem::CustomMinutes => {
                 let cur = self.timer.custom_minutes as i32;
                 let v = (cur + dir).clamp(1, 240) as u32;
@@ -516,6 +533,7 @@ impl App {
         self.data.auto_advance_task.hash(&mut hasher);
         self.data.log_breaks.hash(&mut hasher);
         (self.data.theme_mode as u8).hash(&mut hasher);
+        (self.data.canvas_mode as u8).hash(&mut hasher);
         self.data.dark_theme.hash(&mut hasher);
         self.data.light_theme.hash(&mut hasher);
         self.data.theme.hash(&mut hasher);
@@ -635,6 +653,11 @@ impl App {
                 key: "Light theme",
                 value: self.theme_catalog.label(&self.data.light_theme),
                 desc: "preferred light palette",
+            },
+            CachedSettingsLabel {
+                key: "Dashboard art",
+                value: self.data.canvas_mode.label().to_string(),
+                desc: "animated / static / off",
             },
             CachedSettingsLabel {
                 key: "Log breaks",
