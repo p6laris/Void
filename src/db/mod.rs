@@ -343,6 +343,13 @@ impl Database {
         Ok(())
     }
 
+    pub fn import_csv(&self, path: &std::path::Path) -> Result<usize> {
+        let conn = self.conn.unchecked_transaction()?;
+        let count = import_export::import_csv(&conn, path)?;
+        conn.commit()?;
+        Ok(count)
+    }
+
     pub fn minutes_by_date(&self, days: usize) -> Result<Vec<(String, u32)>> {
         if days == 0 {
             return Ok(Vec::new());
