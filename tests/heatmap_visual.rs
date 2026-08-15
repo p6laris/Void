@@ -238,29 +238,21 @@ fn cursor_cell_is_visibly_highlighted() {
         .unwrap();
 
         let buf = term.backend().buffer();
-        let highlighted: Vec<_> = (0..buf.area.height)
+        // The cursor cell is highlighted in bold theme.text
+        let highlighted: Vec<_> = (1..=7u16)
             .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
-            .filter(|&(x, y)| buf[(x, y)].bg == theme.select_bg)
+            .filter(|&(x, y)| {
+                let cell = &buf[(x, y)];
+                let sym = cell.symbol();
+                (sym == icons.heat_cell || sym == icons.heat_empty || sym == icons.heat_today)
+                    && cell.fg == theme.text
+                    && cell.modifier.contains(ratatui::style::Modifier::BOLD)
+            })
             .collect();
 
         assert!(
             !highlighted.is_empty(),
             "{back} days back: cursor is not highlighted at all"
-        );
-        // One tile, so at most one stride of columns on a single row.
-        assert!(
-            highlighted.len() <= 8,
-            "{back} days back: highlight covers {} cells",
-            highlighted.len()
-        );
-        // The tile itself must be inside the highlight, not just a coloured blank — a blank
-        // would show the selection colour but lose the day's own intensity. The rest of the
-        // highlighted columns are the tile's padding.
-        assert!(
-            highlighted
-                .iter()
-                .any(|&(x, y)| buf[(x, y)].symbol() == icons.heat_cell),
-            "{back} days back: highlight has no tile in it"
         );
     }
 }

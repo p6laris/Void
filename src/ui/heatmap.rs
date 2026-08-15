@@ -463,36 +463,42 @@ fn cell_span(
     };
     let color = theme.heat[heat_index(mins, scale)];
 
-    // The selection colour is set across the whole column, and `■` does not fill its cell,
-    // so the background shows around the glyph. That only works because the tile is a
-    // centred glyph — behind a solid block the highlight was invisible, which is what made
-    // the cursor impossible to find on a filled day.
+    let glyph = if flags.is_today {
+        icons.heat_today
+    } else if mins == 0 {
+        icons.heat_empty
+    } else {
+        icons.heat_cell
+    };
+
     if flags.is_cursor {
+        // Selected cell: exact same cell shape and size, highlighted with crisp bold text color
         return Span::styled(
-            tile(icons.heat_cell, stride),
+            tile(glyph, stride),
             Style::default()
-                .fg(if mins == 0 { theme.select_fg } else { color })
-                .bg(theme.select_bg)
+                .fg(theme.text)
                 .add_modifier(Modifier::BOLD),
         );
     }
 
-    let glyph = if flags.is_today {
-        icons.heat_today
-    } else {
-        icons.heat_cell
-    };
-    // Today's own heat step is the empty colour on a day with nothing logged yet, which is
-    // exactly when you want to find it — so fall back to a visible foreground there.
-    let mut style = Style::default().fg(if flags.is_today && mins == 0 {
-        theme.dim
-    } else {
-        color
-    });
     if flags.is_today {
+        let mut style = Style::default().fg(if mins == 0 {
+            theme.dim
+        } else {
+            color
+        });
         style = style.add_modifier(Modifier::BOLD);
+        return Span::styled(tile(glyph, stride), style);
     }
-    Span::styled(tile(glyph, stride), style)
+
+    if mins == 0 {
+        return Span::styled(
+            tile(glyph, stride),
+            Style::default().fg(theme.task_track),
+        );
+    }
+
+    Span::styled(tile(glyph, stride), Style::default().fg(color))
 }
 
 fn build_month_row<'a>(layout: &HeatmapLayout, marks: &[(usize, &str)], dim: Style) -> Line<'a> {
@@ -521,16 +527,22 @@ fn build_month_row<'a>(layout: &HeatmapLayout, marks: &[(usize, &str)], dim: Sty
 /// Renders the ramp straight out of `Theme::heat`, so the swatches are by construction the
 /// exact colours the grid uses.
 fn build_legend_row<'a>(theme: &Theme, icons: IconSet, dim: Style, stride: usize) -> Line<'a> {
-    // Swatches are drawn as the grid's own tiles so the legend reads as a sample of what is
-    // above it rather than a separate, smaller scale.
-    let swatch = tile(icons.heat_cell, stride);
-
     let mut spans = Vec::with_capacity(crate::theme::HEAT_STEPS * 2 + 4);
     spans.push(Span::raw(" ".repeat(LABEL_COL)));
     spans.push(Span::styled("less ", dim));
 
-    for color in theme.heat.iter() {
-        spans.push(Span::styled(swatch.clone(), Style::default().fg(*color)));
+    // Empty day swatch matching inactive grid cells
+    spans.push(Span::styled(
+        tile(icons.heat_empty, stride),
+        Style::default().fg(theme.task_track),
+    ));
+
+    // Active day swatches matching active grid cells
+    for color in theme.heat.iter().skip(1) {
+        spans.push(Span::styled(
+            tile(icons.heat_cell, stride),
+            Style::default().fg(*color),
+        ));
     }
 
     spans.push(Span::styled(" more", dim));

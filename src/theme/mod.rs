@@ -116,9 +116,9 @@ pub(crate) fn derive_defaults(base: &mut Theme) {
 fn derive_heat(bg: Color, accent: Color, empty: Color) -> [Color; HEAT_STEPS] {
     [
         empty,
-        mix(bg, accent, 72),
-        mix(bg, accent, 128),
-        mix(bg, accent, 190),
+        mix(bg, accent, 80),
+        mix(bg, accent, 135),
+        mix(bg, accent, 195),
         accent,
     ]
 }
