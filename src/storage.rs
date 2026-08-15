@@ -16,15 +16,78 @@ pub fn next_id(db: &Database, data: &mut AppData) -> Result<u64> {
 
 pub fn ensure_today_reset(db: &Database, data: &mut AppData) -> Result<bool> {
     let today = crate::date::today_str();
-    if data.today_date.as_deref() != Some(today.as_str()) {
+    let is_new_day = data.today_date.as_deref() != Some(today.as_str());
+    if is_new_day {
         data.today_focus_minutes = 0;
         data.today_date = Some(today.clone());
         db.set_setting("today_focus_minutes", "0")?;
         db.set_setting("today_date", &today)?;
         db.set_setting("timer_completed_focus_sessions", "0")?;
-        return Ok(true);
     }
-    Ok(false)
+    reconcile_streaks(db, data, &today)?;
+    Ok(is_new_day)
+}
+
+pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Result<()> {
+    let today_date = match chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d").ok() {
+        Some(d) => d,
+        None => return Ok(()),
+    };
+
+    // 1. Reconcile daily session streak
+    if let Some(last_str) = &data.last_session_date {
+        if let Some(last_date) = chrono::NaiveDate::parse_from_str(last_str, "%Y-%m-%d").ok() {
+            if today_date > last_date {
+                let gap = count_active_gap(last_date, today_date, &data.streak_rest_days);
+                if gap > data.streak_freezes {
+                    if data.streak_days != 0 || data.last_freeze_earned_streak != 0 {
+                        data.streak_days = 0;
+                        data.last_freeze_earned_streak = 0;
+                        db.set_setting("streak_days", "0")?;
+                        db.set_setting("last_freeze_earned_streak", "0")?;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Reconcile goal streak
+    if let Some(last_goal_str) = &data.last_goal_date {
+        if let Some(last_goal_date) = chrono::NaiveDate::parse_from_str(last_goal_str, "%Y-%m-%d").ok() {
+            if today_date > last_goal_date {
+                let gap = count_active_gap(last_goal_date, today_date, &data.streak_rest_days);
+                if gap > 0 && data.goal_streak_days != 0 {
+                    data.goal_streak_days = 0;
+                    db.set_setting("goal_streak_days", "0")?;
+                }
+            }
+        }
+    }
+
+    // 3. Reconcile weekly streak
+    if let Some(last_week_key) = &data.last_weekly_streak_key {
+        let cur_iso = today_date.iso_week();
+        let cur_week_key = format!("{}-W{:02}", cur_iso.year(), cur_iso.week());
+        if last_week_key != &cur_week_key && !is_consecutive_week(last_week_key, &cur_week_key) {
+            if data.weekly_streak_weeks != 0 {
+                data.weekly_streak_weeks = 0;
+                db.set_setting("weekly_streak_weeks", "0")?;
+            }
+        }
+    }
+
+    // 4. Reconcile monthly streak
+    if let Some(last_month_key) = &data.last_monthly_streak_key {
+        let cur_month_key = format!("{}-{:02}", today_date.year(), today_date.month());
+        if last_month_key != &cur_month_key && !is_consecutive_month(last_month_key, &cur_month_key) {
+            if data.monthly_streak_months != 0 {
+                data.monthly_streak_months = 0;
+                db.set_setting("monthly_streak_months", "0")?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn parse_tags(input: &str) -> Vec<String> {
@@ -479,10 +542,13 @@ pub fn update_goal_streak(data: &mut AppData) -> Result<()> {
             let last_date = chrono::NaiveDate::parse_from_str(last, "%Y-%m-%d").ok();
             let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").ok();
             if let (Some(l), Some(t)) = (last_date, today_date) {
-                if l.succ_opt() == Some(t) {
-                    data.goal_streak_days = data.goal_streak_days.saturating_add(1);
-                } else if t != l {
-                    data.goal_streak_days = 1;
+                if t > l {
+                    let gap = count_active_gap(l, t, &data.streak_rest_days);
+                    if gap == 0 {
+                        data.goal_streak_days = data.goal_streak_days.saturating_add(1);
+                    } else {
+                        data.goal_streak_days = 1;
+                    }
                 }
             } else {
                 data.goal_streak_days = 1;
@@ -525,7 +591,8 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
     let stored = db.get_session(id)?;
     let r = &stored.record;
     let today = crate::date::today_str();
-    if matches!(r.mode, TimerMode::Focus | TimerMode::Custom) {
+    let is_focus = matches!(r.mode, TimerMode::Focus | TimerMode::Custom);
+    if is_focus {
         data.total_focus_minutes = data.total_focus_minutes.saturating_sub(r.minutes);
         if r.date == today {
             data.today_focus_minutes = data.today_focus_minutes.saturating_sub(r.minutes);
@@ -540,6 +607,23 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
         }
     }
     db.delete_focus_session(id)?;
+
+    // If today's goal was revoked because today's minutes dropped below daily goal:
+    if is_focus && r.date == today && data.today_focus_minutes < data.daily_goal_minutes {
+        if data.last_goal_date.as_deref() == Some(today.as_str()) {
+            data.goal_streak_days = data.goal_streak_days.saturating_sub(1);
+            data.last_goal_date = None;
+        }
+    }
+
+    // If all sessions from today were deleted, rollback last_session_date
+    if is_focus && r.date == today && data.today_focus_minutes == 0 {
+        if data.last_session_date.as_deref() == Some(today.as_str()) {
+            data.streak_days = data.streak_days.saturating_sub(1);
+            data.last_session_date = db.latest_focus_session_date()?;
+        }
+    }
+
     db.persist_session_stats(data)?;
     Ok(())
 }
@@ -557,7 +641,8 @@ pub fn adjust_session_minutes(
         return Ok(());
     }
     let today = crate::date::today_str();
-    if matches!(stored.record.mode, TimerMode::Focus | TimerMode::Custom) {
+    let is_focus = matches!(stored.record.mode, TimerMode::Focus | TimerMode::Custom);
+    if is_focus {
         let delta = new_minutes as i32 - old as i32;
         if delta > 0 {
             data.total_focus_minutes = data.total_focus_minutes.saturating_add(delta as u32);
@@ -582,7 +667,17 @@ pub fn adjust_session_minutes(
         }
     }
     db.update_session_minutes(id, new_minutes)?;
-    update_goal_streak(data)?;
+
+    // Update goal streak or revoke if reduced below daily goal
+    if is_focus && stored.record.date == today && data.today_focus_minutes < data.daily_goal_minutes {
+        if data.last_goal_date.as_deref() == Some(today.as_str()) {
+            data.goal_streak_days = data.goal_streak_days.saturating_sub(1);
+            data.last_goal_date = None;
+        }
+    } else if is_focus {
+        update_goal_streak(data)?;
+    }
+
     db.persist_session_stats(data)?;
     Ok(())
 }
@@ -814,7 +909,8 @@ fn update_period_streaks(data: &mut AppData, today: &str) -> Result<()> {
         return Ok(());
     };
 
-    let week_key = format!("{}-W{:02}", today_date.year(), today_date.iso_week().week());
+    let iso_week = today_date.iso_week();
+    let week_key = format!("{}-W{:02}", iso_week.year(), iso_week.week());
     match &data.last_weekly_streak_key {
         Some(last) if last == &week_key => {}
         Some(last) => {
@@ -850,7 +946,10 @@ fn update_period_streaks(data: &mut AppData, today: &str) -> Result<()> {
     Ok(())
 }
 /// Counts non-rest days strictly between `last` and `today` (exclusive of both).
-fn count_active_gap(last: NaiveDate, today: NaiveDate, rest_days: &[u8]) -> u32 {
+pub fn count_active_gap(last: NaiveDate, today: NaiveDate, rest_days: &[u8]) -> u32 {
+    if today <= last {
+        return 0;
+    }
     let mut gap = 0u32;
     let mut d = last;
     loop {
@@ -1271,5 +1370,112 @@ mod tests {
             .saturating_add(1)
             .min(crate::model::STREAK_FREEZE_MAX);
         assert_eq!(new_freezes, 3); // Capped
+    }
+
+    #[test]
+    fn reconcile_streaks_resets_streak_when_gap_exceeds_freezes() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 10,
+            streak_freezes: 0,
+            last_session_date: Some("2026-07-13".into()), // Monday
+            streak_rest_days: vec![5, 6],                 // Sat, Sun
+            ..Default::default()
+        };
+
+        // Today is Thursday 2026-07-16 (missed Tue, Wed = 2 active days, 0 freezes)
+        reconcile_streaks(&db, &mut data, "2026-07-16").unwrap();
+        assert_eq!(data.streak_days, 0);
+    }
+
+    #[test]
+    fn reconcile_streaks_preserves_streak_with_freezes() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 10,
+            streak_freezes: 2,
+            last_session_date: Some("2026-07-14".into()), // Tuesday
+            streak_rest_days: vec![5, 6],
+            ..Default::default()
+        };
+
+        // Today is Thursday 2026-07-16 (missed Wed = 1 active day <= 2 freezes)
+        reconcile_streaks(&db, &mut data, "2026-07-16").unwrap();
+        assert_eq!(data.streak_days, 10);
+    }
+
+    #[test]
+    fn reconcile_streaks_preserves_streak_over_weekend_rest() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 5,
+            streak_freezes: 0,
+            last_session_date: Some("2026-07-17".into()), // Friday
+            streak_rest_days: vec![5, 6],                 // Sat, Sun
+            ..Default::default()
+        };
+
+        // Today is Monday 2026-07-20 (Sat, Sun were rest days -> gap is 0)
+        reconcile_streaks(&db, &mut data, "2026-07-20").unwrap();
+        assert_eq!(data.streak_days, 5);
+    }
+
+    #[test]
+    fn goal_streak_advances_across_weekend_rest_days() {
+        let mut data = AppData {
+            daily_goal_minutes: 50,
+            today_focus_minutes: 60,
+            goal_streak_days: 3,
+            last_goal_date: Some("2026-07-17".into()), // Friday
+            streak_rest_days: vec![5, 6],              // Sat, Sun
+            ..Default::default()
+        };
+
+        // Today is Monday 2026-07-20
+        // We verify count_active_gap is 0
+        let fri = NaiveDate::from_ymd_opt(2026, 7, 17).unwrap();
+        let mon = NaiveDate::from_ymd_opt(2026, 7, 20).unwrap();
+        let gap = count_active_gap(fri, mon, &data.streak_rest_days);
+        assert_eq!(gap, 0);
+
+        // Advance goal streak
+        data.goal_streak_days = data.goal_streak_days.saturating_add(1);
+        data.last_goal_date = Some("2026-07-20".into());
+        assert_eq!(data.goal_streak_days, 4);
+    }
+
+    #[test]
+    fn delete_session_revokes_goal_and_session_streak_if_today_cleared() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 5,
+            goal_streak_days: 3,
+            daily_goal_minutes: 50,
+            today_focus_minutes: 50,
+            last_goal_date: Some(crate::date::today_str()),
+            last_session_date: Some(crate::date::today_str()),
+            today_date: Some(crate::date::today_str()),
+            ..Default::default()
+        };
+
+        let session = FocusSessionRecord {
+            date: crate::date::today_str(),
+            minutes: 50,
+            task_id: None,
+            mode: TimerMode::Focus,
+            completed_at: Utc::now(),
+            note: String::new(),
+            tags: Vec::new(),
+            pause_count: 0,
+            pause_seconds: 0,
+        };
+        let id = db.insert_focus_session(&session).unwrap();
+
+        delete_session(&db, &mut data, id).unwrap();
+
+        assert_eq!(data.today_focus_minutes, 0);
+        assert_eq!(data.goal_streak_days, 2);
+        assert_eq!(data.streak_days, 4);
+        assert_eq!(data.last_goal_date, None);
     }
 }

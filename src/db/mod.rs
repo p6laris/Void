@@ -124,6 +124,15 @@ impl Database {
         Ok(count as usize)
     }
 
+    pub fn latest_focus_session_date(&self) -> Result<Option<String>> {
+        use rusqlite::OptionalExtension;
+        let mut stmt = self.conn.prepare(
+            "SELECT date FROM focus_sessions WHERE mode IN ('focus', 'custom') ORDER BY completed_at DESC LIMIT 1",
+        )?;
+        let date = stmt.query_row([], |row| row.get::<_, String>(0)).optional()?;
+        Ok(date)
+    }
+
     pub fn session_minutes_by_local_hour(&self) -> Result<[u32; 24]> {
         let mut stmt = self
             .conn
