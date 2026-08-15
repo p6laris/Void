@@ -147,14 +147,25 @@ pub enum StatsViewMode {
     Overview,
     Analytics,
     Weekday,
+    Hourly,
 }
 
 impl StatsViewMode {
+    pub const fn all() -> [StatsViewMode; 4] {
+        [
+            StatsViewMode::Overview,
+            StatsViewMode::Analytics,
+            StatsViewMode::Weekday,
+            StatsViewMode::Hourly,
+        ]
+    }
+
     pub fn next(self) -> Self {
         match self {
             StatsViewMode::Overview => StatsViewMode::Analytics,
             StatsViewMode::Analytics => StatsViewMode::Weekday,
-            StatsViewMode::Weekday => StatsViewMode::Overview,
+            StatsViewMode::Weekday => StatsViewMode::Hourly,
+            StatsViewMode::Hourly => StatsViewMode::Overview,
         }
     }
 
@@ -163,6 +174,7 @@ impl StatsViewMode {
             StatsViewMode::Overview => "week",
             StatsViewMode::Analytics => "tags",
             StatsViewMode::Weekday => "weekday",
+            StatsViewMode::Hourly => "hourly",
         }
     }
 }
@@ -260,6 +272,7 @@ impl App {
         let weekly_chart = storage::minutes_by_date(&db, 7).unwrap_or_default();
         let heatmap_data = storage::focus_heatmap(&db).unwrap_or_default();
         let tag_analytics = storage::tag_analytics(&db, &data, 30).unwrap_or_default();
+        let hourly_distribution = db.session_minutes_by_local_hour().unwrap_or([0; 24]);
         let session_counts = db.session_counts_by_mode().unwrap_or((0, 0, 0));
         let theme_catalog = ThemeCatalog::load();
         let theme_id = theme::normalize_theme_id(&data.theme);
@@ -363,6 +376,7 @@ impl App {
                 cursor_sessions: Vec::new(),
                 stats_view_mode: StatsViewMode::Overview,
                 tag_analytics,
+                hourly_distribution,
                 calendar_date: crate::date::today_naive(),
             },
             settings_state: SettingsState::new(),
@@ -590,6 +604,9 @@ impl App {
                 Err(e) => self.set_status(format!("Tag analytics error: {e}"), true),
             }
             self.stats.peak_hour_label = storage::most_productive_hour_label(&self.db);
+            if let Ok(hours) = self.db.session_minutes_by_local_hour() {
+                self.stats.hourly_distribution = hours;
+            }
             self.stats.chart_dirty = false;
         }
     }

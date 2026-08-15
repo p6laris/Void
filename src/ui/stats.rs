@@ -53,6 +53,7 @@ pub fn draw_stats(f: &mut Frame, app: &App, area: Rect) {
         crate::app::StatsViewMode::Overview => draw_week_bars(f, app, bottom_cols[2]),
         crate::app::StatsViewMode::Analytics => draw_tag_analytics(f, app, bottom_cols[2]),
         crate::app::StatsViewMode::Weekday => draw_weekday_breakdown(f, app, bottom_cols[2]),
+        crate::app::StatsViewMode::Hourly => draw_hourly_breakdown(f, app, bottom_cols[2]),
     }
     draw_vdivider(f, bottom_cols[3], theme);
     draw_recent_sessions(f, app, bottom_cols[4]);
@@ -72,13 +73,39 @@ fn draw_vdivider(f: &mut Frame, area: Rect, theme: &Theme) {
     super::widgets::vertical_rule(f, theme, area);
 }
 
+/// Interactive tab toggles for the middle statistics panel: `[v] [week] [tags] [weekday] [hourly]`
+fn stats_submode_tabs(theme: &Theme, current: crate::app::StatsViewMode, width: u16) -> Line<'static> {
+    if width < 36 {
+        return Line::from(vec![
+            Span::styled("[v] ", Style::default().fg(theme.dim)),
+            Span::styled(
+                format!("[{}]", current.label()),
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+        ]);
+    }
+
+    let mut spans = Vec::with_capacity(16);
+    spans.push(Span::styled("[v] ", Style::default().fg(theme.dim)));
+    for mode in crate::app::StatsViewMode::all() {
+        spans.extend(bracket_toggle(
+            theme,
+            mode.label(),
+            mode == current,
+        ));
+        spans.push(Span::raw(" "));
+    }
+    Line::from(spans)
+}
+
 // ── Heatmap section ──────────────────────────────────────────────────────────
 
 fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    // Range presets live in the panel title, init.habit style: `[7d] [30d] [90d] …`.
+    // Range presets live in the panel title: `[7d] [30d] [90d] …`.
     let mut range_spans: Vec<Span> = Vec::with_capacity(16);
     for range in crate::app::StatsRange::all() {
         range_spans.extend(bracket_toggle(
@@ -227,7 +254,8 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     let icons = app.icons;
     let data = &app.stats.weekly_chart;
 
-    let block = dense_panel(theme, section_title(theme, icons.chart, "Last 7 days"));
+    let block = dense_panel(theme, section_title(theme, icons.chart, "Last 7 days"))
+        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -434,7 +462,6 @@ fn draw_recent_sessions(f: &mut Frame, app: &App, area: Rect) {
     };
 
     f.render_widget(List::new(items), inner);
-
 }
 
 // ── Day-of-week breakdown ────────────────────────────────────────────────────
@@ -477,7 +504,8 @@ fn draw_weekday_breakdown(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let block = dense_panel(theme, section_title(theme, icons.calendar, "Day of week"));
+    let block = dense_panel(theme, section_title(theme, icons.calendar, "Day of week"))
+        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -486,8 +514,10 @@ fn draw_weekday_breakdown(f: &mut Frame, app: &App, area: Rect) {
 
     if peak == 0 {
         f.render_widget(
-            Paragraph::new(comment_line(theme, "no focus data in range"))
-                .alignment(Alignment::Center),
+            Paragraph::new(vec![
+                Line::from(""),
+                comment_line(theme, "no focus data in range"),
+            ]),
             inner,
         );
         return;
@@ -527,73 +557,216 @@ fn draw_weekday_breakdown(f: &mut Frame, app: &App, area: Rect) {
         ]));
     }
 
-    // Best and worst only mean something once more than one day has data.
+    // Weekday vs Weekend averages
+    let weekday_avg: u32 = averages[0..5].iter().sum::<u32>() / 5;
+    let weekend_avg: u32 = averages[5..7].iter().sum::<u32>() / 2;
+
     let tracked: Vec<(usize, u32)> = averages
         .iter()
         .copied()
         .enumerate()
         .filter(|(_, m)| *m > 0)
         .collect();
-    if tracked.len() > 1 {
-        let best = tracked.iter().max_by_key(|(_, m)| *m).unwrap();
-        let worst = tracked.iter().min_by_key(|(_, m)| *m).unwrap();
+
+    if inner.height >= 9 {
         lines.push(Line::from(""));
-        lines.push(Line::from(comment_span(
-            theme,
-            format!(
-                "best {} ({}) · worst {} ({})",
-                WEEKDAY_LABELS[best.0],
-                format_minutes(best.1),
-                WEEKDAY_LABELS[worst.0],
-                format_minutes(worst.1),
-            ),
-        )));
+        if tracked.len() > 1 {
+            let best = tracked.iter().max_by_key(|(_, m)| *m).unwrap();
+            lines.push(Line::from(comment_span(
+                theme,
+                format!(
+                    "weekday avg {} · weekend {} · best {}",
+                    format_minutes(weekday_avg),
+                    format_minutes(weekend_avg),
+                    WEEKDAY_LABELS[best.0],
+                ),
+            )));
+        } else {
+            lines.push(Line::from(comment_span(
+                theme,
+                format!(
+                    "weekday avg {} · weekend avg {}",
+                    format_minutes(weekday_avg),
+                    format_minutes(weekend_avg),
+                ),
+            )));
+        }
     }
 
     f.render_widget(Paragraph::new(lines), inner);
 }
 
-// ── Tag Analytics ────────────────────────────────────────────────────────────
+// ── Tag Analytics (Ranked Horizontal Bar List) ───────────────────────────────
 
 fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let block = dense_panel(theme, section_title(theme, icons.chart, "Tag analytics"));
+    let block = dense_panel(theme, section_title(theme, icons.chart, "Tag analytics"))
+        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
     if app.stats.tag_analytics.is_empty() {
         f.render_widget(
-            Paragraph::new(comment_line(theme, "no tagged sessions (30d)"))
-            .alignment(Alignment::Center),
+            Paragraph::new(vec![
+                Line::from(""),
+                comment_line(theme, "no tagged sessions (30d)"),
+            ]),
             inner,
         );
         return;
     }
 
-    let bars: Vec<(&str, u64)> = app
-        .stats
-        .tag_analytics
-        .iter()
-        .take(10)
-        .map(|(k, v)| (k.as_str(), *v as u64))
-        .collect();
+    let total_mins: u32 = app.stats.tag_analytics.iter().map(|(_, m)| *m).sum();
+    let max_mins = app.stats.tag_analytics.iter().map(|(_, m)| *m).max().unwrap_or(1).max(1);
 
-    let chart = ratatui::widgets::BarChart::default()
-        .data(&bars)
-        .bar_width(6)
-        .bar_gap(2)
-        .bar_style(Style::default().fg(theme.accent))
-        .value_style(
-            Style::default()
-                .fg(theme.bg)
-                .bg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-        .label_style(Style::default().fg(theme.text));
+    const LABEL_W: usize = 10;
+    const MINS_W: usize = 12; // " 100%  99h 59m"
+    let bar_max = (inner.width as usize)
+        .saturating_sub(LABEL_W + MINS_W + 2)
+        .clamp(4, 28);
 
-    f.render_widget(chart, inner);
+    let visible_tags = (inner.height as usize)
+        .saturating_sub(3)
+        .min(7)
+        .min(app.stats.tag_analytics.len());
+
+    let dim_style = Style::default().fg(theme.dim);
+    let text_style = Style::default().fg(theme.text);
+    let track_style = Style::default().fg(theme.progress_dim);
+
+    let mut lines = Vec::with_capacity(visible_tags + 2);
+
+    for (tag, mins) in app.stats.tag_analytics.iter().take(visible_tags) {
+        let mins = *mins;
+        let fill = ((mins as u64 * bar_max as u64) / max_mins as u64) as usize;
+        let empty = bar_max - fill;
+        let pct = if total_mins > 0 {
+            (mins as u64 * 100 / total_mins as u64).min(100)
+        } else {
+            0
+        };
+
+        let tag_display = if tag.starts_with('#') {
+            tag.clone()
+        } else {
+            format!("#{tag}")
+        };
+        let tag_truncated = super::widgets::truncate(&tag_display, LABEL_W);
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<width$} ", tag_truncated, width = LABEL_W), dim_style),
+            Span::styled("█".repeat(fill), Style::default().fg(theme.accent)),
+            Span::styled("░".repeat(empty), track_style),
+            Span::styled(format!(" {:>3}% {:>6}", pct, format_minutes(mins)), text_style),
+        ]));
+    }
+
+    if inner.height as usize > visible_tags + 1 {
+        lines.push(Line::from(""));
+        let top_tag = app.stats.tag_analytics.first().map(|(t, _)| t.as_str()).unwrap_or("none");
+        lines.push(Line::from(comment_span(
+            theme,
+            format!(
+                "{} tags active · top: #{} ({})",
+                app.stats.tag_analytics.len(),
+                top_tag.trim_start_matches('#'),
+                format_minutes(total_mins),
+            ),
+        )));
+    }
+
+    f.render_widget(Paragraph::new(lines).alignment(Alignment::Left), inner);
+}
+
+// ── Time-of-Day / Hourly Breakdown ──────────────────────────────────────────
+
+fn draw_hourly_breakdown(f: &mut Frame, app: &App, area: Rect) {
+    let theme = &app.theme;
+    let icons = app.icons;
+
+    let block = dense_panel(theme, section_title(theme, icons.timer, "Time of day"))
+        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let hours = &app.stats.hourly_distribution;
+    let total_mins: u32 = hours.iter().sum();
+
+    if total_mins == 0 {
+        f.render_widget(
+            Paragraph::new(vec![
+                Line::from(""),
+                comment_line(theme, "no focus history recorded"),
+            ]),
+            inner,
+        );
+        return;
+    }
+
+    // 4 productivity quadrants:
+    // Morning (06:00..12:00)
+    // Afternoon (12:00..18:00)
+    // Evening (18:00..22:00)
+    // Night (22:00..06:00)
+    let morning: u32 = hours[6..12].iter().sum();
+    let afternoon: u32 = hours[12..18].iter().sum();
+    let evening: u32 = hours[18..22].iter().sum();
+    let night: u32 = hours[22..24].iter().sum::<u32>() + hours[0..6].iter().sum::<u32>();
+
+    let quadrants = [
+        ("morning", morning),
+        ("afternoon", afternoon),
+        ("evening", evening),
+        ("night", night),
+    ];
+
+    let max_quadrant = quadrants.iter().map(|(_, m)| *m).max().unwrap_or(1).max(1);
+
+    const LABEL_W: usize = 10; // "morning   "
+    const MINS_W: usize = 12; // " 100%  99h 59m"
+    let bar_max = (inner.width as usize)
+        .saturating_sub(LABEL_W + MINS_W + 2)
+        .clamp(4, 28);
+
+    let dim_style = Style::default().fg(theme.dim);
+    let text_style = Style::default().fg(theme.text);
+    let track_style = Style::default().fg(theme.progress_dim);
+
+    let mut lines = Vec::with_capacity(7);
+
+    for (name, mins) in quadrants {
+        let fill = ((mins as u64 * bar_max as u64) / max_quadrant as u64) as usize;
+        let empty = bar_max - fill;
+        let pct = if total_mins > 0 {
+            (mins as u64 * 100 / total_mins as u64).min(100)
+        } else {
+            0
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("{:<width$} ", name, width = LABEL_W), dim_style),
+            Span::styled("█".repeat(fill), Style::default().fg(theme.accent)),
+            Span::styled("░".repeat(empty), track_style),
+            Span::styled(format!(" {:>3}% {:>6}", pct, format_minutes(mins)), text_style),
+        ]));
+    }
+
+    if inner.height >= 7 {
+        lines.push(Line::from(""));
+        let peak_quad = quadrants.iter().max_by_key(|(_, m)| *m).map(|(n, _)| *n).unwrap_or("morning");
+        lines.push(Line::from(comment_span(
+            theme,
+            format!(
+                "peak window: {} · peak hour: {}",
+                peak_quad,
+                app.stats.peak_hour_label,
+            ),
+        )));
+    }
+
+    f.render_widget(Paragraph::new(lines).alignment(Alignment::Left), inner);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

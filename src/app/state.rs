@@ -81,5 +81,6 @@ pub struct StatsState {
     /// rest of the chart data rather than on every frame.
     pub peak_hour_label: String,
     pub tag_analytics: Vec<(String, u32)>,
+    pub hourly_distribution: [u32; 24],
     pub calendar_date: chrono::NaiveDate,
 }

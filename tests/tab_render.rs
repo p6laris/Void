@@ -316,6 +316,32 @@ fn a_far_subtask_cursor_stays_on_screen() {
     );
 }
 
+/// Test that all 4 Stats sub-view modes (Week, Tags, Weekday, Hourly) render without panic.
+#[test]
+fn all_stats_view_modes_render_cleanly() {
+    let mut app = app_with_tasks();
+    app.stats.tag_analytics = vec![
+        ("rust".into(), 120),
+        ("tui".into(), 60),
+        ("study".into(), 30),
+    ];
+    app.stats.hourly_distribution = [
+        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80,
+        50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
+    ];
+
+    for mode in void::app::StatsViewMode::all() {
+        app.stats.stats_view_mode = mode;
+        let lines = render_tab(&mut app, FocusTab::Stats, 135, 36);
+        assert!(!lines.is_empty(), "Stats mode {mode:?} rendered empty lines");
+        let rendered = lines.join("\n");
+        assert!(
+            rendered.contains("[v]"),
+            "Mode {mode:?} missing [v] tab header in {rendered}"
+        );
+    }
+}
+
 /// Eyeball the Stats page.
 ///
 /// `cargo test --test tab_render preview_stats -- --ignored --nocapture`
@@ -323,10 +349,24 @@ fn a_far_subtask_cursor_stays_on_screen() {
 #[ignore = "visual only"]
 fn preview_stats() {
     let mut app = app_with_tasks();
-    for (label, w, h) in [("135x40", 135u16, 40u16), ("190x44", 190, 44), ("80x26", 80, 26)] {
-        println!("--- stats {label} ---");
-        for l in render_tab(&mut app, FocusTab::Stats, w, h) {
-            println!("{l}");
+    app.stats.tag_analytics = vec![
+        ("rust".into(), 120),
+        ("tui".into(), 60),
+        ("study".into(), 30),
+    ];
+    app.stats.hourly_distribution = [
+        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80,
+        50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
+    ];
+    for mode in void::app::StatsViewMode::all() {
+        app.stats.stats_view_mode = mode;
+        println!("=== STATS MODE: {:?} ===", mode);
+        for (label, w, h) in [("135x36", 135u16, 36u16), ("190x40", 190, 40), ("80x26", 80, 26)] {
+            println!("--- stats {label} ---");
+            for l in render_tab(&mut app, FocusTab::Stats, w, h) {
+                println!("{l}");
+            }
         }
     }
 }
+
