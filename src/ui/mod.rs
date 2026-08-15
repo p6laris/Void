@@ -50,10 +50,9 @@ use widgets::{
 pub fn render(f: &mut Frame, app: &mut App) {
     app.refresh_frame_today_cache();
     let area = f.area();
-    f.render_widget(
-        Block::default().style(Style::default().bg(app.theme.bg)),
-        area,
-    );
+    for cell in f.buffer_mut().content.iter_mut() {
+        cell.set_bg(app.theme.bg);
+    }
 
     if app.ui.zen_mode && app.ui.tab == FocusTab::Dashboard {
         draw_zen_dashboard(f, app, area);
