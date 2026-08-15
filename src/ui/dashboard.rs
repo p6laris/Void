@@ -1,13 +1,12 @@
 use super::*;
+use crate::model::{Priority, TimerMode, TaskStatus};
+use crate::ui::widgets::{chip, format_minutes, status_checkbox, text_gauge, tag_span, comment_line, dense_panel, timer_panel, section_title, truncate};
 
 /// Three stacked bands rather than a 2x2 grid of panels:
 ///
 ///   timer         — the thing you look at while focusing
 ///   today         — full-width goal bar, the day's headline number
 ///   tasks│details — everything left, split into two real columns
-///
-/// The old layout gave the task list a quarter of the screen and the goal bar a narrow
-/// side column; this gives each band a job and lets the list breathe.
 pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -30,7 +29,6 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(rows[2]);
     vertical_rule(f, &app.theme, cols[1]);
-    let cols = [cols[0], cols[2]];
 
     draw_dashboard_tasks(f, app, cols[0]);
 
@@ -38,7 +36,7 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         .dashboard_selected_task_id()
         .and_then(|id| app.data.task(id))
     {
-        Some(task) => draw_dashboard_task_details(f, app, task, cols[1]),
+        Some(task) => draw_dashboard_task_details(f, app, task, cols[2]),
         None => {
             let theme = &app.theme;
             f.render_widget(
@@ -47,13 +45,13 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
                         theme,
                         section_title(theme, app.icons.about, "Details"),
                     )),
-                cols[1],
+                cols[2],
             );
         }
     }
 }
 
-/// Full-width daily goal band: one bar, one annotation line.
+/// Full-width daily goal band: one bar, styled stat chips.
 fn draw_today_band(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
@@ -87,33 +85,44 @@ fn draw_today_band(f: &mut Frame, app: &App, area: Rect) {
             .add_modifier(Modifier::BOLD),
     ));
 
-    let status = if goal_met && today > goal {
-        format!("goal met — {} over", format_minutes(today - goal))
+    let status_str = if goal_met && today > goal {
+        format!("+{} over goal", format_minutes(today - goal))
     } else if goal_met {
         "goal met".to_string()
     } else {
         format!("{} remaining", format_minutes(goal.saturating_sub(today)))
     };
 
+    let mut chip_spans = vec![Span::raw(" ")];
+    chip_spans.extend(chip(icons.fire, format!("{}d streak", app.data.streak_days), theme.warning, theme.comment));
+    chip_spans.push(Span::raw("  "));
+    chip_spans.extend(chip(icons.target, status_str, if goal_met { theme.success } else { theme.accent }, theme.comment));
+    chip_spans.push(Span::raw("  "));
+    chip_spans.extend(chip(icons.tasks, format!("{} open", app.pending_task_count()), theme.info, theme.comment));
+    chip_spans.push(Span::raw("  "));
+    chip_spans.extend(chip(icons.chart, format!("{} all-time", format_minutes(app.data.total_focus_minutes)), theme.dim, theme.comment));
+
     let lines = vec![
         Line::from(spans),
-        // Leading space keeps the annotation flush with the bar above it.
-        Line::from(vec![
-            Span::raw(" "),
-            comment_span(
-                theme,
-                format!(
-                    "{} · {}d streak · {}d goal streak · {} open · {} all-time",
-                    status,
-                    app.data.streak_days,
-                    app.data.goal_streak_days,
-                    app.pending_task_count(),
-                    format_minutes(app.data.total_focus_minutes),
-                ),
-            ),
-        ]),
+        Line::from(chip_spans),
     ];
     f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn priority_glyph(p: Priority) -> &'static str {
+    match p {
+        Priority::High => "★",
+        Priority::Medium => "◆",
+        Priority::Low => "·",
+    }
+}
+
+fn priority_color(theme: &Theme, p: Priority) -> Color {
+    match p {
+        Priority::High => theme.error,
+        Priority::Medium => theme.warning,
+        Priority::Low => theme.comment,
+    }
 }
 
 fn draw_dashboard_tasks(f: &mut Frame, app: &mut App, area: Rect) {
@@ -144,8 +153,11 @@ fn draw_dashboard_tasks(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let selected_idx = app.task_ui.dashboard_task_state.selected().unwrap_or(0);
-    let est_w = 6;
-    let title_w = (area.width as usize).saturating_sub(est_w + 10).max(8);
+    let usable_w = (area.width as usize).saturating_sub(2);
+    let lead_w = 9;
+    let sub_w = 7;
+    let time_w = 10;
+    let title_w = usable_w.saturating_sub(lead_w + sub_w + time_w).max(8);
 
     let rows: Vec<ListItem> = indices
         .iter()
@@ -153,46 +165,65 @@ fn draw_dashboard_tasks(f: &mut Frame, app: &mut App, area: Rect) {
         .map(|(idx, &task_i)| {
             let t = &app.data.tasks[task_i];
             let selected = idx == selected_idx;
-            // Priority shows only when it is not the default — a marker on every row is
-            // noise, and Low needs no ink at all.
-            let (marker, marker_color) = match t.priority {
-                crate::model::Priority::High => (icons.alert, theme.error),
-                crate::model::Priority::Medium => (icons.dot, theme.dim),
-                crate::model::Priority::Low => (" ", theme.dim),
+            let is_active = app.task_ui.active_task == Some(t.id);
+
+            let row_style = if selected {
+                Style::default()
+                    .bg(theme.select_bg)
+                    .fg(theme.select_fg)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_active {
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.text)
             };
-            let lead = if app.task_ui.active_task == Some(t.id) {
+
+            let inherit = selected.then_some(row_style);
+
+            let lead = if is_active {
                 format!("{} ", icons.task_active)
             } else if selected {
                 format!("{} ", icons.chevron)
             } else {
                 "  ".into()
             };
-            let row_style = if selected {
-                Style::default()
-                    .bg(theme.select_bg)
-                    .fg(theme.select_fg)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.text)
-            };
-            // A selected row paints its own background, so the checkbox has to inherit
-            // that style rather than keep its own colours.
-            let inherit = selected.then_some(row_style);
+
+            let mut spans = vec![Span::styled(lead, inherit.unwrap_or(Style::default().fg(theme.accent)))];
+            spans.extend(status_checkbox(theme, icons, t.status, inherit));
+            spans.push(Span::raw(" "));
+
+            // Compact priority glyph
+            spans.push(Span::styled(
+                format!("{} ", priority_glyph(t.priority)),
+                inherit.unwrap_or(Style::default().fg(priority_color(theme, t.priority)).add_modifier(Modifier::BOLD)),
+            ));
 
             let title = truncate(&t.title, title_w);
             let pad = title_w.saturating_sub(unicode_width::UnicodeWidthStr::width(title.as_str()));
-
-            let mut spans = vec![Span::styled(lead, Style::default().fg(theme.accent))];
-            spans.extend(status_checkbox(theme, icons, t.status, inherit));
-            spans.push(Span::styled(
-                format!(" {marker} "),
-                inherit.unwrap_or(Style::default().fg(marker_color)),
-            ));
             spans.push(Span::styled(format!("{title}{}", " ".repeat(pad)), row_style));
+
+            // Subtask badge
+            if let Some((d, n)) = t.subtask_progress() {
+                let sub_style = if d == n && n > 0 {
+                    inherit.unwrap_or(Style::default().fg(theme.success))
+                } else {
+                    inherit.unwrap_or(Style::default().fg(theme.comment))
+                };
+                let s = format!("({d}/{n})");
+                spans.push(Span::styled(format!("{:>7}", s), sub_style));
+            } else {
+                spans.push(Span::raw(" ".repeat(sub_w)));
+            }
+
+            // Minutes
+            let mins_str = format!("{}/{}m", t.actual_minutes, t.estimated_minutes);
             spans.push(Span::styled(
-                format!("{:>5}m", t.estimated_minutes),
+                format!(" {:>9}", mins_str),
                 inherit.unwrap_or(Style::default().fg(theme.comment)),
             ));
+
             ListItem::new(Line::from(spans)).style(row_style)
         })
         .collect();
@@ -217,22 +248,35 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
     } else {
         String::new()
     };
-    // Run state lives in the header instead of a lone word at the bottom of the panel —
-    // it belongs with the mode, and it buys the canvas a line back.
+
     let (state_label, state_color) = match t.state {
         crate::model::TimerState::Idle => ("ready", theme.dim),
         crate::model::TimerState::Running => ("focusing", mc),
         crate::model::TimerState::Paused => ("paused", theme.warning),
         crate::model::TimerState::Finished => ("complete", theme.success),
     };
+
+    let mode_icon = match t.mode {
+        TimerMode::Focus => app.icons.timer,
+        TimerMode::ShortBreak => app.icons.heart,
+        TimerMode::LongBreak => app.icons.zen,
+        TimerMode::Custom => app.icons.focus,
+    };
+
     let outer = timer_panel(
         theme,
-        Line::from(Span::styled(
-            format!(" {} {}", t.mode.label().to_lowercase(), title_suffix),
-            Style::default()
-                .fg(if is_finished { theme.success } else { mc })
-                .add_modifier(Modifier::BOLD),
-        )),
+        Line::from(vec![
+            Span::styled(
+                format!(" {mode_icon} "),
+                Style::default().fg(if is_finished { theme.success } else { mc }),
+            ),
+            Span::styled(
+                format!("{}{}", t.mode.label().to_lowercase(), title_suffix),
+                Style::default()
+                    .fg(if is_finished { theme.success } else { mc })
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]),
         border_color,
     )
     .title(
@@ -333,8 +377,6 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
 
     let cycle = t.config.long_break_every.max(1);
     let done_in_cycle = t.completed_focus_sessions % cycle;
-    // Marks the current slot whenever we are on a focus session, running or not — an idle
-    // timer is still sitting on session N of the cycle.
     let dots = session_dots(done_in_cycle, cycle, t.mode == TimerMode::Focus);
 
     f.render_widget(
@@ -381,8 +423,6 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
         );
     }
 
-    // Run state moved to the panel header, so this row is now only the break tip. On a
-    // focus session it stays blank on purpose — the whitespace is what makes the band calm.
     if areas.len() > 2 && t.mode.is_break() {
         draw_break_tip(f, areas[2], t, mc, theme.text, theme.dim, app.icons.heart);
     }
@@ -397,116 +437,102 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     let icons = app.icons;
 
     let mut lines = Vec::new();
-
-    // `area` can be narrower than the padding on a small terminal; saturating_sub keeps
-    // these from underflowing into a panic.
     let text_w = (area.width as usize).saturating_sub(4).max(8);
 
-    if !task.notes.is_empty() {
-        lines.push(comment_line(theme, truncate(&task.notes, text_w)));
-        lines.push(Line::from(""));
-    }
+    // Title with priority glyph
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!("{} ", priority_glyph(task.priority)),
+            Style::default().fg(priority_color(theme, task.priority)).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            task.title.clone(),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+    ]));
 
-    if app.is_task_blocked(task.id) {
-        let mut blocker_names = Vec::new();
-        for &b_id in &task.blocked_by {
-            if let Some(b) = app
-                .data
-                .tasks
-                .get(&b_id)
-                .filter(|t| t.status != crate::model::TaskStatus::Done)
-            {
-                blocker_names.push(b.title.clone());
-            }
-        }
-        if !blocker_names.is_empty() {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {} ", icons.alert),
-                    Style::default().fg(theme.error),
-                ),
-                Span::styled(
-                    format!("blocked by: {}", blocker_names.join(", ")),
-                    Style::default().fg(theme.error),
-                ),
-            ]));
-            lines.push(Line::from(""));
-        }
-    }
-
+    // Tags
     if !task.tags.is_empty() {
-        let mut tag_spans = vec![Span::raw("  ")];
+        let mut tag_spans = vec![Span::raw(" ")];
         for tag in &task.tags {
             tag_spans.extend(tag_span(theme, tag));
             tag_spans.push(Span::raw("  "));
         }
         lines.push(Line::from(tag_spans));
-        lines.push(Line::from(""));
     }
 
-    if task.estimated_minutes > 0 {
-        let actual = task.actual_minutes;
-        let est = task.estimated_minutes;
-        let time_str = format!(
-            "{} / {}",
-            super::widgets::format_minutes(actual),
-            super::widgets::format_minutes(est)
-        );
-
-        let (indicator, color) = if actual < est {
-            (
-                format!("{} ahead", super::widgets::format_minutes(est - actual)),
-                theme.success,
-            )
-        } else if actual > est {
-            (
-                format!("{} over", super::widgets::format_minutes(actual - est)),
-                theme.warning,
-            )
-        } else {
-            ("on track".to_string(), theme.dim)
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {} ", icons.timer),
-                Style::default().fg(theme.dim),
-            ),
-            Span::styled(format!("{time_str}  "), Style::default().fg(theme.text)),
-            Span::styled(indicator, Style::default().fg(color)),
-        ]));
-        lines.push(Line::from(""));
+    // State Chips
+    let mut chips: Vec<Span> = Vec::new();
+    let push_chip = |chips: &mut Vec<Span>, spans: Vec<Span<'static>>| {
+        if !chips.is_empty() {
+            chips.push(Span::raw(" "));
+        }
+        chips.extend(spans);
+    };
+    push_chip(
+        &mut chips,
+        chip("", task.status.label().to_lowercase(), task_status_color(theme, task.status), theme.comment),
+    );
+    push_chip(
+        &mut chips,
+        chip("", task.priority.label().to_lowercase(), priority_color(theme, task.priority), theme.comment),
+    );
+    if task.today {
+        push_chip(&mut chips, chip("", "today".into(), theme.accent, theme.comment));
     }
+    if app.task_ui.active_task == Some(task.id) {
+        push_chip(&mut chips, chip("", "focusing".into(), theme.accent, theme.comment));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::from(chips));
 
-    lines.extend(super::widgets::subtask_inline_lines(
-        &task.subtasks,
-        theme,
-        icons,
-        " ",
-        Some(text_w.saturating_sub(6).max(8)),
+    // Focus Time Progress Bar
+    let ratio = task.progress_ratio();
+    let pct = format!(" {}%", (ratio * 100.0) as u32);
+    let bar_w = text_w.saturating_sub(pct.chars().count() + 2).clamp(4, 28);
+    let fill = if ratio >= 1.0 { theme.success } else { theme.accent };
+    let mut bar = vec![Span::raw(" ")];
+    bar.extend(text_gauge(theme, ratio, bar_w, fill));
+    bar.push(Span::styled(
+        pct,
+        Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
     ));
+    bar.push(Span::styled(
+        format!(" ({}/{})", format_minutes(task.actual_minutes), format_minutes(task.estimated_minutes)),
+        Style::default().fg(theme.comment),
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(bar));
 
-    let recent_for_task: Vec<_> = app
-        .stats
-        .recent_sessions
-        .iter()
-        .filter(|s| s.record.task_id == Some(task.id))
-        .take(3)
-        .collect();
-    if !recent_for_task.is_empty() {
+    // Subtasks Checklist (clean format)
+    if !task.subtasks.is_empty() {
         lines.push(Line::from(""));
-        lines.push(comment_line(theme, "recent activity"));
-        for s in recent_for_task {
-            let local_time = s.record.completed_at.with_timezone(&chrono::Local);
-            let time_str = local_time.format("%b %d, %H:%M").to_string();
-            lines.push(Line::from(vec![
-                Span::styled(format!("   {} ", icons.dot), Style::default().fg(theme.dim)),
-                Span::styled(format!("{time_str}  "), Style::default().fg(theme.dim)),
-                Span::styled(
-                    format!("{}m {}", s.record.minutes, s.record.mode.label()),
-                    Style::default().fg(theme.text),
-                ),
-            ]));
+        let (done, total) = task.subtask_progress().unwrap_or((0, 0));
+        let sub_pct = if total > 0 { (done * 100) / total } else { 0 };
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {} subtasks ", icons.tasks), Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("({done}/{total} · {sub_pct}%)"), Style::default().fg(theme.comment)),
+        ]));
+
+        for sub in task.subtasks.iter().take(5) {
+            let status = if sub.done { TaskStatus::Done } else { TaskStatus::Pending };
+            let style = if sub.done { Style::default().fg(theme.dim) } else { Style::default().fg(theme.text) };
+            let mut spans = vec![Span::raw("  ")];
+            spans.extend(status_checkbox(theme, icons, status, None));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(truncate(&sub.title, text_w.saturating_sub(8)), style));
+            lines.push(Line::from(spans));
+        }
+        if task.subtasks.len() > 5 {
+            lines.push(comment_line(theme, format!("  +{} more in Tasks tab [2]", task.subtasks.len() - 5)));
+        }
+    }
+
+    // Notes (if any)
+    if !task.notes.is_empty() {
+        lines.push(Line::from(""));
+        for para in task.notes.lines().take(3) {
+            lines.push(comment_line(theme, para.to_string()));
         }
     }
 
