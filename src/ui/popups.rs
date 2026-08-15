@@ -1,28 +1,44 @@
 use super::*;
+use crate::app::{BulkAction, InputField, Popup};
+use crate::model::Priority;
 
-fn popup_size(popup: &crate::app::Popup) -> (u16, u16) {
+fn popup_size(popup: &Popup, area: Rect) -> (u16, u16) {
     match popup {
-        crate::app::Popup::AddSubtask(_) | crate::app::Popup::EditSubtask(_, _) => (48, 24),
-        crate::app::Popup::ConfirmDelete(_)
-        | crate::app::Popup::BulkConfirm(_)
-        | crate::app::Popup::EmptyQueueChoice => (50, 28),
-        _ => (68, 78),
+        Popup::AddTask | Popup::EditTask(_) => {
+            let w = (area.width.saturating_mul(68) / 100).clamp(58, 86);
+            let h = (area.height.saturating_mul(75) / 100).clamp(16, 26);
+            (w, h)
+        }
+        Popup::AddSubtask(_) | Popup::EditSubtask(_, _) => {
+            let w = (area.width.saturating_mul(55) / 100).clamp(48, 70);
+            let h = (area.height.saturating_mul(55) / 100).clamp(14, 20);
+            (w, h)
+        }
+        Popup::ConfirmDelete(_) => {
+            let w = (area.width.saturating_mul(50) / 100).clamp(46, 64);
+            let h = 12u16.min(area.height);
+            (w, h)
+        }
+        Popup::BulkConfirm(_) => {
+            let w = (area.width.saturating_mul(55) / 100).clamp(50, 70);
+            let h = 14u16.min(area.height);
+            (w, h)
+        }
+        Popup::EmptyQueueChoice => {
+            let w = (area.width.saturating_mul(55) / 100).clamp(52, 68);
+            let h = 15u16.min(area.height);
+            (w, h)
+        }
     }
 }
 
-fn popup_min_size(popup: &crate::app::Popup) -> (u16, u16) {
-    match popup {
-        crate::app::Popup::AddSubtask(_) | crate::app::Popup::EditSubtask(_, _) => (36, 10),
-        _ => (32, 10),
-    }
-}
-
-fn popup_rect(popup: &crate::app::Popup, area: Rect) -> Rect {
-    let (pw, ph) = popup_size(popup);
-    let (min_w, min_h) = popup_min_size(popup);
-    let mut r = centered_rect(pw, ph, area);
-    r.width = r.width.max(min_w).min(area.width);
-    r.height = r.height.max(min_h).min(area.height);
+fn popup_rect(popup: &Popup, area: Rect) -> Rect {
+    let (pw, ph) = popup_size(popup, area);
+    let mut r = Rect::default();
+    r.width = pw.min(area.width);
+    r.height = ph.min(area.height);
+    r.x = (area.width.saturating_sub(r.width)) / 2;
+    r.y = (area.height.saturating_sub(r.height)) / 2;
     r
 }
 
@@ -37,422 +53,619 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
     let icons = app.icons;
     let area = f.area();
     let popup_area = popup_rect(&popup, area);
+    if !rect_ok(popup_area) {
+        return;
+    }
+
     f.render_widget(Clear, popup_area);
+
+    let (border_color, title_text) = match &popup {
+        Popup::AddTask => (app.theme.accent, format!(" {} Add Task ", icons.plus)),
+        Popup::EditTask(_) => (app.theme.accent, format!(" {} Edit Task ", icons.edit)),
+        Popup::ConfirmDelete(_) => (app.theme.error, format!(" {} Confirm Delete ", icons.delete)),
+        Popup::EmptyQueueChoice => (app.theme.success, format!(" {} Queue Cleared ", icons.check)),
+        Popup::AddSubtask(_) => (app.theme.accent, format!(" {} Add Subtask ", icons.plus)),
+        Popup::EditSubtask(_, _) => (app.theme.accent, format!(" {} Edit Subtask ", icons.edit)),
+        Popup::BulkConfirm(action) => match action {
+            BulkAction::Delete => (app.theme.error, format!(" {} Bulk Delete ", icons.delete)),
+            BulkAction::MarkDone => (app.theme.success, format!(" {} Bulk Complete ", icons.check)),
+        },
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(app.theme.accent))
+        .border_style(Style::default().fg(border_color))
         .style(Style::default().bg(app.theme.bg))
         .title(Span::styled(
-            match &popup {
-                crate::app::Popup::AddTask => format!(" {} Add Task ", icons.plus),
-                crate::app::Popup::EditTask(_) => format!(" {} Edit Task ", icons.edit),
-                crate::app::Popup::ConfirmDelete(_) => format!(" {} Confirm Delete ", icons.delete),
-                crate::app::Popup::EmptyQueueChoice => format!(" {} All Tasks Done ", icons.check),
-                crate::app::Popup::AddSubtask(_) => format!(" {} Add Subtask ", icons.plus),
-                crate::app::Popup::EditSubtask(_, _) => format!(" {} Edit Subtask ", icons.edit),
-                crate::app::Popup::BulkConfirm(_) => format!(" {} Bulk Action ", icons.tasks),
-            },
-            Style::default()
-                .fg(app.theme.accent)
-                .add_modifier(Modifier::BOLD),
+            title_text,
+            Style::default().fg(border_color).add_modifier(Modifier::BOLD),
         ));
     let body = block.inner(popup_area);
     f.render_widget(block, popup_area);
 
-    match &popup {
-        crate::app::Popup::AddTask | crate::app::Popup::EditTask(_) => {
-            let theme = &app.theme;
-            let chunks = popup_body_layout(body, PopupLayout::Form);
-            if chunks.is_empty() {
-                return;
-            }
-            let form_area = chunks[0];
-            let (left_area, right_area) = if matches!(app.input.input_field, InputField::DueDate) {
-                let cols = Layout::default()
-                    .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                    .split(form_area);
-                (cols[0], Some(cols[1]))
-            } else {
-                (form_area, None)
-            };
-
-            let cursor = |active: bool, text: &str| -> String {
-                if active {
-                    if text.is_empty() {
-                        "|".to_string()
-                    } else {
-                        format!("{}|", text)
-                    }
-                } else if text.is_empty() {
-                    "—".to_string()
-                } else {
-                    text.to_string()
-                }
-            };
-            let due_display = if matches!(app.input.input_field, InputField::DueDate) {
-                cursor(true, &app.input.input_due_date)
-            } else if app.input.input_due_date.is_empty() {
-                "—".to_string()
-            } else {
-                app.input.input_due_date.clone()
-            };
-            let tags_display = cursor(
-                matches!(app.input.input_field, InputField::Tags),
-                &app.input.input_tags,
-            );
-            let value_max = left_area.width.saturating_sub(22) as usize;
-            let p = Paragraph::new(vec![
-                popup_field_line(
-                    theme,
-                    "Title",
-                    cursor(
-                        matches!(app.input.input_field, InputField::Title),
-                        &truncate_field(&app.input.input_buffer, value_max),
-                    ),
-                    matches!(app.input.input_field, InputField::Title),
-                    value_max,
-                ),
-                popup_field_line(
-                    theme,
-                    "Estimate (min)",
-                    if matches!(app.input.input_field, InputField::Estimate) {
-                        format!("{}|", app.input.input_number)
-                    } else {
-                        app.input.input_number.to_string()
-                    },
-                    matches!(app.input.input_field, InputField::Estimate),
-                    value_max,
-                ),
-                popup_field_line(
-                    theme,
-                    "Priority",
-                    app.input.input_priority.label().to_string(),
-                    matches!(app.input.input_field, InputField::Priority),
-                    value_max,
-                ),
-                popup_field_line(
-                    theme,
-                    "Due (YYYY-MM-DD)",
-                    truncate_field(&due_display, value_max),
-                    matches!(app.input.input_field, InputField::DueDate),
-                    value_max,
-                ),
-                popup_field_line(
-                    theme,
-                    "Tags (comma-sep)",
-                    truncate_field(&tags_display, value_max),
-                    matches!(app.input.input_field, InputField::Tags),
-                    value_max,
-                ),
-            ]);
-            f.render_widget(p, left_area);
-
-            if let Some(r) = right_area {
-                super::calendar::render_due_date_calendar(f, r, app.stats.calendar_date, theme);
-            }
-            let hint = if matches!(app.input.input_field, InputField::DueDate) {
-                "←→ day · ↑↓ week · Tab field · Enter save · Esc cancel"
-            } else {
-                "Tab field · Enter save · Esc cancel"
-            };
-            if chunks.len() > 1 {
-                draw_popup_hint(f, chunks[1], theme, hint);
-            }
-        }
-        crate::app::Popup::ConfirmDelete(id) => {
-            let theme = &app.theme;
-            let chunks = popup_body_layout(body, PopupLayout::Message);
-            if chunks.is_empty() {
-                return;
-            }
-            let title = app
-                .data
-                .task(*id)
-                .map(|t| t.title.as_str())
-                .unwrap_or("Unknown task");
-            let p = Paragraph::new(vec![
-                Line::from(Span::styled(
-                    format!("Delete \"{}\"?", title),
-                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "Press y or Enter to confirm, n or Esc to cancel.",
-                    Style::default().fg(theme.dim),
-                )),
-                Line::from(Span::styled(
-                    "This cannot be undone.",
-                    Style::default().fg(theme.error),
-                )),
-            ]);
-            f.render_widget(p, chunks[0]);
-        }
-        crate::app::Popup::EmptyQueueChoice => {
-            let theme = &app.theme;
-            let chunks = popup_body_layout(body, PopupLayout::Message);
-            if chunks.is_empty() {
-                return;
-            }
-            let p = Paragraph::new(vec![
-                Line::from(Span::styled(
-                    "You've completed every task in your queue.",
-                    Style::default().fg(theme.text),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "[Enter]  Continue free focus (log general sessions)",
-                    Style::default().fg(theme.success),
-                )),
-                Line::from(Span::styled(
-                    "[p]      Pause the timer",
-                    Style::default().fg(theme.warning),
-                )),
-                Line::from(Span::styled(
-                    "[a]      Add another task",
-                    Style::default().fg(theme.accent),
-                )),
-                Line::from(Span::styled(
-                    "[Esc]    Dismiss",
-                    Style::default().fg(theme.dim),
-                )),
-            ]);
-            f.render_widget(p, chunks[0]);
-        }
-        crate::app::Popup::AddSubtask(id) => {
-            draw_add_subtask_popup(f, app, body, *id);
-        }
-        crate::app::Popup::EditSubtask(task_id, _sub_id) => {
-            draw_add_subtask_popup(f, app, body, *task_id);
-        }
-        crate::app::Popup::BulkConfirm(action) => {
-            let theme = &app.theme;
-            let chunks = popup_body_layout(body, PopupLayout::Message);
-            if chunks.is_empty() {
-                return;
-            }
-            let (title, detail, accent) = match action {
-                crate::app::BulkAction::MarkDone => (
-                    "Mark selected tasks as done?",
-                    format!("{} task(s) selected.", app.task_ui.bulk_selected.len()),
-                    theme.success,
-                ),
-                crate::app::BulkAction::Delete => (
-                    "Delete selected tasks?",
-                    format!(
-                        "{} task(s) will be removed permanently.",
-                        app.task_ui.bulk_selected.len()
-                    ),
-                    theme.error,
-                ),
-            };
-            let p = Paragraph::new(vec![
-                Line::from(Span::styled(
-                    title,
-                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
-                )),
-                Line::from(""),
-                Line::from(Span::styled(detail, Style::default().fg(theme.text))),
-                Line::from(""),
-                Line::from(Span::styled(
-                    "[y] confirm  [n/Esc] cancel",
-                    Style::default().fg(theme.dim),
-                )),
-            ]);
-            f.render_widget(p, chunks[0]);
-        }
-    }
-}
-
-enum PopupLayout {
-    Form,
-    Subtask,
-    Message,
-}
-
-fn popup_body_layout(body: Rect, kind: PopupLayout) -> Vec<Rect> {
     if !rect_ok(body) {
-        return vec![];
+        return;
     }
-    let margin = u16::from(body.height >= 8 && body.width >= 8);
-    let constraints = match kind {
-        PopupLayout::Form => vec![Constraint::Min(4), Constraint::Length(1)],
-        PopupLayout::Subtask => vec![
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Length(1),
-        ],
-        PopupLayout::Message => vec![Constraint::Min(1)],
-    };
-    Layout::default()
-        .direction(Direction::Vertical)
-        .margin(margin)
-        .constraints(constraints)
-        .split(body)
-        .to_vec()
+
+    match &popup {
+        Popup::AddTask => draw_task_form_popup(f, app, body, false),
+        Popup::EditTask(_) => draw_task_form_popup(f, app, body, true),
+        Popup::ConfirmDelete(id) => draw_confirm_delete_popup(f, app, body, *id),
+        Popup::EmptyQueueChoice => draw_empty_queue_popup(f, app, body),
+        Popup::AddSubtask(id) => draw_subtask_popup(f, app, body, *id, false),
+        Popup::EditSubtask(task_id, _) => draw_subtask_popup(f, app, body, *task_id, true),
+        Popup::BulkConfirm(action) => draw_bulk_confirm_popup(f, app, body, action),
+    }
 }
 
-fn task_title(app: &App, id: u64) -> String {
-    app.data
-        .task(id)
-        .map(|t| t.title.clone())
-        .unwrap_or_else(|| "Unknown task".into())
-}
-
-fn draw_add_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64) {
+fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
     let theme = &app.theme;
-    let chunks = popup_body_layout(body, PopupLayout::Subtask);
-    if chunks.len() < 3 {
-        return;
-    }
-    let parent = task_title(app, task_id);
-    let existing = app
-        .data
-        .task(task_id)
-        .map(|t| t.subtasks.len())
-        .unwrap_or(0);
-    f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("Task  ", Style::default().fg(theme.dim)),
-            Span::styled(
-                super::widgets::truncate(&parent, chunks[0].width.saturating_sub(8) as usize),
-                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!(
-                    "  ({existing} subtask{})",
-                    if existing == 1 { "" } else { "s" }
-                ),
-                Style::default().fg(theme.dim),
-            ),
-        ])),
-        chunks[0],
-    );
-    draw_singleline_editor(f, chunks[1], theme, &app.input.input_buffer);
-    draw_action_footer(
-        f,
-        chunks[2],
-        theme,
-        &[
-            ("Enter", "add", theme.success),
-            ("q", "done", theme.warning),
-        ],
-    );
-}
+    let icons = app.icons;
 
-fn draw_action_footer(
-    f: &mut Frame,
-    area: Rect,
-    theme: &crate::app::Theme,
-    actions: &[(&str, &str, ratatui::style::Color)],
-) {
-    if area.height == 0 || area.width == 0 {
-        return;
-    }
-    let sep = Block::default()
-        .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.panel_border))
-        .style(Style::default().bg(theme.bg));
-    let inner = sep.inner(area);
-    f.render_widget(sep, area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Min(6), Constraint::Length(1)])
+        .split(body);
 
-    let mut spans: Vec<Span> = Vec::new();
-    for (i, (key, label, color)) in actions.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("  "));
-        }
-        spans.push(Span::styled(
-            format!(" {key} "),
-            Style::default().fg(*color).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(
-            format!(" {label}"),
-            Style::default().fg(theme.dim),
-        ));
-    }
-    f.render_widget(Paragraph::new(Line::from(spans)), inner);
-}
-
-fn draw_singleline_editor(f: &mut Frame, area: Rect, theme: &crate::app::Theme, text: &str) {
-    if !rect_ok(area) {
-        return;
-    }
-    let input_block = Block::default()
-        .title(Span::styled(" Title ", Style::default().fg(theme.dim)))
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.accent))
-        .style(Style::default().bg(theme.panel).fg(theme.text));
-    let inner = input_block.inner(area);
-    f.render_widget(input_block, area);
-    if !rect_ok(inner) {
-        return;
-    }
-    let max_w = inner.width.saturating_sub(2) as usize;
-    let content = if text.is_empty() {
-        Line::from(vec![
-            Span::styled("Subtask title…", Style::default().fg(theme.dim)),
-            Span::styled("|", Style::default().fg(theme.accent)),
-        ])
+    let form_area = chunks[0];
+    let (left_area, right_area) = if matches!(app.input.input_field, InputField::DueDate) && form_area.width >= 54 {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
+            .split(form_area);
+        (cols[0], Some(cols[1]))
     } else {
-        Line::from(Span::styled(
-            format_input_line(text, max_w),
-            Style::default().fg(theme.text),
-        ))
+        (form_area, None)
     };
-    f.render_widget(Paragraph::new(content).alignment(Alignment::Left), inner);
-}
 
-fn draw_popup_hint(f: &mut Frame, area: Rect, theme: &crate::app::Theme, hint: &str) {
-    if area.height == 0 {
-        return;
-    }
-    let max = area.width.saturating_sub(2) as usize;
-    f.render_widget(
-        Paragraph::new(Span::styled(
-            super::widgets::truncate(hint, max),
-            Style::default().fg(theme.dim),
-        )),
-        area,
+    let cursor = |active: bool, text: &str| -> String {
+        if active {
+            if text.is_empty() {
+                "|".to_string()
+            } else {
+                format!("{}|", text)
+            }
+        } else if text.is_empty() {
+            "—".to_string()
+        } else {
+            text.to_string()
+        }
+    };
+
+    let title_display = cursor(
+        matches!(app.input.input_field, InputField::Title),
+        &app.input.input_buffer,
     );
-}
 
-fn format_input_line(text: &str, max_w: usize) -> String {
-    if text.is_empty() {
-        return "|".to_string();
+    let estimate_display = if matches!(app.input.input_field, InputField::Estimate) {
+        format!("{} min  [↑/↓ ±5m]", app.input.input_number)
+    } else {
+        format!("{} min", app.input.input_number)
+    };
+
+    let due_display = if matches!(app.input.input_field, InputField::DueDate) {
+        cursor(true, &app.input.input_due_date)
+    } else if app.input.input_due_date.is_empty() {
+        "— None".to_string()
+    } else {
+        app.input.input_due_date.clone()
+    };
+
+    let tags_display = cursor(
+        matches!(app.input.input_field, InputField::Tags),
+        &app.input.input_tags,
+    );
+
+    let val_max = left_area.width.saturating_sub(20) as usize;
+
+    let mut form_lines = Vec::new();
+
+    // Title Row
+    form_lines.push(popup_field_row(
+        theme,
+        icons.edit,
+        "Title",
+        &title_display,
+        matches!(app.input.input_field, InputField::Title),
+        val_max,
+    ));
+    form_lines.push(Line::from(""));
+
+    // Estimate Row
+    form_lines.push(popup_field_row(
+        theme,
+        icons.timer,
+        "Estimate",
+        &estimate_display,
+        matches!(app.input.input_field, InputField::Estimate),
+        val_max,
+    ));
+    form_lines.push(Line::from(""));
+
+    // Priority Row (Chips)
+    form_lines.push(popup_priority_row(
+        theme,
+        icons.tasks,
+        app.input.input_priority,
+        matches!(app.input.input_field, InputField::Priority),
+    ));
+    form_lines.push(Line::from(""));
+
+    // Due Date Row
+    form_lines.push(popup_field_row(
+        theme,
+        icons.calendar,
+        "Due Date",
+        &due_display,
+        matches!(app.input.input_field, InputField::DueDate),
+        val_max,
+    ));
+    form_lines.push(Line::from(""));
+
+    // Tags Row
+    form_lines.push(popup_field_row(
+        theme,
+        icons.dot,
+        "Tags",
+        &tags_display,
+        matches!(app.input.input_field, InputField::Tags),
+        val_max,
+    ));
+
+    f.render_widget(Paragraph::new(form_lines), left_area);
+
+    if let Some(r) = right_area {
+        super::calendar::render_due_date_calendar(f, r, app.stats.calendar_date, theme);
     }
-    let max_text = max_w.saturating_sub(1);
-    format!("{}|", super::widgets::truncate(text, max_text))
+
+    if chunks.len() > 1 {
+        let hint_line = if matches!(app.input.input_field, InputField::DueDate) {
+            Line::from(vec![
+                Span::styled("t", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(" today  ", Style::default().fg(theme.dim)),
+                Span::styled("m", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(" tmrw  ", Style::default().fg(theme.dim)),
+                Span::styled("w", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(" +1wk  ", Style::default().fg(theme.dim)),
+                Span::styled("c", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(" clear  ", Style::default().fg(theme.dim)),
+                Span::styled("Tab", Style::default().fg(theme.accent)),
+                Span::styled(" next  ", Style::default().fg(theme.dim)),
+                Span::styled("Enter", Style::default().fg(theme.success)),
+                Span::styled(" save  ", Style::default().fg(theme.dim)),
+                Span::styled("Esc", Style::default().fg(theme.dim)),
+                Span::styled(" cancel", Style::default().fg(theme.dim)),
+            ])
+        } else if matches!(app.input.input_field, InputField::Priority) {
+            Line::from(vec![
+                Span::styled("1/2/3", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(" set priority  ", Style::default().fg(theme.dim)),
+                Span::styled("Space / ←→", Style::default().fg(theme.accent)),
+                Span::styled(" cycle  ", Style::default().fg(theme.dim)),
+                Span::styled("Tab", Style::default().fg(theme.accent)),
+                Span::styled(" next  ", Style::default().fg(theme.dim)),
+                Span::styled("Enter", Style::default().fg(theme.success)),
+                Span::styled(" save", Style::default().fg(theme.dim)),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("Tab / Shift+Tab", Style::default().fg(theme.accent)),
+                Span::styled(" switch field  ", Style::default().fg(theme.dim)),
+                Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+                Span::styled(" save task  ", Style::default().fg(theme.dim)),
+                Span::styled("Esc", Style::default().fg(theme.dim)),
+                Span::styled(" cancel", Style::default().fg(theme.dim)),
+            ])
+        };
+        f.render_widget(Paragraph::new(hint_line).alignment(Alignment::Center), chunks[1]);
+    }
 }
 
-fn truncate_field(s: &str, max: usize) -> String {
-    super::widgets::truncate(s, max)
-}
-
-pub(crate) fn popup_field_line(
-    theme: &crate::app::Theme,
-    label: &str,
-    value: String,
+fn popup_field_row<'a>(
+    theme: &Theme,
+    icon: &'a str,
+    label: &'a str,
+    value: &'a str,
     active: bool,
-    value_max: usize,
-) -> Line<'static> {
+    max_w: usize,
+) -> Line<'a> {
+    let (label_style, val_style) = if active {
+        (
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (
+            Style::default().fg(theme.dim),
+            Style::default().fg(theme.text),
+        )
+    };
+
+    let bullet = if active { "●" } else { " " };
+    let active_indicator = if active {
+        Span::styled(format!("{bullet} "), Style::default().fg(theme.accent))
+    } else {
+        Span::styled("  ", Style::default().fg(theme.dim))
+    };
+
+    Line::from(vec![
+        active_indicator,
+        Span::styled(format!("{} {:<12} ", icon, label), label_style),
+        Span::styled(super::widgets::truncate(value, max_w), val_style),
+    ])
+}
+
+fn popup_priority_row<'a>(
+    theme: &Theme,
+    icon: &'a str,
+    priority: Priority,
+    active: bool,
+) -> Line<'a> {
     let label_style = if active {
-        Style::default()
-            .fg(theme.accent)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.dim)
     };
-    let value_style = if active {
-        Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
+
+    let bullet = if active { "●" } else { " " };
+    let active_indicator = if active {
+        Span::styled(format!("{bullet} "), Style::default().fg(theme.accent))
     } else {
-        Style::default().fg(theme.text)
+        Span::styled("  ", Style::default().fg(theme.dim))
     };
+
+    let make_chip = |label: &'static str, color: ratatui::style::Color, is_sel: bool| -> Span<'static> {
+        if is_sel {
+            Span::styled(
+                format!(" [● {}] ", label),
+                Style::default().fg(color).bg(theme.panel).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(
+                format!("  ○ {}  ", label),
+                Style::default().fg(theme.dim),
+            )
+        }
+    };
+
     Line::from(vec![
-        Span::styled(format!("{:<20} ", label), label_style),
-        Span::styled(truncate_field(&value, value_max), value_style),
+        active_indicator,
+        Span::styled(format!("{} Priority     ", icon), label_style),
+        make_chip("Low", theme.info, priority == Priority::Low),
+        make_chip("Med", theme.warning, priority == Priority::Medium),
+        make_chip("High", theme.error, priority == Priority::High),
     ])
+}
+
+fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edit: bool) {
+    let theme = &app.theme;
+    let icons = app.icons;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Min(3),
+            Constraint::Length(3),
+            Constraint::Length(1),
+        ])
+        .split(body);
+
+    let parent_title = app
+        .data
+        .task(task_id)
+        .map(|t| t.title.clone())
+        .unwrap_or_else(|| "Unknown task".into());
+
+    let existing_subtasks = app
+        .data
+        .task(task_id)
+        .map(|t| t.subtasks.clone())
+        .unwrap_or_default();
+
+    // 1. Parent Task Header
+    let header_line = Line::from(vec![
+        Span::styled(format!("{} Parent Task: ", icons.tasks), Style::default().fg(theme.dim)),
+        Span::styled(
+            super::widgets::truncate(&parent_title, chunks[0].width.saturating_sub(20) as usize),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  ({} subtasks)", existing_subtasks.len()),
+            Style::default().fg(theme.accent),
+        ),
+    ]);
+    f.render_widget(Paragraph::new(header_line), chunks[0]);
+
+    // 2. Existing Subtasks Preview Card
+    let mut preview_lines = Vec::new();
+    if existing_subtasks.is_empty() {
+        preview_lines.push(Line::from(Span::styled(
+            "  No subtasks added yet.",
+            Style::default().fg(theme.dim),
+        )));
+    } else {
+        let start = existing_subtasks.len().saturating_sub(4);
+        for sub in &existing_subtasks[start..] {
+            let (icon, color) = if sub.done {
+                (icons.check, theme.success)
+            } else {
+                ("○", theme.dim)
+            };
+            preview_lines.push(Line::from(vec![
+                Span::styled(format!("  {} ", icon), Style::default().fg(color)),
+                Span::styled(
+                    super::widgets::truncate(&sub.title, chunks[1].width.saturating_sub(8) as usize),
+                    if sub.done {
+                        Style::default().fg(theme.dim)
+                    } else {
+                        Style::default().fg(theme.text)
+                    },
+                ),
+            ]));
+        }
+    }
+    f.render_widget(
+        Paragraph::new(preview_lines).block(
+            Block::default()
+                .borders(Borders::NONE)
+                .style(Style::default().bg(theme.bg)),
+        ),
+        chunks[1],
+    );
+
+    // 3. Subtask Input Box
+    let label = if is_edit { " Edit Subtask Title " } else { " New Subtask Title " };
+    let input_block = Block::default()
+        .title(Span::styled(label, Style::default().fg(theme.accent)))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.accent))
+        .style(Style::default().bg(theme.panel));
+    let inner = input_block.inner(chunks[2]);
+    f.render_widget(input_block, chunks[2]);
+
+    if rect_ok(inner) {
+        let val = if app.input.input_buffer.is_empty() {
+            Line::from(vec![
+                Span::styled("Type subtask title…", Style::default().fg(theme.dim)),
+                Span::styled("|", Style::default().fg(theme.accent)),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(&app.input.input_buffer, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                Span::styled("|", Style::default().fg(theme.accent)),
+            ])
+        };
+        f.render_widget(Paragraph::new(val), inner);
+    }
+
+    // 4. Action Footer
+    let footer_line = if is_edit {
+        Line::from(vec![
+            Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled(" save  ", Style::default().fg(theme.dim)),
+            Span::styled("Esc", Style::default().fg(theme.dim)),
+            Span::styled(" cancel", Style::default().fg(theme.dim)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled(" add & type next  ", Style::default().fg(theme.dim)),
+            Span::styled("Esc / q", Style::default().fg(theme.dim)),
+            Span::styled(" done", Style::default().fg(theme.dim)),
+        ])
+    };
+    f.render_widget(Paragraph::new(footer_line).alignment(Alignment::Center), chunks[3]);
+}
+
+fn draw_confirm_delete_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64) {
+    let theme = &app.theme;
+    let icons = app.icons;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(2),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(body);
+
+    let task = app.data.task(task_id);
+    let title = task.map(|t| t.title.as_str()).unwrap_or("Unknown task");
+    let sub_count = task.map(|t| t.subtasks.len()).unwrap_or(0);
+    let mins = task.map(|t| t.actual_minutes).unwrap_or(0);
+
+    // 1. Header
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} Permanent Task Deletion", icons.delete), Style::default().fg(theme.error).add_modifier(Modifier::BOLD)),
+        ])),
+        chunks[0],
+    );
+
+    // 2. Target Task Name
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("Delete \"", Style::default().fg(theme.text)),
+            Span::styled(
+                super::widgets::truncate(title, chunks[1].width.saturating_sub(12) as usize),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("\"?", Style::default().fg(theme.text)),
+        ])),
+        chunks[1],
+    );
+
+    // 3. Metadata Context
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("Contains {} subtask(s) · {}m focused", sub_count, mins), Style::default().fg(theme.dim)),
+        ])),
+        chunks[2],
+    );
+
+    // 4. Warning Alert
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("This action cannot be undone.", Style::default().fg(theme.warning)),
+        ])),
+        chunks[3],
+    );
+
+    // 5. Buttons
+    let buttons = Line::from(vec![
+        Span::styled(" [y] Delete ", Style::default().fg(theme.error).bg(theme.panel).add_modifier(Modifier::BOLD)),
+        Span::styled("    ", Style::default()),
+        Span::styled(" [n / Esc] Cancel ", Style::default().fg(theme.dim).bg(theme.panel)),
+    ]);
+    f.render_widget(Paragraph::new(buttons).alignment(Alignment::Center), chunks[4]);
+}
+
+fn draw_bulk_confirm_popup(f: &mut Frame, app: &App, body: Rect, action: &BulkAction) {
+    let theme = &app.theme;
+    let icons = app.icons;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(4),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(body);
+
+    let count = app.task_ui.bulk_selected.len();
+    let (action_title, action_color) = match action {
+        BulkAction::MarkDone => (format!("{} Complete {} Selected Tasks", icons.check, count), theme.success),
+        BulkAction::Delete => (format!("{} Permanently Delete {} Selected Tasks", icons.delete, count), theme.error),
+    };
+
+    // 1. Header
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            action_title,
+            Style::default().fg(action_color).add_modifier(Modifier::BOLD),
+        ))),
+        chunks[0],
+    );
+
+    // 2. Preview List of Selected Tasks
+    let mut preview_lines = Vec::new();
+    let mut shown = 0;
+    for &id in &app.task_ui.bulk_selected {
+        if shown >= 3 {
+            let rem = count - shown;
+            preview_lines.push(Line::from(Span::styled(
+                format!("  (+ {} more tasks...)", rem),
+                Style::default().fg(theme.dim),
+            )));
+            break;
+        }
+        if let Some(t) = app.data.task(id) {
+            preview_lines.push(Line::from(vec![
+                Span::styled("  • ", Style::default().fg(action_color)),
+                Span::styled(
+                    super::widgets::truncate(&t.title, chunks[1].width.saturating_sub(6) as usize),
+                    Style::default().fg(theme.text),
+                ),
+            ]));
+            shown += 1;
+        }
+    }
+    f.render_widget(Paragraph::new(preview_lines), chunks[1]);
+
+    // 3. Warning (if delete)
+    if matches!(action, BulkAction::Delete) {
+        f.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "Warning: All selected tasks will be removed permanently.",
+                Style::default().fg(theme.warning),
+            ))),
+            chunks[2],
+        );
+    }
+
+    // 4. Action Buttons
+    let buttons = Line::from(vec![
+        Span::styled(
+            " [y] Confirm ",
+            Style::default().fg(action_color).bg(theme.panel).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("    ", Style::default()),
+        Span::styled(" [n / Esc] Cancel ", Style::default().fg(theme.dim).bg(theme.panel)),
+    ]);
+    f.render_widget(Paragraph::new(buttons).alignment(Alignment::Center), chunks[3]);
+}
+
+fn draw_empty_queue_popup(f: &mut Frame, app: &App, body: Rect) {
+    let theme = &app.theme;
+    let icons = app.icons;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Min(6),
+        ])
+        .split(body);
+
+    // 1. Celebratory Banner
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(format!("{} Queue Cleared! ", icons.check), Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled("All tasks in your queue are completed.", Style::default().fg(theme.text)),
+        ])),
+        chunks[0],
+    );
+
+    // 2. Subtitle
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            "Choose how you want your focus session to proceed:",
+            Style::default().fg(theme.dim),
+        ))),
+        chunks[1],
+    );
+
+    // 3. Option Cards
+    let options = vec![
+        Line::from(vec![
+            Span::styled(" [Enter] ", Style::default().fg(theme.success).bg(theme.panel).add_modifier(Modifier::BOLD)),
+            Span::styled(" Free Focus   ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled("— Continue timer, log as general focus", Style::default().fg(theme.dim)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [  p  ] ", Style::default().fg(theme.warning).bg(theme.panel).add_modifier(Modifier::BOLD)),
+            Span::styled(" Pause Timer  ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled("— Pause timer and take a restorative break", Style::default().fg(theme.dim)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [  a  ] ", Style::default().fg(theme.accent).bg(theme.panel).add_modifier(Modifier::BOLD)),
+            Span::styled(" Add Task     ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled("— Open task creator to add more work", Style::default().fg(theme.dim)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" [ Esc ] ", Style::default().fg(theme.dim).bg(theme.panel)),
+            Span::styled(" Dismiss      ", Style::default().fg(theme.dim)),
+            Span::styled("— Close this dialog", Style::default().fg(theme.dim)),
+        ]),
+    ];
+    f.render_widget(Paragraph::new(options), chunks[2]);
 }
 
 pub(crate) fn draw_input(f: &mut Frame, app: &App, area: Rect) {
