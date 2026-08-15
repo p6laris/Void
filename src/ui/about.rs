@@ -139,12 +139,6 @@ fn draw_about_left(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("]", st_dim),
         ]),
         Line::from(Span::styled(" ", st_dim)),
-        Line::from(vec![
-            Span::styled("  ✦ ", st_accent),
-            Span::styled("Ursa Minor ", st_accent),
-            Span::styled("· Polaris at the tail", st_dim),
-        ]),
-        Line::from(Span::styled(" ", st_dim)),
     ];
 
     for line in URSA_MINOR_ART {
@@ -285,12 +279,6 @@ fn draw_about_single(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("v0.5.0-beta.2", st_focus),
         ]),
         Line::from(Span::styled("  A minimalist, keyboard-driven productivity sanctuary.", st_dim)),
-        Line::from(Span::styled(" ", st_dim)),
-        Line::from(vec![
-            Span::styled("  ✦ ", st_accent),
-            Span::styled("Ursa Minor ", st_accent),
-            Span::styled("· Polaris at the tail", st_dim),
-        ]),
         Line::from(Span::styled(" ", st_dim)),
     ];
 
