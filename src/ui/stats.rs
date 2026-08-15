@@ -75,7 +75,7 @@ fn draw_vdivider(f: &mut Frame, area: Rect, theme: &Theme) {
 
 /// Interactive tab toggles for the middle statistics panel: `[v] [week] [tags] [weekday] [hourly]`
 fn stats_submode_tabs(theme: &Theme, current: crate::app::StatsViewMode, width: u16) -> Line<'static> {
-    if width < 36 {
+    if width < 56 {
         return Line::from(vec![
             Span::styled("[v] ", Style::default().fg(theme.dim)),
             Span::styled(
@@ -106,15 +106,27 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
     let icons = app.icons;
 
     // Range presets live in the panel title: `[7d] [30d] [90d] …`.
-    let mut range_spans: Vec<Span> = Vec::with_capacity(16);
-    for range in crate::app::StatsRange::all() {
-        range_spans.extend(bracket_toggle(
-            theme,
-            range.label(),
-            range == app.stats.stats_range,
-        ));
-        range_spans.push(Span::raw(" "));
-    }
+    let range_spans = if area.width < 56 {
+        vec![
+            Span::styled("[r] ", Style::default().fg(theme.dim)),
+            Span::styled(
+                format!("[{}]", app.stats.stats_range.label()),
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+        ]
+    } else {
+        let mut spans = Vec::with_capacity(16);
+        for range in crate::app::StatsRange::all() {
+            spans.extend(bracket_toggle(
+                theme,
+                range.label(),
+                range == app.stats.stats_range,
+            ));
+            spans.push(Span::raw(" "));
+        }
+        spans
+    };
 
     let block = dense_panel(theme, section_title(theme, icons.calendar, "Focus activity"))
         .title(Line::from(range_spans).alignment(Alignment::Right));
