@@ -5,16 +5,19 @@ use anyhow::{Context, Result};
 
 use super::builtin::BUILTINS;
 use super::file::ThemeFile;
+use super::ThemeVariant;
 
-const EMBEDDED: &[(&str, &str, &str)] = &[
+const EMBEDDED: &[(&str, &str, ThemeVariant, &str)] = &[
     (
         "catppuccin-mocha",
         "Catppuccin Mocha",
+        ThemeVariant::Dark,
         include_str!("../../themes/catppuccin-mocha.toml"),
     ),
     (
         "catppuccin-latte",
         "Catppuccin Latte",
+        ThemeVariant::Light,
         include_str!("../../themes/catppuccin-latte.toml"),
     ),
 ];
@@ -23,6 +26,7 @@ const EMBEDDED: &[(&str, &str, &str)] = &[
 pub struct ThemeEntry {
     pub id: String,
     pub label: String,
+    pub variant: ThemeVariant,
     pub source: ThemeSource,
 }
 
@@ -41,17 +45,19 @@ pub struct ThemeCatalog {
 impl ThemeCatalog {
     pub fn load() -> Self {
         let mut catalog = Self::default();
-        for (id, label) in BUILTINS {
+        for (id, label, variant) in BUILTINS {
             catalog.entries.push(ThemeEntry {
                 id: (*id).to_string(),
                 label: (*label).to_string(),
+                variant: *variant,
                 source: ThemeSource::Builtin,
             });
         }
-        for (id, label, toml) in EMBEDDED {
+        for (id, label, variant, toml) in EMBEDDED {
             catalog.entries.push(ThemeEntry {
                 id: (*id).to_string(),
                 label: (*label).to_string(),
+                variant: *variant,
                 source: ThemeSource::Embedded(toml),
             });
         }
@@ -66,6 +72,14 @@ impl ThemeCatalog {
 
     pub fn entries(&self) -> &[ThemeEntry] {
         &self.entries
+    }
+
+    pub fn dark_entries(&self) -> Vec<&ThemeEntry> {
+        self.entries.iter().filter(|e| e.variant.is_dark()).collect()
+    }
+
+    pub fn light_entries(&self) -> Vec<&ThemeEntry> {
+        self.entries.iter().filter(|e| e.variant.is_light()).collect()
     }
 
     pub fn label(&self, id: &str) -> String {
@@ -86,6 +100,56 @@ impl ThemeCatalog {
             .position(|entry| entry.id == current)
             .unwrap_or(0);
         self.entries[(idx + 1) % self.entries.len()].id.clone()
+    }
+
+    pub fn next_dark_id(&self, current: &str) -> String {
+        let darks = self.dark_entries();
+        if darks.is_empty() {
+            return current.to_string();
+        }
+        let idx = darks
+            .iter()
+            .position(|entry| entry.id == current)
+            .unwrap_or(0);
+        darks[(idx + 1) % darks.len()].id.clone()
+    }
+
+    pub fn prev_dark_id(&self, current: &str) -> String {
+        let darks = self.dark_entries();
+        if darks.is_empty() {
+            return current.to_string();
+        }
+        let idx = darks
+            .iter()
+            .position(|entry| entry.id == current)
+            .unwrap_or(0);
+        let next_idx = if idx == 0 { darks.len() - 1 } else { idx - 1 };
+        darks[next_idx].id.clone()
+    }
+
+    pub fn next_light_id(&self, current: &str) -> String {
+        let lights = self.light_entries();
+        if lights.is_empty() {
+            return current.to_string();
+        }
+        let idx = lights
+            .iter()
+            .position(|entry| entry.id == current)
+            .unwrap_or(0);
+        lights[(idx + 1) % lights.len()].id.clone()
+    }
+
+    pub fn prev_light_id(&self, current: &str) -> String {
+        let lights = self.light_entries();
+        if lights.is_empty() {
+            return current.to_string();
+        }
+        let idx = lights
+            .iter()
+            .position(|entry| entry.id == current)
+            .unwrap_or(0);
+        let next_idx = if idx == 0 { lights.len() - 1 } else { idx - 1 };
+        lights[next_idx].id.clone()
     }
 
     pub fn resolve_entry(&self, id: &str) -> Result<&ThemeEntry> {
@@ -116,9 +180,11 @@ impl ThemeCatalog {
             if id.is_empty() || self.entries.iter().any(|e| e.id == id) {
                 continue;
             }
+            let variant = file.detect_variant();
             found.push(ThemeEntry {
                 id,
                 label: file.name,
+                variant,
                 source: ThemeSource::File(path),
             });
         }
@@ -151,5 +217,18 @@ mod tests {
         assert_ne!(first, second);
         let wrap = catalog.next_id(catalog.entries.last().unwrap().id.as_str());
         assert_eq!(wrap, first);
+    }
+
+    #[test]
+    fn filters_and_cycles_dark_and_light_themes() {
+        let catalog = ThemeCatalog::load();
+        assert!(!catalog.dark_entries().is_empty());
+        assert!(!catalog.light_entries().is_empty());
+        let dark_id = catalog.dark_entries()[0].id.clone();
+        let next_dark = catalog.next_dark_id(&dark_id);
+        let light_id = catalog.light_entries()[0].id.clone();
+        let next_light = catalog.next_light_id(&light_id);
+        assert!(catalog.dark_entries().iter().any(|e| e.id == next_dark));
+        assert!(catalog.light_entries().iter().any(|e| e.id == next_light));
     }
 }

@@ -1,10 +1,10 @@
-use super::Theme;
+use super::{Theme, ThemeVariant};
 
-pub const BUILTINS: &[(&str, &str)] = &[
-    ("matrix", "Matrix"),
-    ("dark", "Dark"),
-    ("light", "Light"),
-    ("polaris", "Polaris"),
+pub const BUILTINS: &[(&str, &str, ThemeVariant)] = &[
+    ("matrix", "Matrix", ThemeVariant::Dark),
+    ("dark", "Dark", ThemeVariant::Dark),
+    ("light", "Light", ThemeVariant::Light),
+    ("polaris", "Polaris", ThemeVariant::Dark),
 ];
 
 pub fn builtin_theme(id: &str) -> Option<Theme> {

@@ -385,8 +385,51 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeMode {
+    #[default]
+    Auto,
+    Dark,
+    Light,
+}
+
+impl ThemeMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            ThemeMode::Auto => "Auto (System)",
+            ThemeMode::Dark => "Dark",
+            ThemeMode::Light => "Light",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            ThemeMode::Auto => ThemeMode::Dark,
+            ThemeMode::Dark => ThemeMode::Light,
+            ThemeMode::Light => ThemeMode::Auto,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        match self {
+            ThemeMode::Auto => ThemeMode::Light,
+            ThemeMode::Dark => ThemeMode::Auto,
+            ThemeMode::Light => ThemeMode::Dark,
+        }
+    }
+}
+
+fn default_dark_theme_id() -> String {
+    "catppuccin-mocha".into()
+}
+
+fn default_light_theme_id() -> String {
+    "catppuccin-latte".into()
+}
+
 fn default_theme_id() -> String {
-    "matrix".into()
+    "catppuccin-mocha".into()
 }
 
 mod tasks_serde {
@@ -438,6 +481,12 @@ pub struct AppData {
     pub auto_pick_task: bool,
     #[serde(default)]
     pub auto_advance_task: bool,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
+    #[serde(default = "default_dark_theme_id")]
+    pub dark_theme: String,
+    #[serde(default = "default_light_theme_id")]
+    pub light_theme: String,
     #[serde(default = "default_theme_id")]
     pub theme: String,
     #[serde(default)]
@@ -536,6 +585,9 @@ impl Default for AppData {
             long_break_every: 4,
             auto_pick_task: true,
             auto_advance_task: true,
+            theme_mode: ThemeMode::Auto,
+            dark_theme: default_dark_theme_id(),
+            light_theme: default_light_theme_id(),
             theme: default_theme_id(),
             active_task_id: None,
             notify_on_finish: true,

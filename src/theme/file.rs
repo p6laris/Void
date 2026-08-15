@@ -5,12 +5,13 @@ use anyhow::{bail, Context, Result};
 use ratatui::style::Color;
 use serde::Deserialize;
 
-use super::color::resolve_color;
-use super::{Theme, TOKEN_NAMES};
+use super::color::{is_color_light, resolve_color};
+use super::{Theme, ThemeVariant, TOKEN_NAMES};
 
 #[derive(Debug, Deserialize)]
 pub struct ThemeFile {
     pub name: String,
+    pub variant: Option<String>,
     #[serde(default)]
     pub palette: HashMap<String, String>,
     pub tokens: HashMap<String, String>,
@@ -25,6 +26,22 @@ impl ThemeFile {
         let source = std::fs::read_to_string(path)
             .with_context(|| format!("read theme file {}", path.display()))?;
         Self::from_str(&source)
+    }
+
+    pub fn detect_variant(&self) -> ThemeVariant {
+        if let Some(ref v) = self.variant {
+            if v.eq_ignore_ascii_case("light") {
+                return ThemeVariant::Light;
+            } else if v.eq_ignore_ascii_case("dark") {
+                return ThemeVariant::Dark;
+            }
+        }
+        if let Ok(bg) = self.resolve_token("bg") {
+            if is_color_light(bg) {
+                return ThemeVariant::Light;
+            }
+        }
+        ThemeVariant::Dark
     }
 
     fn resolve_token(&self, name: &str) -> Result<Color> {

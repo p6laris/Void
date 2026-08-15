@@ -2,12 +2,40 @@ use ratatui::style::Color;
 
 use crate::canvas_timer::SceneStyle;
 
+use serde::{Deserialize, Serialize};
+
 mod builtin;
 mod catalog;
 mod color;
+pub mod detect;
 mod file;
 
 pub use catalog::{themes_dir, ThemeCatalog, ThemeEntry};
+pub use detect::{detect_system_theme, SystemTheme};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeVariant {
+    Dark,
+    Light,
+}
+
+impl ThemeVariant {
+    pub fn is_dark(self) -> bool {
+        self == ThemeVariant::Dark
+    }
+
+    pub fn is_light(self) -> bool {
+        self == ThemeVariant::Light
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ThemeVariant::Dark => "Dark",
+            ThemeVariant::Light => "Light",
+        }
+    }
+}
 
 use anyhow::{Context, Result};
 
