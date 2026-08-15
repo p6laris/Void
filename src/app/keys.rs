@@ -58,11 +58,54 @@ impl App {
 
     pub(crate) fn handle_about_key(&mut self, key: KeyEvent) {
         match key.code {
+            KeyCode::Char('h') | KeyCode::Left => {
+                self.ui.about_active_column = 0;
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                self.ui.about_active_column = 1;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.ui.about_active_column = 1 - self.ui.about_active_column;
+            }
             KeyCode::Char('j') | KeyCode::Down => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(1);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(1);
+                }
                 self.ui.about_scroll = self.ui.about_scroll.saturating_add(1);
             }
             KeyCode::Char('k') | KeyCode::Up => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(1);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(1);
+                }
                 self.ui.about_scroll = self.ui.about_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(10);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(10);
+                }
+                self.ui.about_scroll = self.ui.about_scroll.saturating_add(10);
+            }
+            KeyCode::PageUp => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(10);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(10);
+                }
+                self.ui.about_scroll = self.ui.about_scroll.saturating_sub(10);
+            }
+            KeyCode::Home => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = 0;
+                } else {
+                    self.ui.about_right_scroll = 0;
+                }
+                self.ui.about_scroll = 0;
             }
             _ => {}
         }
@@ -531,6 +574,11 @@ impl App {
                 if self.ui.tab == FocusTab::Help {
                     self.ui.help_scroll = self.ui.help_scroll.saturating_sub(3);
                 } else if self.ui.tab == FocusTab::About {
+                    if self.ui.about_active_column == 0 {
+                        self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(3);
+                    } else {
+                        self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(3);
+                    }
                     self.ui.about_scroll = self.ui.about_scroll.saturating_sub(3);
                 } else if self.ui.tab == FocusTab::Tasks || self.ui.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::empty()));
@@ -540,6 +588,11 @@ impl App {
                 if self.ui.tab == FocusTab::Help {
                     self.ui.help_scroll = self.ui.help_scroll.saturating_add(3);
                 } else if self.ui.tab == FocusTab::About {
+                    if self.ui.about_active_column == 0 {
+                        self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(3);
+                    } else {
+                        self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(3);
+                    }
                     self.ui.about_scroll = self.ui.about_scroll.saturating_add(3);
                 } else if self.ui.tab == FocusTab::Tasks || self.ui.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::empty()));

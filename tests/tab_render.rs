@@ -393,3 +393,14 @@ fn zen_renders_with_all_canvas_modes() {
     }
 }
 
+#[test]
+fn about_tab_renders_with_ursa_minor_constellation() {
+    let mut app = app_with_tasks();
+    for (w, h) in [(120, 36), (80, 24)] {
+        let lines = render_tab(&mut app, FocusTab::About, w, h);
+        assert!(!lines.is_empty());
+        let full = lines.join("\n");
+        assert!(full.contains("Polaris") || full.contains("Ursa Minor"), "About missing Ursa Minor in {w}x{h}");
+    }
+}
+
