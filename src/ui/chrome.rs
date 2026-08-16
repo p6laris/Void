@@ -15,48 +15,48 @@ fn streak_goal_chips(app: &App, theme: &crate::app::Theme, icons: IconSet) -> Ve
     let today = app.today_focus_mins();
     let goal = app.data.daily_goal_minutes;
     let goal_met = app.daily_goal_met();
-    vec![
-        chip(
-            icons.fire,
-            format!("{}d", app.data.streak_days),
-            theme.success,
-            theme.panel_border,
+    let mut spans = Vec::with_capacity(11);
+    spans.extend(chip(
+        icons.fire,
+        format!("{}d", app.data.streak_days),
+        theme.success,
+        theme.comment,
+    ));
+    spans.push(Span::raw(" "));
+    spans.extend(chip(
+        icons.shield,
+        format!(
+            "{}/{}",
+            app.data.streak_freezes,
+            crate::model::STREAK_FREEZE_MAX
         ),
-        Span::raw(" "),
-        chip(
-            icons.shield,
-            format!(
-                "{}/{}",
-                app.data.streak_freezes,
-                crate::model::STREAK_FREEZE_MAX
-            ),
-            theme.dim,
-            theme.panel_border,
-        ),
-        Span::raw(" "),
-        chip(
-            icons.target,
-            format!("{}/{}", format_minutes(today), format_minutes(goal)),
-            if goal_met { theme.success } else { theme.text },
-            theme.panel_border,
-        ),
-    ]
+        theme.dim,
+        theme.comment,
+    ));
+    spans.push(Span::raw(" "));
+    spans.extend(chip(
+        icons.target,
+        format!("{}/{}", format_minutes(today), format_minutes(goal)),
+        if goal_met { theme.success } else { theme.text },
+        theme.comment,
+    ));
+    spans
 }
 
-fn session_total_span(
+fn session_total_spans(
     app: &App,
     theme: &crate::app::Theme,
     icons: IconSet,
     as_chip: bool,
-) -> Span<'static> {
+) -> Vec<Span<'static>> {
     let count = format!("{}", app.data.total_sessions);
     if as_chip {
-        chip(icons.timer, count, theme.dim, theme.panel_border)
+        chip(icons.timer, count, theme.dim, theme.comment)
     } else {
-        Span::styled(
+        vec![Span::styled(
             format!("{} {count}", icons.timer),
             Style::default().fg(theme.dim),
-        )
+        )]
     }
 }
 
@@ -78,38 +78,32 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         app.timer.format_remaining()
     };
 
-    let mut chips: Vec<Span> = vec![
-        chip(timer_icon, timer_text, timer_color, theme.panel_border),
-        Span::raw(" "),
-    ];
+    let mut chips: Vec<Span> = chip(timer_icon, timer_text, timer_color, theme.comment);
+    chips.push(Span::raw(" "));
     chips.extend(streak_goal_chips(app, theme, icons));
 
     if app.timer.state != TimerState::Idle {
-        chips.extend([
-            Span::raw(" "),
-            chip(
-                icons.cycle,
-                app.timer.cycle_label(),
-                theme.info,
-                theme.panel_border,
-            ),
-        ]);
+        chips.push(Span::raw(" "));
+        chips.extend(chip(
+            icons.cycle,
+            app.timer.cycle_label(),
+            theme.info,
+            theme.comment,
+        ));
     }
 
     if app.queue_empty() && !app.data.tasks.is_empty() {
-        chips.extend([
-            Span::raw(" "),
-            chip(
-                icons.check,
-                "queue clear".into(),
-                theme.success,
-                theme.panel_border,
-            ),
-        ]);
+        chips.push(Span::raw(" "));
+        chips.extend(chip(
+            icons.check,
+            "queue clear".into(),
+            theme.success,
+            theme.comment,
+        ));
     }
 
     chips.push(Span::raw(" "));
-    chips.push(session_total_span(app, theme, icons, false));
+    chips.extend(session_total_spans(app, theme, icons, false));
 
     let title = Line::from(vec![
         Span::styled(
@@ -147,13 +141,14 @@ pub fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
             } else {
                 String::new()
             };
-            let label = format!(" {icon} {num}·{}{badge} ", t.label());
+            // Weight and colour carry the active tab; no underline. Terminal underlines
+            // render inconsistently and collide with the rule below the tab strip.
+            let label = format!("  {icon} {num} {}{badge}  ", t.label().to_lowercase());
             if *t == app.ui.tab {
                 Span::styled(
                     label,
                     Style::default()
-                        .fg(theme.on_accent)
-                        .bg(theme.accent)
+                        .fg(theme.accent)
                         .add_modifier(Modifier::BOLD),
                 )
             } else {
@@ -174,12 +169,28 @@ fn footer_top_block(theme: &crate::app::Theme) -> Block<'_> {
         .border_style(Style::default().fg(theme.panel_border))
 }
 
+/// The active-task block on the right of the footer, and the width it wants.
+///
+/// Split out so the left-hand message can be truncated against what is actually left over
+/// rather than being hard-clipped by the layout.
+fn footer_right<'a>(app: &'a App, theme: &crate::theme::Theme) -> Option<(Line<'a>, u16)> {
+    let spans = active_task_spans(app, theme)?;
+    let width = spans.iter().map(|s| s.width() as u16).sum::<u16>() + 1;
+    Some((Line::from(spans), width))
+}
+
+/// Columns the right-hand block may take. A long task title must not be able to squeeze the
+/// status message down to nothing.
+fn footer_right_budget(area: Rect, want: u16) -> u16 {
+    want.min(area.width / 2)
+}
+
 fn draw_footer_bar(f: &mut Frame, app: &App, area: Rect, left: Line<'_>) {
     let theme = &app.theme;
     let mut right_width: u16 = 0;
-    let right_line = if let Some(spans) = active_task_spans(app, theme) {
-        right_width = spans.iter().map(|s| s.width() as u16).sum::<u16>() + 1;
-        Some(Line::from(spans))
+    let right_line = if let Some((line, want)) = footer_right(app, theme) {
+        right_width = footer_right_budget(area, want);
+        Some(line)
     } else {
         None
     };
@@ -221,7 +232,15 @@ pub fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.dim)
     };
 
-    let left = Line::from(Span::styled(format!(" {msg}"), left_style));
+    // Truncated to what the right-hand block leaves behind. A Paragraph in a `Min(1)`
+    // column just clips, so the message used to end mid-word with no ellipsis to show it
+    // had been cut.
+    let right_w = footer_right(app, theme).map_or(0, |(_, w)| footer_right_budget(area, w));
+    let budget = area.width.saturating_sub(right_w + 1) as usize;
+    let left = Line::from(Span::styled(
+        format!(" {}", super::widgets::truncate(&msg, budget)),
+        left_style,
+    ));
     draw_footer_bar(f, app, area, left);
 }
 
@@ -242,7 +261,7 @@ pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
 
     let mut chips = streak_goal_chips(app, theme, icons);
     chips.push(Span::raw(" "));
-    chips.push(session_total_span(app, theme, icons, true));
+    chips.extend(session_total_spans(app, theme, icons, true));
 
     draw_footer_bar(f, app, area, Line::from(chips));
 }

@@ -16,25 +16,29 @@ pub enum SettingsItem {
     ShortBreak,
     LongBreak,
     LongBreakEvery,
+    CustomMinutes,
     DailyGoal,
     Sound,
     Notifications,
     AutoStartBreaks,
     AutoStartFocus,
     ActiveTaskCycle,
-    Theme,
-    CustomMinutes,
     AutoPickTask,
     AutoAdvanceTask,
     EmptyQueueBehavior,
-    LogBreaks,
     EstimateComplete,
-    ExportBackup,
+    ThemeMode,
+    DarkTheme,
+    LightTheme,
+    CanvasMode,
+    LogBreaks,
+    RestDays,
     TerminalTitle,
     WarnOneMinute,
     AutoPauseIdle,
     ArchiveAfterDays,
-    RestDays,
+    ExportBackupJson,
+    ExportSessionsCsv,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,31 +64,35 @@ impl SettingsState {
         Self {
             selected: 0,
             scroll_offset: 0,
-            page_size: 12,
+            page_size: 14,
             items: vec![
                 SettingsItem::FocusMinutes,
                 SettingsItem::ShortBreak,
                 SettingsItem::LongBreak,
                 SettingsItem::LongBreakEvery,
+                SettingsItem::CustomMinutes,
                 SettingsItem::DailyGoal,
                 SettingsItem::Sound,
                 SettingsItem::Notifications,
                 SettingsItem::AutoStartBreaks,
                 SettingsItem::AutoStartFocus,
                 SettingsItem::ActiveTaskCycle,
-                SettingsItem::Theme,
-                SettingsItem::CustomMinutes,
                 SettingsItem::AutoPickTask,
                 SettingsItem::AutoAdvanceTask,
                 SettingsItem::EmptyQueueBehavior,
-                SettingsItem::LogBreaks,
                 SettingsItem::EstimateComplete,
+                SettingsItem::ThemeMode,
+                SettingsItem::DarkTheme,
+                SettingsItem::LightTheme,
+                SettingsItem::CanvasMode,
+                SettingsItem::LogBreaks,
                 SettingsItem::RestDays,
                 SettingsItem::TerminalTitle,
                 SettingsItem::WarnOneMinute,
                 SettingsItem::AutoPauseIdle,
                 SettingsItem::ArchiveAfterDays,
-                SettingsItem::ExportBackup,
+                SettingsItem::ExportBackupJson,
+                SettingsItem::ExportSessionsCsv,
             ],
         }
     }
@@ -158,10 +166,10 @@ impl App {
             }
             KeyCode::Enter => {
                 let item = self.settings_state.items[self.settings_state.selected];
-                if item == SettingsItem::ExportBackup {
-                    self.export_backup();
-                } else {
-                    self.adjust_setting(1);
+                match item {
+                    SettingsItem::ExportBackupJson => self.export_backup(),
+                    SettingsItem::ExportSessionsCsv => self.export_sessions_csv(),
+                    _ => self.adjust_setting(1),
                 }
             }
             KeyCode::Right | KeyCode::Char('+') | KeyCode::Char('=') => {
@@ -171,7 +179,12 @@ impl App {
                 self.adjust_setting(-1);
             }
             KeyCode::Char('e') => {
-                self.export_backup();
+                let item = self.settings_state.items[self.settings_state.selected];
+                if item == SettingsItem::ExportSessionsCsv {
+                    self.export_sessions_csv();
+                } else {
+                    self.export_backup();
+                }
             }
             _ => {}
         }
@@ -306,11 +319,71 @@ impl App {
                     self.set_status(format!("Active task: {}", task.title), false);
                 }
             }
-            SettingsItem::Theme => {
-                let next = self.theme_catalog.next_id(&self.data.theme);
+            SettingsItem::ThemeMode => {
+                self.data.theme_mode = if dir >= 0 {
+                    self.data.theme_mode.next()
+                } else {
+                    self.data.theme_mode.prev()
+                };
+                let key = match self.data.theme_mode {
+                    crate::model::ThemeMode::Auto => "auto",
+                    crate::model::ThemeMode::Dark => "dark",
+                    crate::model::ThemeMode::Light => "light",
+                };
+                self.persist_setting("theme_mode", key);
+                self.refresh_theme();
+                let sys = theme::detect_system_theme();
+                let sys_label = if sys.is_light() {
+                    "Light detected"
+                } else {
+                    "Dark detected"
+                };
+                self.set_status(
+                    format!(
+                        "Theme mode: {} (OS: {sys_label})",
+                        self.data.theme_mode.label()
+                    ),
+                    false,
+                );
+            }
+            SettingsItem::DarkTheme => {
+                let next = if dir >= 0 {
+                    self.theme_catalog.next_dark_id(&self.data.dark_theme)
+                } else {
+                    self.theme_catalog.prev_dark_id(&self.data.dark_theme)
+                };
+                self.data.dark_theme = next.clone();
+                self.persist_setting("dark_theme", &next);
+                self.refresh_theme();
                 let label = self.theme_catalog.label(&next);
-                self.apply_theme(&next);
-                self.set_status(format!("Theme: {label}"), false);
+                self.set_status(format!("Preferred Dark theme: {label}"), false);
+            }
+            SettingsItem::LightTheme => {
+                let next = if dir >= 0 {
+                    self.theme_catalog.next_light_id(&self.data.light_theme)
+                } else {
+                    self.theme_catalog.prev_light_id(&self.data.light_theme)
+                };
+                self.data.light_theme = next.clone();
+                self.persist_setting("light_theme", &next);
+                self.refresh_theme();
+                let label = self.theme_catalog.label(&next);
+                self.set_status(format!("Preferred Light theme: {label}"), false);
+            }
+            SettingsItem::CanvasMode => {
+                let next = if dir >= 0 {
+                    self.data.canvas_mode.next()
+                } else {
+                    self.data.canvas_mode.prev()
+                };
+                self.data.canvas_mode = next;
+                let key = match next {
+                    crate::model::CanvasMode::Animated => "animated",
+                    crate::model::CanvasMode::Static => "static",
+                    crate::model::CanvasMode::Off => "off",
+                };
+                self.persist_setting("canvas_mode", key);
+                self.set_status(format!("Dashboard art: {}", next.label()), false);
             }
             SettingsItem::CustomMinutes => {
                 let cur = self.timer.custom_minutes as i32;
@@ -440,7 +513,12 @@ impl App {
                 );
                 self.set_status(format!("Rest days: {display}"), false);
             }
-            SettingsItem::ExportBackup => {}
+            SettingsItem::ExportBackupJson => {
+                self.export_backup();
+            }
+            SettingsItem::ExportSessionsCsv => {
+                self.export_sessions_csv();
+            }
         }
         self.sync_timer_config_to_data();
         self.ui.settings_labels_sig = u64::MAX;
@@ -452,6 +530,7 @@ impl App {
         self.data.short_break_minutes.hash(&mut hasher);
         self.data.long_break_minutes.hash(&mut hasher);
         self.data.long_break_every.hash(&mut hasher);
+        self.timer.custom_minutes.hash(&mut hasher);
         self.data.daily_goal_minutes.hash(&mut hasher);
         self.data.sound_enabled.hash(&mut hasher);
         self.data.notify_on_finish.hash(&mut hasher);
@@ -460,8 +539,11 @@ impl App {
         self.data.auto_pick_task.hash(&mut hasher);
         self.data.auto_advance_task.hash(&mut hasher);
         self.data.log_breaks.hash(&mut hasher);
+        (self.data.theme_mode as u8).hash(&mut hasher);
+        (self.data.canvas_mode as u8).hash(&mut hasher);
+        self.data.dark_theme.hash(&mut hasher);
+        self.data.light_theme.hash(&mut hasher);
         self.data.theme.hash(&mut hasher);
-        self.timer.custom_minutes.hash(&mut hasher);
         self.task_ui.active_task.hash(&mut hasher);
         if let Some(id) = self.task_ui.active_task {
             if let Some(task) = self.data.task(id) {
@@ -505,6 +587,11 @@ impl App {
                 desc: "focus sessions per cycle",
             },
             CachedSettingsLabel {
+                key: "Custom timer",
+                value: format!("{} min", self.timer.custom_minutes),
+                desc: "freeform session",
+            },
+            CachedSettingsLabel {
                 key: "Daily goal",
                 value: format!("{} min", self.data.daily_goal_minutes),
                 desc: "+/-15 per step",
@@ -540,16 +627,6 @@ impl App {
                 desc: "cycle with Enter",
             },
             CachedSettingsLabel {
-                key: "Theme",
-                value: self.theme_catalog.label(&self.data.theme),
-                desc: "cycle themes",
-            },
-            CachedSettingsLabel {
-                key: "Custom timer",
-                value: format!("{} min", self.timer.custom_minutes),
-                desc: "freeform session",
-            },
-            CachedSettingsLabel {
                 key: "Auto-pick task",
                 value: on_off(self.data.auto_pick_task),
                 desc: "pick best task on start",
@@ -565,14 +642,58 @@ impl App {
                 desc: "free focus / pause / ask",
             },
             CachedSettingsLabel {
+                key: "Estimate reached",
+                value: self.data.estimate_complete.label().to_string(),
+                desc: "nudge / off / auto-done",
+            },
+            CachedSettingsLabel {
+                key: "Theme mode",
+                value: self.data.theme_mode.label().to_string(),
+                desc: "Auto / Dark / Light",
+            },
+            CachedSettingsLabel {
+                key: "Dark theme",
+                value: self.theme_catalog.label(&self.data.dark_theme),
+                desc: "preferred dark palette",
+            },
+            CachedSettingsLabel {
+                key: "Light theme",
+                value: self.theme_catalog.label(&self.data.light_theme),
+                desc: "preferred light palette",
+            },
+            CachedSettingsLabel {
+                key: "Dashboard art",
+                value: self.data.canvas_mode.label().to_string(),
+                desc: "animated / static / off",
+            },
+            CachedSettingsLabel {
                 key: "Log breaks",
                 value: on_off(self.data.log_breaks),
                 desc: "record break sessions",
             },
             CachedSettingsLabel {
-                key: "Estimate reached",
-                value: self.data.estimate_complete.label().to_string(),
-                desc: "nudge / off / auto-done",
+                key: "Terminal title",
+                value: on_off(self.data.show_terminal_title),
+                desc: "show timer in window bar",
+            },
+            CachedSettingsLabel {
+                key: "1-min warning",
+                value: on_off(self.data.warn_one_minute),
+                desc: "alert before timer ends",
+            },
+            CachedSettingsLabel {
+                key: "Auto-pause idle",
+                value: if self.data.auto_pause_idle_minutes == 0 {
+                    "off".into()
+                } else {
+                    format!("{} min", self.data.auto_pause_idle_minutes)
+                },
+                desc: "pause on inactivity",
+            },
+            CachedSettingsLabel {
+                key: "Archive after",
+                value: format!("{} days", self.data.archive_after_days),
+                desc: "auto-archive completed",
             },
             {
                 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -594,9 +715,14 @@ impl App {
                 }
             },
             CachedSettingsLabel {
-                key: "Export backup",
+                key: "Export JSON",
                 value: "Enter to export".into(),
-                desc: "writes data.json for backup",
+                desc: "writes data.json backup",
+            },
+            CachedSettingsLabel {
+                key: "Export CSV",
+                value: "Enter to export".into(),
+                desc: "writes sessions.csv for sheets",
             },
         ]
     }

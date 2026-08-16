@@ -369,23 +369,14 @@ impl App {
     pub fn clamp_subtask_selection(&mut self) {
         let Some(id) = self.selected_task_id() else {
             self.task_ui.subtask_selected = 0;
-            self.task_ui.subtask_state.select(None);
             return;
         };
         let n = self.data.task(id).map(|t| t.subtasks.len()).unwrap_or(0);
         if n == 0 {
             self.task_ui.subtask_selected = 0;
             self.task_ui.subtask_focus = false;
-            self.task_ui.subtask_state.select(None);
         } else if self.task_ui.subtask_selected >= n {
             self.task_ui.subtask_selected = n - 1;
-            self.task_ui
-                .subtask_state
-                .select(Some(self.task_ui.subtask_selected));
-        } else {
-            self.task_ui
-                .subtask_state
-                .select(Some(self.task_ui.subtask_selected));
         }
     }
 
@@ -428,9 +419,6 @@ impl App {
         }
         let cur = self.task_ui.subtask_selected as i32;
         self.task_ui.subtask_selected = (cur + delta).rem_euclid(n as i32) as usize;
-        self.task_ui
-            .subtask_state
-            .select(Some(self.task_ui.subtask_selected));
         if let Some(s) = self
             .data
             .task(id)
@@ -451,12 +439,8 @@ impl App {
         };
         if t.subtasks.is_empty() {
             self.task_ui.subtask_selected = 0;
-            self.task_ui.subtask_state.select(None);
         } else {
             self.task_ui.subtask_selected = t.subtasks.iter().position(|s| !s.done).unwrap_or(0);
-            self.task_ui
-                .subtask_state
-                .select(Some(self.task_ui.subtask_selected));
         }
     }
 
@@ -548,7 +532,6 @@ impl App {
         }
         self.persist_data(|db, data| storage::move_subtask(db, data, task_id, idx, new_idx));
         self.task_ui.subtask_selected = new_idx;
-        self.task_ui.subtask_state.select(Some(new_idx));
         self.bump_tasks();
     }
 

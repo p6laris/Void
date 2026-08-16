@@ -173,13 +173,15 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             println!("Void CLI - Terminal Focus Application\n");
             println!("Commands:");
             println!("  add \"Title\" [--due YYYY-MM-DD|today|tomorrow] [--tags tag1,tag2]");
-            println!("  list              (Lists pending tasks)");
-            println!("  done <task_id>    (Marks task as complete)");
-            println!("  start <task_id>   (Sets task active and launches the GUI)");
-            println!("  archive list      (Lists archived tasks)");
-            println!("  --export [path]   (Exports database to JSON)");
-            println!("  --import <path>   (Imports database from JSON, OVERWRITING current data)");
-            println!("  help              (Shows this message)");
+            println!("  list                 (Lists pending tasks)");
+            println!("  done <task_id>       (Marks task as complete)");
+            println!("  start <task_id>      (Sets task active and launches the GUI)");
+            println!("  archive list         (Lists archived tasks)");
+            println!("  --export [path.json] (Exports full database backup to JSON)");
+            println!("  --export-csv [path]  (Exports focus & break sessions to CSV)");
+            println!("  --import <path>      (Imports JSON backup or CSV sessions)");
+            println!("  --import-csv <path>  (Imports sessions from a CSV file)");
+            println!("  help                 (Shows this message)");
             println!("\nRun without arguments to launch the GUI interface.");
             Ok(true)
         }
@@ -202,21 +204,47 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
         }
         "export" | "--export" => {
             let db = void::db::Database::open()?;
+            let is_csv = args.get(2).map(|s| s.ends_with(".csv")).unwrap_or(false);
+            if is_csv {
+                let path = if args.len() >= 3 {
+                    let dest = std::path::PathBuf::from(&args[2]);
+                    let exported = db.export_csv()?;
+                    std::fs::copy(&exported, &dest)?;
+                    dest
+                } else {
+                    db.export_csv()?
+                };
+                println!("Exported sessions to CSV at {}", path.display());
+            } else {
+                let path = if args.len() >= 3 {
+                    let dest = std::path::PathBuf::from(&args[2]);
+                    let data = db.load_app_data().unwrap_or_default();
+                    let raw = serde_json::to_string_pretty(&data)?;
+                    std::fs::write(&dest, raw)?;
+                    dest
+                } else {
+                    db.export_json()?
+                };
+                println!("Exported JSON backup to {}", path.display());
+            }
+            Ok(true)
+        }
+        "export-csv" | "--export-csv" => {
+            let db = void::db::Database::open()?;
             let path = if args.len() >= 3 {
                 let dest = std::path::PathBuf::from(&args[2]);
-                let data = db.load_app_data().unwrap_or_default();
-                let raw = serde_json::to_string_pretty(&data)?;
-                std::fs::write(&dest, raw)?;
+                let exported = db.export_csv()?;
+                std::fs::copy(&exported, &dest)?;
                 dest
             } else {
-                db.export_json()?
+                db.export_csv()?
             };
-            println!("Exported backup to {}", path.display());
+            println!("Exported sessions to CSV at {}", path.display());
             Ok(true)
         }
         "import" | "--import" => {
             if args.len() < 3 {
-                eprintln!("Usage: void --import <path_to_json>");
+                eprintln!("Usage: void --import <path_to_json_or_csv>");
                 return Ok(true);
             }
             let path = std::path::PathBuf::from(&args[2]);
@@ -225,7 +253,66 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 return Ok(true);
             }
 
-            print!("WARNING: This will completely overwrite your current tasks and focus history.\nAre you sure you want to proceed? (y/N): ");
+            let is_csv = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("csv"))
+                .unwrap_or(false);
+            if is_csv {
+                print!("Import sessions from CSV into your current database? (y/N): ");
+                if let Err(e) = std::io::stdout().flush() {
+                    eprintln!("Could not show import prompt: {e}");
+                    return Ok(true);
+                }
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                if input.trim().to_lowercase() != "y" {
+                    println!("Import cancelled.");
+                    return Ok(true);
+                }
+
+                let db = void::db::Database::open()?;
+                match db.import_csv(&path) {
+                    Ok(count) => println!(
+                        "Successfully imported {count} session(s) from {}",
+                        path.display()
+                    ),
+                    Err(e) => eprintln!("CSV import failed: {e:#}"),
+                }
+            } else {
+                print!("WARNING: This will completely overwrite your current tasks and focus history.\nAre you sure you want to proceed? (y/N): ");
+                if let Err(e) = std::io::stdout().flush() {
+                    eprintln!("Could not show import prompt: {e}");
+                    return Ok(true);
+                }
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                if input.trim().to_lowercase() != "y" {
+                    println!("Import cancelled.");
+                    return Ok(true);
+                }
+
+                let db = void::db::Database::open()?;
+                if let Err(e) = db.import_json(&path) {
+                    eprintln!("Import failed: {e:#}");
+                } else {
+                    println!("Successfully imported database from {}", path.display());
+                }
+            }
+            Ok(true)
+        }
+        "import-csv" | "--import-csv" => {
+            if args.len() < 3 {
+                eprintln!("Usage: void --import-csv <path_to_csv>");
+                return Ok(true);
+            }
+            let path = std::path::PathBuf::from(&args[2]);
+            if !path.exists() {
+                eprintln!("Error: File not found at {}", path.display());
+                return Ok(true);
+            }
+
+            print!("Import sessions from CSV into your current database? (y/N): ");
             if let Err(e) = std::io::stdout().flush() {
                 eprintln!("Could not show import prompt: {e}");
                 return Ok(true);
@@ -238,10 +325,12 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             }
 
             let db = void::db::Database::open()?;
-            if let Err(e) = db.import_json(&path) {
-                eprintln!("Import failed: {e:#}");
-            } else {
-                println!("Successfully imported database from {}", path.display());
+            match db.import_csv(&path) {
+                Ok(count) => println!(
+                    "Successfully imported {count} session(s) from {}",
+                    path.display()
+                ),
+                Err(e) => eprintln!("CSV import failed: {e:#}"),
             }
             Ok(true)
         }
@@ -284,12 +373,17 @@ where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
     let mut last_tick = std::time::Instant::now();
+    let mut needs_draw = true;
+
     loop {
-        app.refresh_chart_if_needed();
-        if let Some(title) = app.poll_window_title() {
-            set_window_title(title);
+        if needs_draw {
+            app.refresh_chart_if_needed();
+            if let Some(title) = app.poll_window_title() {
+                set_window_title(title);
+            }
+            terminal.draw(|f| ui::render(f, app))?;
+            needs_draw = false;
         }
-        terminal.draw(|f| ui::render(f, app))?;
 
         let tick_rate = app.tick_rate();
         let timeout = tick_rate
@@ -301,10 +395,21 @@ where
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
                         app.handle_key(key);
+                        needs_draw = true;
                     }
                 }
                 Event::Mouse(mouse) => {
-                    app.handle_mouse(mouse);
+                    if matches!(
+                        mouse.kind,
+                        crossterm::event::MouseEventKind::ScrollUp
+                            | crossterm::event::MouseEventKind::ScrollDown
+                    ) {
+                        app.handle_mouse(mouse);
+                        needs_draw = true;
+                    }
+                }
+                Event::Resize(_, _) => {
+                    needs_draw = true;
                 }
                 _ => {}
             }
@@ -312,6 +417,7 @@ where
         if last_tick.elapsed() >= tick_rate {
             app.on_tick();
             last_tick = std::time::Instant::now();
+            needs_draw = true;
         }
         if app.ui.should_quit {
             return Ok(());

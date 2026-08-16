@@ -2,12 +2,40 @@ use ratatui::style::Color;
 
 use crate::canvas_timer::SceneStyle;
 
+use serde::{Deserialize, Serialize};
+
 mod builtin;
 mod catalog;
 mod color;
+pub mod detect;
 mod file;
 
 pub use catalog::{themes_dir, ThemeCatalog, ThemeEntry};
+pub use detect::{detect_system_theme, SystemTheme};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ThemeVariant {
+    Dark,
+    Light,
+}
+
+impl ThemeVariant {
+    pub fn is_dark(self) -> bool {
+        self == ThemeVariant::Dark
+    }
+
+    pub fn is_light(self) -> bool {
+        self == ThemeVariant::Light
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ThemeVariant::Dark => "Dark",
+            ThemeVariant::Light => "Light",
+        }
+    }
+}
 
 use anyhow::{Context, Result};
 
@@ -15,7 +43,8 @@ use self::builtin::builtin_theme;
 use self::catalog::ThemeSource;
 use self::file::ThemeFile;
 
-/// All required keys for a theme file `[tokens]` table.
+/// Required keys for a theme file `[tokens]` table. Every theme must define these; they
+/// carry no sensible default because the rest of the palette is derived from them.
 pub const TOKEN_NAMES: &[&str] = &[
     "bg",
     "text",
@@ -36,6 +65,29 @@ pub const TOKEN_NAMES: &[&str] = &[
     "active_fg",
 ];
 
+/// Optional keys a theme *may* define. Each one is derived from the required tokens when
+/// absent, so adding to this list never invalidates an existing theme file.
+pub const OPTIONAL_TOKEN_NAMES: &[&str] = &[
+    "comment",
+    "surface",
+    "surface_alt",
+    "heat_0",
+    "heat_1",
+    "heat_2",
+    "heat_3",
+    "heat_4",
+    "mode_focus",
+    "mode_short_break",
+    "mode_long_break",
+    "mode_custom",
+];
+
+/// Number of steps in the activity heatmap ramp, including the "no activity" step.
+pub const HEAT_STEPS: usize = 5;
+
+/// Token names for each heat step, indexed to match `Theme::heat`.
+pub const HEAT_TOKEN_NAMES: [&str; HEAT_STEPS] = ["heat_0", "heat_1", "heat_2", "heat_3", "heat_4"];
+
 #[derive(Clone)]
 pub struct Theme {
     pub bg: Color,
@@ -55,9 +107,98 @@ pub struct Theme {
     pub select_fg: Color,
     pub active_bg: Color,
     pub active_fg: Color,
+
+    // ── Derived-by-default tokens ────────────────────────────────────────────
+    /// Quietest readable foreground — used for `//` annotation lines. Sits below `dim`.
+    pub comment: Color,
+    /// Slightly raised background for insets and zebra rows.
+    pub surface: Color,
+    /// Second elevation, for nested insets.
+    pub surface_alt: Color,
+    /// Activity ramp, `heat[0]` = no activity through `heat[4]` = most active.
+    /// A single hue rising in intensity — never a hue change between steps.
+    pub heat: [Color; HEAT_STEPS],
+    /// Per-timer-mode accents, so a theme can tint breaks without touching `warning`.
+    pub mode_focus: Color,
+    pub mode_short_break: Color,
+    pub mode_long_break: Color,
+    pub mode_custom: Color,
 }
 
+/// Fills every derived token from the required ones. Themes that set a token explicitly
+/// overwrite the derived value afterwards.
+pub(crate) fn derive_defaults(base: &mut Theme) {
+    base.comment = mix(base.bg, base.dim, 190);
+    base.surface = mix(base.bg, base.panel, 200);
+    base.surface_alt = mix(base.panel, base.text, 20);
+    base.heat = derive_heat(base.bg, base.accent, base.task_track);
+    base.mode_focus = base.accent;
+    base.mode_short_break = base.success;
+    base.mode_long_break = base.warning;
+    base.mode_custom = base.info;
+}
+
+/// A monotone single-hue ramp: `bg` blended toward `accent` in rising steps. Works on both
+/// dark and light themes because `bg` is always the "no activity" end of the scale.
+fn derive_heat(bg: Color, accent: Color, empty: Color) -> [Color; HEAT_STEPS] {
+    [
+        empty,
+        mix(bg, accent, 80),
+        mix(bg, accent, 135),
+        mix(bg, accent, 195),
+        accent,
+    ]
+}
+
+/// Every field unset. Builtins spread this so they only have to spell out the required
+/// tokens; `Theme::finish` then fills the derived ones.
+const PLACEHOLDER: Theme = Theme {
+    bg: Color::Reset,
+    text: Color::Reset,
+    dim: Color::Reset,
+    accent: Color::Reset,
+    on_accent: Color::Reset,
+    success: Color::Reset,
+    warning: Color::Reset,
+    error: Color::Reset,
+    info: Color::Reset,
+    progress_dim: Color::Reset,
+    task_track: Color::Reset,
+    panel: Color::Reset,
+    panel_border: Color::Reset,
+    select_bg: Color::Reset,
+    select_fg: Color::Reset,
+    active_bg: Color::Reset,
+    active_fg: Color::Reset,
+    comment: Color::Reset,
+    surface: Color::Reset,
+    surface_alt: Color::Reset,
+    heat: [Color::Reset; HEAT_STEPS],
+    mode_focus: Color::Reset,
+    mode_short_break: Color::Reset,
+    mode_long_break: Color::Reset,
+    mode_custom: Color::Reset,
+};
+
 impl Theme {
+    /// Derives every optional token from the required ones.
+    fn finish(mut self) -> Self {
+        derive_defaults(&mut self);
+        self
+    }
+
+    /// Accent for a timer mode. Themeable per mode so tinting a break does not also
+    /// recolour every warning in the app.
+    pub fn mode_color(&self, mode: crate::model::TimerMode) -> Color {
+        use crate::model::TimerMode;
+        match mode {
+            TimerMode::Focus => self.mode_focus,
+            TimerMode::ShortBreak => self.mode_short_break,
+            TimerMode::LongBreak => self.mode_long_break,
+            TimerMode::Custom => self.mode_custom,
+        }
+    }
+
     pub fn dark() -> Self {
         Self {
             bg: Color::Rgb(15, 15, 20),
@@ -77,7 +218,9 @@ impl Theme {
             select_fg: Color::Rgb(230, 235, 245),
             active_bg: Color::Rgb(32, 48, 72),
             active_fg: Color::Rgb(170, 210, 255),
+            ..PLACEHOLDER
         }
+        .finish()
     }
 
     pub fn light() -> Self {
@@ -99,7 +242,9 @@ impl Theme {
             select_fg: Color::Rgb(20, 40, 70),
             active_bg: Color::Rgb(195, 218, 245),
             active_fg: Color::Rgb(15, 60, 120),
+            ..PLACEHOLDER
         }
+        .finish()
     }
 
     pub fn polaris() -> Self {
@@ -121,7 +266,9 @@ impl Theme {
             select_fg: Color::Rgb(210, 225, 255),
             active_bg: Color::Rgb(22, 38, 68),
             active_fg: Color::Rgb(140, 210, 255),
+            ..PLACEHOLDER
         }
+        .finish()
     }
 
     pub fn matrix() -> Self {
@@ -143,7 +290,9 @@ impl Theme {
             select_fg: Color::Rgb(160, 255, 165),
             active_bg: Color::Rgb(14, 42, 18),
             active_fg: Color::Rgb(110, 255, 120),
+            ..PLACEHOLDER
         }
+        .finish()
     }
 
     pub fn scene_style(&self, mode: Color) -> SceneStyle {
@@ -153,9 +302,6 @@ impl Theme {
             task: self.success,
             task_dim: self.task_track,
             bg: self.bg,
-            bg_mid: mix(self.bg, self.panel, 160),
-            bg_light: self.panel,
-            wave: self.accent,
             core: mode,
             glow: self.accent,
             particle: self.dim,

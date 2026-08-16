@@ -319,6 +319,27 @@ impl App {
                     self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
+                KeyCode::Char('t') | KeyCode::Char('T') => {
+                    self.stats.calendar_date = crate::date::today_naive();
+                    self.input.input_due_date = crate::date::today_str();
+                    return;
+                }
+                KeyCode::Char('m') | KeyCode::Char('M') => {
+                    self.stats.calendar_date =
+                        crate::date::today_naive() + chrono::Duration::days(1);
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    return;
+                }
+                KeyCode::Char('w') | KeyCode::Char('W') => {
+                    self.stats.calendar_date =
+                        crate::date::today_naive() + chrono::Duration::days(7);
+                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    return;
+                }
+                KeyCode::Char('c') | KeyCode::Char('C') => {
+                    self.input.input_due_date.clear();
+                    return;
+                }
                 _ => {}
             }
         }

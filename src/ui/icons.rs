@@ -49,6 +49,14 @@ pub struct IconSet {
     pub heart: &'static str,
     pub dot: &'static str,
     pub shield: &'static str,
+    /// Heatmap day cell with activity.
+    pub heat_cell: &'static str,
+    /// Heatmap day cell with no activity (quiet dot/marker).
+    pub heat_empty: &'static str,
+    /// Heatmap cell for today, so the current day is findable without relying on colour.
+    pub heat_today: &'static str,
+    /// Heatmap cursor indicator for active keyboard navigation.
+    pub heat_cursor: &'static str,
 }
 
 const NERD: IconSet = IconSet {
@@ -88,6 +96,10 @@ const NERD: IconSet = IconSet {
     heart: md::MD_HEART,
     dot: "·",
     shield: md::MD_SHIELD,
+    heat_cell: "■",
+    heat_empty: "·",
+    heat_today: "▣",
+    heat_cursor: "◈",
 };
 
 const ASCII: IconSet = IconSet {
@@ -127,6 +139,10 @@ const ASCII: IconSet = IconSet {
     heart: "<3",
     dot: ".",
     shield: "S",
+    heat_cell: "#",
+    heat_empty: ".",
+    heat_today: "@",
+    heat_cursor: "*",
 };
 
 impl IconSet {

@@ -124,6 +124,17 @@ impl Database {
         Ok(count as usize)
     }
 
+    pub fn latest_focus_session_date(&self) -> Result<Option<String>> {
+        use rusqlite::OptionalExtension;
+        let mut stmt = self.conn.prepare(
+            "SELECT date FROM focus_sessions WHERE mode IN ('focus', 'custom') ORDER BY completed_at DESC LIMIT 1",
+        )?;
+        let date = stmt
+            .query_row([], |row| row.get::<_, String>(0))
+            .optional()?;
+        Ok(date)
+    }
+
     pub fn session_minutes_by_local_hour(&self) -> Result<[u32; 24]> {
         let mut stmt = self
             .conn
@@ -323,11 +334,22 @@ impl Database {
         import_export::export_json(&self.conn)
     }
 
+    pub fn export_csv(&self) -> Result<PathBuf> {
+        import_export::export_csv(&self.conn)
+    }
+
     pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
         let conn = self.conn.unchecked_transaction()?;
         import_export::import_json(&conn, path)?;
         conn.commit()?;
         Ok(())
+    }
+
+    pub fn import_csv(&self, path: &std::path::Path) -> Result<usize> {
+        let conn = self.conn.unchecked_transaction()?;
+        let count = import_export::import_csv(&conn, path)?;
+        conn.commit()?;
+        Ok(count)
     }
 
     pub fn minutes_by_date(&self, days: usize) -> Result<Vec<(String, u32)>> {
@@ -581,6 +603,14 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ("streak_rest_days", &streak_rest_days_str),
         ("streak_freezes", &streak_freezes),
         ("last_freeze_earned_streak", &last_freeze_earned_streak),
+        (
+            "canvas_mode",
+            match data.canvas_mode {
+                crate::model::CanvasMode::Animated => "animated",
+                crate::model::CanvasMode::Static => "static",
+                crate::model::CanvasMode::Off => "off",
+            },
+        ),
     ];
 
     let mut stmt = conn.prepare(UPSERT_SETTING_SQL)?;
@@ -663,6 +693,13 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
         "streak_freezes" => data.streak_freezes = parse_u32(value, data.streak_freezes),
         "last_freeze_earned_streak" => {
             data.last_freeze_earned_streak = parse_u32(value, data.last_freeze_earned_streak)
+        }
+        "canvas_mode" => {
+            data.canvas_mode = match value {
+                "static" => crate::model::CanvasMode::Static,
+                "off" => crate::model::CanvasMode::Off,
+                _ => crate::model::CanvasMode::Animated,
+            };
         }
         _ => {}
     }

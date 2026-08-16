@@ -146,11 +146,106 @@ pub struct App {
 pub enum StatsViewMode {
     Overview,
     Analytics,
+    Weekday,
+    Hourly,
+}
+
+impl StatsViewMode {
+    pub const fn all() -> [StatsViewMode; 4] {
+        [
+            StatsViewMode::Overview,
+            StatsViewMode::Analytics,
+            StatsViewMode::Weekday,
+            StatsViewMode::Hourly,
+        ]
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            StatsViewMode::Overview => StatsViewMode::Analytics,
+            StatsViewMode::Analytics => StatsViewMode::Weekday,
+            StatsViewMode::Weekday => StatsViewMode::Hourly,
+            StatsViewMode::Hourly => StatsViewMode::Overview,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StatsViewMode::Overview => "week",
+            StatsViewMode::Analytics => "tags",
+            StatsViewMode::Weekday => "weekday",
+            StatsViewMode::Hourly => "hourly",
+        }
+    }
+}
+
+/// Time window the stats page reports over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatsRange {
+    Days7,
+    Days30,
+    Days90,
+    Year,
+    All,
+}
+
+impl StatsRange {
+    pub const fn all() -> [StatsRange; 5] {
+        [
+            StatsRange::Days7,
+            StatsRange::Days30,
+            StatsRange::Days90,
+            StatsRange::Year,
+            StatsRange::All,
+        ]
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StatsRange::Days7 => "7d",
+            StatsRange::Days30 => "30d",
+            StatsRange::Days90 => "90d",
+            StatsRange::Year => "365d",
+            StatsRange::All => "all",
+        }
+    }
+
+    /// `None` means unbounded.
+    pub fn days(self) -> Option<u32> {
+        match self {
+            StatsRange::Days7 => Some(7),
+            StatsRange::Days30 => Some(30),
+            StatsRange::Days90 => Some(90),
+            StatsRange::Year => Some(365),
+            StatsRange::All => None,
+        }
+    }
+
+    /// Columns the heatmap may draw for this range. The grid is week-aligned and the
+    /// current week is usually partial, so covering a trailing N-day window needs one
+    /// column more than `N / 7`.
+    pub fn weeks(self) -> usize {
+        match self.days() {
+            Some(d) => (d as usize).div_ceil(7) + 1,
+            None => usize::MAX,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let all = Self::all();
+        let idx = all.iter().position(|r| *r == self).unwrap_or(0);
+        all[(idx + 1) % all.len()]
+    }
 }
 
 impl App {
     pub fn new() -> Result<Self> {
-        let db = Database::open()?;
+        Self::with_database(Database::open()?)
+    }
+
+    /// Builds an app around an already-open database, so tests can drive the full UI
+    /// against an in-memory database instead of the user's real data directory.
+    pub fn with_database(db: Database) -> Result<Self> {
         let mut data = db.load_app_data().unwrap_or_default();
         let _ = storage::ensure_today_reset(&db, &mut data);
         let config = TimerConfig::from_app_data(&data);
@@ -164,6 +259,7 @@ impl App {
         timer.configure(mode);
         let recent_sessions = db.recent_sessions(15).unwrap_or_default();
         let stats_session_total = db.session_count().unwrap_or(0);
+        let peak_hour_label = storage::most_productive_hour_label(&db);
         let today_str = crate::date::today_str();
         let timeline_sessions = db.sessions_on_date(&today_str).unwrap_or_default();
         let archived = storage::auto_archive_old_tasks(&db, &mut data).unwrap_or(0);
@@ -176,11 +272,24 @@ impl App {
         let weekly_chart = storage::minutes_by_date(&db, 7).unwrap_or_default();
         let heatmap_data = storage::focus_heatmap(&db).unwrap_or_default();
         let tag_analytics = storage::tag_analytics(&db, &data, 30).unwrap_or_default();
+        let hourly_distribution = db.session_minutes_by_local_hour().unwrap_or([0; 24]);
         let session_counts = db.session_counts_by_mode().unwrap_or((0, 0, 0));
         let theme_catalog = ThemeCatalog::load();
-        let theme_id = theme::normalize_theme_id(&data.theme);
+        let effective_theme_id = match data.theme_mode {
+            crate::model::ThemeMode::Dark => data.dark_theme.clone(),
+            crate::model::ThemeMode::Light => data.light_theme.clone(),
+            crate::model::ThemeMode::Auto => {
+                let sys = theme::detect_system_theme();
+                if sys.is_light() {
+                    data.light_theme.clone()
+                } else {
+                    data.dark_theme.clone()
+                }
+            }
+        };
+        let theme_id = theme::normalize_theme_id(&effective_theme_id);
         data.theme = theme_id.clone();
-        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::matrix());
+        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::dark());
         let icons = IconSet::detect();
         let active_task = data.active_task_id.filter(|id| {
             data.tasks
@@ -226,6 +335,9 @@ impl App {
                 should_quit: false,
                 help_scroll: 0,
                 about_scroll: 0,
+                about_left_scroll: 0,
+                about_right_scroll: 0,
+                about_active_column: 0,
                 frame_today: String::new(),
                 frame_today_focus_mins: 0,
                 window_title_sig: u64::MAX,
@@ -262,7 +374,6 @@ impl App {
                 reordering_task: None,
                 subtask_selected: 0,
                 subtask_focus: false,
-                subtask_state: ListState::default(),
             },
             stats: StatsState {
                 weekly_chart,
@@ -274,10 +385,13 @@ impl App {
                 stats_session_page: 0,
                 stats_session_total,
                 timeline_sessions,
+                stats_range: StatsRange::Year,
+                peak_hour_label,
                 heatmap_cursor: None,
                 cursor_sessions: Vec::new(),
                 stats_view_mode: StatsViewMode::Overview,
                 tag_analytics,
+                hourly_distribution,
                 calendar_date: crate::date::today_naive(),
             },
             settings_state: SettingsState::new(),
@@ -312,6 +426,35 @@ impl App {
     }
 
     pub const SESSIONS_PER_PAGE: usize = 15;
+
+    pub fn resolve_effective_theme_id(&self) -> String {
+        match self.data.theme_mode {
+            crate::model::ThemeMode::Dark => self.data.dark_theme.clone(),
+            crate::model::ThemeMode::Light => self.data.light_theme.clone(),
+            crate::model::ThemeMode::Auto => {
+                let sys = theme::detect_system_theme();
+                if sys.is_light() {
+                    self.data.light_theme.clone()
+                } else {
+                    self.data.dark_theme.clone()
+                }
+            }
+        }
+    }
+
+    pub fn refresh_theme(&mut self) {
+        let effective = self.resolve_effective_theme_id();
+        let id = theme::normalize_theme_id(&effective);
+        match theme::resolve(&id, &self.theme_catalog) {
+            Ok(resolved) => {
+                self.theme = resolved;
+                self.data.theme = id.clone();
+            }
+            Err(err) => {
+                self.set_status(format!("Theme `{id}` unavailable: {err:#}"), true);
+            }
+        }
+    }
 
     pub fn apply_theme(&mut self, id: &str) {
         let id = theme::normalize_theme_id(id);
@@ -504,6 +647,10 @@ impl App {
                 Ok(data) => self.stats.tag_analytics = data,
                 Err(e) => self.set_status(format!("Tag analytics error: {e}"), true),
             }
+            self.stats.peak_hour_label = storage::most_productive_hour_label(&self.db);
+            if let Ok(hours) = self.db.session_minutes_by_local_hour() {
+                self.stats.hourly_distribution = hours;
+            }
             self.stats.chart_dirty = false;
         }
     }
@@ -534,23 +681,30 @@ impl App {
         match self.ui.tab {
             FocusTab::Dashboard => {
                 if self.ui.zen_mode {
-                    "[p] Cycle Task  [s/Space] Start/Pause  [n] Skip  [r] Reset  [z] Exit Zen"
+                    "[p] cycle task  [s/space] start/pause  [n] skip  [r] reset  [z] exit zen"
                         .into()
                 } else {
-                    "[j/k] Select Task  [Enter] Status  [x] Mark Done  [z] Zen Mode".into()
+                    "[j/k] select task  [enter] status  [x] mark done  [z] zen mode".into()
                 }
             }
+            // The subtask panel has its own keys; surface them only while it has focus.
+            FocusTab::Tasks if self.task_ui.subtask_focus => {
+                "[j/k] nav  [^j/^k] reorder  [e] edit  [x] toggle  [-] remove  [q/Tab] back".into()
+            }
             FocusTab::Tasks => {
-                "[c] Add Task  [Enter] Edit  [j/k] Navigate  [Tab] Subtasks  [A] Archive".into()
+                "[c] add task  [enter] edit  [j/k] navigate  [Tab] subtasks  [A] archive".into()
             }
-            FocusTab::Stats => {
-                "[v] View  [Arrows] Heatmap  [j/k] History  [d] Delete  [Esc] Clear".into()
-            }
+            FocusTab::Stats => format!(
+                "[v] view: {}  [r] range: {}  [←↑↓→] heatmap  [j/k] history  [ [ / ] ] page  [d] delete  [esc] clear",
+                self.stats.stats_view_mode.label(),
+                self.stats.stats_range.label()
+            ),
             FocusTab::Settings => {
-                "[↑↓] Navigate  [Enter] Toggle  [-/+] Adjust Value  [e] Export Data".into()
+                "[↑↓] navigate  [enter] toggle  [-/+] adjust  [e] export json  [^E] export csv"
+                    .into()
             }
-            FocusTab::Help => "[j/k/Up/Down] Scroll  [Tab] Switch Tab".into(),
-            FocusTab::About => "[Tab] Switch Tab".into(),
+            FocusTab::Help => "[j/k/↑↓] scroll  [Tab] switch tab".into(),
+            FocusTab::About => "[Tab] switch tab".into(),
         }
     }
 
@@ -596,6 +750,13 @@ impl App {
         match self.db.export_json() {
             Ok(path) => self.set_status(format!("Exported backup to {}", path.display()), false),
             Err(e) => self.set_status(format!("Export failed: {e}"), true),
+        }
+    }
+
+    pub fn export_sessions_csv(&mut self) {
+        match self.db.export_csv() {
+            Ok(path) => self.set_status(format!("Exported CSV to {}", path.display()), false),
+            Err(e) => self.set_status(format!("CSV export failed: {e}"), true),
         }
     }
 

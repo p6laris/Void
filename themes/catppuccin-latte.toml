@@ -46,3 +46,25 @@ select_bg = "surface1"
 select_fg = "text"
 active_bg = "surface0"
 active_fg = "blue"
+
+# ── Optional tokens ──────────────────────────────────────────────────────────
+# Everything below is derived from the tokens above when omitted, so a theme file
+# never breaks when Void adds a token. Uncomment to override.
+#
+# comment     = "surface1"   # `//` annotation lines; quieter than `dim`
+# surface     = "mantle"     # raised background for insets and zebra rows
+# surface_alt = "surface0"   # second elevation
+#
+# Activity heatmap ramp — one hue rising in intensity, never a hue change.
+# Derived as bg blended toward `accent` in rising steps.
+# heat_0 = "surface0"        # no activity
+# heat_1 = "#b9c8e8"
+# heat_2 = "#8ba6d8"
+# heat_3 = "#5d85c8"
+# heat_4 = "blue"            # most active
+#
+# Per-timer-mode accents; override to tint breaks without touching `warning`.
+# mode_focus       = "blue"
+# mode_short_break = "green"
+# mode_long_break  = "peach"
+# mode_custom      = "mauve"

@@ -56,6 +56,17 @@ fn from_hex_pair(pair: &str) -> Result<u8> {
     Ok(hex_digit(bytes[0])? * 16 + hex_digit(bytes[1])?)
 }
 
+pub fn is_color_light(c: Color) -> bool {
+    match c {
+        Color::Rgb(r, g, b) => {
+            let lum = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
+            lum > 128.0
+        }
+        Color::White | Color::Gray => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

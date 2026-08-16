@@ -29,6 +29,7 @@ impl App {
             KeyCode::Esc => self.ui.should_quit = true,
             KeyCode::Char('c') if ctrl => self.ui.should_quit = true,
             KeyCode::Char('s') if ctrl => self.export_backup(),
+            KeyCode::Char('e') if ctrl => self.export_sessions_csv(),
             KeyCode::Char('1') => self.ui.tab = FocusTab::Dashboard,
             KeyCode::Char('2') => self.ui.tab = FocusTab::Tasks,
             KeyCode::Char('3') => self.ui.tab = FocusTab::Stats,
@@ -57,11 +58,54 @@ impl App {
 
     pub(crate) fn handle_about_key(&mut self, key: KeyEvent) {
         match key.code {
+            KeyCode::Char('h') | KeyCode::Left => {
+                self.ui.about_active_column = 0;
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                self.ui.about_active_column = 1;
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.ui.about_active_column = 1 - self.ui.about_active_column;
+            }
             KeyCode::Char('j') | KeyCode::Down => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(1);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(1);
+                }
                 self.ui.about_scroll = self.ui.about_scroll.saturating_add(1);
             }
             KeyCode::Char('k') | KeyCode::Up => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(1);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(1);
+                }
                 self.ui.about_scroll = self.ui.about_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(10);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(10);
+                }
+                self.ui.about_scroll = self.ui.about_scroll.saturating_add(10);
+            }
+            KeyCode::PageUp => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(10);
+                } else {
+                    self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(10);
+                }
+                self.ui.about_scroll = self.ui.about_scroll.saturating_sub(10);
+            }
+            KeyCode::Home => {
+                if self.ui.about_active_column == 0 {
+                    self.ui.about_left_scroll = 0;
+                } else {
+                    self.ui.about_right_scroll = 0;
+                }
+                self.ui.about_scroll = 0;
             }
             _ => {}
         }
@@ -181,22 +225,36 @@ impl App {
     }
 
     pub(crate) fn handle_stats_key(&mut self, key: KeyEvent) {
-        if self.stats.recent_sessions.is_empty() && self.stats.heatmap_cursor.is_none() {
-            if matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E')) {
-                self.end_session();
+        // View-level keys work even with no history at all — otherwise a fresh install
+        // cannot change the range or switch panels.
+        match key.code {
+            KeyCode::Char('v') => {
+                self.stats.stats_view_mode = self.stats.stats_view_mode.next();
+                self.set_status(
+                    format!("View: {}", self.stats.stats_view_mode.label()),
+                    false,
+                );
+                return;
             }
+            KeyCode::Char('r') => {
+                self.stats.stats_range = self.stats.stats_range.next();
+                self.set_status(format!("Range: {}", self.stats.stats_range.label()), false);
+                return;
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                self.end_session();
+                return;
+            }
+            _ => {}
+        }
+
+        if self.stats.recent_sessions.is_empty() && self.stats.heatmap_cursor.is_none() {
             return;
         }
         self.clamp_stats_session_selection();
         let n = self.active_stats_sessions().len();
 
         match key.code {
-            KeyCode::Char('v') => {
-                self.stats.stats_view_mode = match self.stats.stats_view_mode {
-                    StatsViewMode::Overview => StatsViewMode::Analytics,
-                    StatsViewMode::Analytics => StatsViewMode::Overview,
-                };
-            }
             KeyCode::Esc => {
                 self.stats.heatmap_cursor = None;
                 self.stats.stats_session_selected = 0;
@@ -272,7 +330,6 @@ impl App {
                     self.after_stats_session_edit();
                 }
             }
-            KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),
             KeyCode::Char('[') if self.stats.stats_session_page > 0 => {
                 self.stats.stats_session_page -= 1;
                 self.stats.stats_session_selected = 0;
@@ -517,6 +574,11 @@ impl App {
                 if self.ui.tab == FocusTab::Help {
                     self.ui.help_scroll = self.ui.help_scroll.saturating_sub(3);
                 } else if self.ui.tab == FocusTab::About {
+                    if self.ui.about_active_column == 0 {
+                        self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_sub(3);
+                    } else {
+                        self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_sub(3);
+                    }
                     self.ui.about_scroll = self.ui.about_scroll.saturating_sub(3);
                 } else if self.ui.tab == FocusTab::Tasks || self.ui.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::empty()));
@@ -526,6 +588,11 @@ impl App {
                 if self.ui.tab == FocusTab::Help {
                     self.ui.help_scroll = self.ui.help_scroll.saturating_add(3);
                 } else if self.ui.tab == FocusTab::About {
+                    if self.ui.about_active_column == 0 {
+                        self.ui.about_left_scroll = self.ui.about_left_scroll.saturating_add(3);
+                    } else {
+                        self.ui.about_right_scroll = self.ui.about_right_scroll.saturating_add(3);
+                    }
                     self.ui.about_scroll = self.ui.about_scroll.saturating_add(3);
                 } else if self.ui.tab == FocusTab::Tasks || self.ui.tab == FocusTab::Dashboard {
                     self.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::empty()));

@@ -2,104 +2,299 @@ use super::*;
 
 pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
-    let text = vec![
-        Line::from(Span::styled(
-            "Void - keyboard shortcuts",
+    let icons = app.icons;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(8), Constraint::Length(2)])
+        .split(area);
+
+    let two_column = chunks[0].width >= 96;
+
+    if two_column {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[0]);
+
+        draw_help_column(f, app, cols[0], true);
+        draw_help_column(f, app, cols[1], false);
+    } else {
+        draw_help_single(f, app, chunks[0]);
+    }
+
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled(
+            format!("{} j/k / Up/Down", icons.chevron),
+            Style::default().bg(theme.bg).fg(theme.accent),
+        ),
+        Span::styled(" scroll  ", Style::default().bg(theme.bg).fg(theme.dim)),
+        Span::styled("Tab / 1-6", Style::default().bg(theme.bg).fg(theme.accent)),
+        Span::styled(
+            " switch tabs  ",
+            Style::default().bg(theme.bg).fg(theme.dim),
+        ),
+        Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+        Span::styled(
+            " close / return to dashboard",
+            Style::default().bg(theme.bg).fg(theme.dim),
+        ),
+    ]))
+    .style(Style::default().bg(theme.bg))
+    .alignment(Alignment::Center);
+    f.render_widget(footer, chunks[1]);
+}
+
+fn shortcut_row<'a>(theme: &'a Theme, key: &'a str, desc: &'a str) -> Line<'a> {
+    Line::from(vec![
+        Span::styled(
+            format!("  {:14} ", key),
             Style::default()
+                .bg(theme.bg)
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from(Span::styled("Global", Style::default().fg(theme.accent))),
-        Line::from("  Tab / 1-5   Switch tab (Dashboard, Tasks, Stats, Settings, Help)"),
-        Line::from("  q / Esc     Quit (auto-saves)"),
-        Line::from("  Ctrl-S      Export JSON backup"),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Timer / Zen",
-            Style::default().fg(theme.accent),
-        )),
-        Line::from("  s / Space   Start / resume timer"),
-        Line::from("  p           Pause timer (in Dashboard) / Cycle tasks (in Zen mode)"),
-        Line::from("  r           Reset timer"),
-        Line::from("  n           Skip (logs elapsed; does not advance pomodoro cycle)"),
-        Line::from("  E           End session (pause + summary)"),
-        Line::from("  m           Toggle mode (Focus / Custom)"),
-        Line::from("  + / =       Increase duration by 1 min"),
-        Line::from("  -           Decrease duration by 1 min"),
-        Line::from("  z           Toggle Zen mode (distraction-free timer)"),
-        Line::from("  Enter       Cycle active task status (Todo → Active → Done)"),
-        Line::from("  x           Mark active task done"),
-        Line::from(""),
-        Line::from(Span::styled("Pomodoro", Style::default().fg(theme.accent))),
-        Line::from("  Cycle position persists across restarts"),
-        Line::from("  After focus, auto-switches to break (enable auto-start in Settings)"),
-        Line::from("  Long break every N focus sessions (configurable)"),
-        Line::from("  All tasks done → free focus, pause, or prompt (Settings)"),
-        Line::from(""),
-        Line::from(Span::styled("Stats", Style::default().fg(theme.accent))),
-        Line::from("  v           Toggle Analytics / Overview view"),
-        Line::from("  Arrows      Navigate heatmap & filter sessions"),
-        Line::from("  Esc         Clear heatmap filter"),
-        Line::from("  j / k       Select session in list"),
-        Line::from("  d           Delete selected session"),
-        Line::from("  + / -       Adjust session duration"),
-        Line::from(""),
-        Line::from(Span::styled("Dashboard", Style::default().fg(theme.accent))),
-        Line::from("  j / k       Navigate pending tasks"),
-        Line::from("  Ctrl+j/k    Reorder selected task in queue"),
-        Line::from("  1-9         Toggle subtasks for selected task"),
-        Line::from("  f           Set selected task as active for timer"),
-        Line::from("  Enter       Cycle status of selected task"),
-        Line::from("  x           Mark selected task done"),
-        Line::from(""),
-        Line::from(Span::styled("Tasks", Style::default().fg(theme.accent))),
-        Line::from("  a           Add task (title, estimate, due, tags)"),
-        Line::from("  e           Edit selected task"),
-        Line::from("  d           Delete selected task (with confirmation)"),
-        Line::from("  c           Add subtask to selected task"),
-        Line::from("  Tab         Focus subtask list (q to exit)"),
-        Line::from("  x           Toggle selected subtask done/open (in focus)"),
-        Line::from("  e           Edit subtask title (in focus)"),
-        Line::from("  -           Remove selected subtask (in focus)"),
-        Line::from("  Ctrl+j/k    Reorder subtasks (in focus)"),
-        Line::from("  Enter       Cycle status: Pending → In Progress → Done"),
-        Line::from("  Space       Set as active task for timer"),
-        Line::from("  f           Start focus on selected task"),
-        Line::from("  t           Toggle today-queue flag"),
-        Line::from("  g           Cycle filter (All / Open / Done / Today)"),
-        Line::from("  /           Search tasks by title or tags"),
-        Line::from("  1 / 2 / 3   Set priority Low / Med / High"),
-        Line::from("  j / k       Navigate list"),
-        Line::from("  Ctrl+j/k    Reorder task in queue"),
-        Line::from(""),
-        Line::from(Span::styled("Settings", Style::default().fg(theme.accent))),
-        Line::from("  Up / Down   Navigate"),
-        Line::from("  Enter / +-  Increment value"),
-        Line::from("  Left / -    Decrement value"),
-        Line::from("  Theme       Cycle Dark / Light / Polaris / Matrix in Settings"),
-        Line::from("  e           Export data (JSON backup)"),
-        Line::from(""),
-        Line::from(Span::styled("Data", Style::default().fg(theme.accent))),
-        Line::from("  Data persists locally in SQLite (~/.local/share/void/)."),
-        Line::from("  Press 'e' in Settings to export a JSON backup."),
-        Line::from("  Void never sends your tasks anywhere — fully offline."),
-    ];
+        ),
+        Span::styled(desc, Style::default().bg(theme.bg).fg(theme.text)),
+    ])
+}
+
+fn section_header<'a>(theme: &'a Theme, icon: &'a str, title: &'a str) -> Line<'a> {
+    Line::from(vec![Span::styled(
+        format!("{icon} {title}"),
+        Style::default()
+            .bg(theme.bg)
+            .fg(theme.mode_focus)
+            .add_modifier(Modifier::BOLD),
+    )])
+}
+
+fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
+    let theme = &app.theme;
+    let icons = app.icons;
+    let st_dim = Style::default().bg(theme.bg).fg(theme.dim);
+
+    let mut lines = Vec::new();
+
+    if left {
+        // Left Column: Global, Timer & Zen, Settings
+        lines.push(section_header(
+            theme,
+            icons.dashboard,
+            "Global & Navigation",
+        ));
+        lines.push(shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"));
+        lines.push(shortcut_row(
+            theme,
+            "q / Esc",
+            "Quit Void (auto-saves all state)",
+        ));
+        lines.push(shortcut_row(theme, "Ctrl-S", "Export instant JSON backup"));
+        lines.push(shortcut_row(theme, "h / ?", "Open this help cheat sheet"));
+        lines.push(Line::from(Span::styled(" ", st_dim)));
+
+        lines.push(section_header(theme, icons.timer, "Timer & Focus"));
+        lines.push(shortcut_row(theme, "Space / s", "Start / pause timer"));
+        lines.push(shortcut_row(theme, "z", "Toggle distraction-free Zen mode"));
+        lines.push(shortcut_row(
+            theme,
+            "m",
+            "Toggle mode (Focus / Custom timer)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "+ / -",
+            "Adjust timer duration (+/- 1 min)",
+        ));
+        lines.push(shortcut_row(theme, "n", "Skip session (logs elapsed time)"));
+        lines.push(shortcut_row(theme, "r", "Reset timer to full duration"));
+        lines.push(shortcut_row(theme, "E", "End session early with summary"));
+        lines.push(Line::from(Span::styled(" ", st_dim)));
+
+        lines.push(section_header(
+            theme,
+            icons.settings,
+            "Settings & Appearance",
+        ));
+        lines.push(shortcut_row(theme, "j / k", "Navigate settings rows"));
+        lines.push(shortcut_row(theme, "Enter / +-", "Toggle / cycle options"));
+        lines.push(shortcut_row(
+            theme,
+            "Theme mode",
+            "Auto (System OS) / Dark / Light",
+        ));
+        lines.push(shortcut_row(theme, "e", "Export database to JSON backup"));
+    } else {
+        // Right Column: Tasks, Subtasks, Stats
+        lines.push(section_header(theme, icons.tasks, "Task Management"));
+        lines.push(shortcut_row(
+            theme,
+            "a",
+            "Add new task (title, estimate, due, tags)",
+        ));
+        lines.push(shortcut_row(theme, "e", "Edit selected task properties"));
+        lines.push(shortcut_row(
+            theme,
+            "d",
+            "Delete selected task (with confirmation)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "Enter",
+            "Cycle status (Pending → Active → Done)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "Space / f",
+            "Set task as active for focus timer",
+        ));
+        lines.push(shortcut_row(theme, "t", "Toggle today focus queue"));
+        lines.push(shortcut_row(
+            theme,
+            "g",
+            "Cycle filters (Open / Today / Done / All)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "/",
+            "Instant fuzzy search by title & tags",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "1 / 2 / 3",
+            "Set priority: Low (·) / Med (◆) / High (★)",
+        ));
+        lines.push(Line::from(Span::styled(" ", st_dim)));
+
+        lines.push(section_header(theme, icons.tasks, "Subtasks Panel"));
+        lines.push(shortcut_row(
+            theme,
+            "c",
+            "Quick-add subtask to current task",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "Tab",
+            "Switch focus to Subtasks panel (q to exit)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "x",
+            "Toggle subtask done [✓] / open [ ]",
+        ));
+        lines.push(shortcut_row(theme, "Ctrl+j/k", "Reorder subtasks up/down"));
+        lines.push(Line::from(Span::styled(" ", st_dim)));
+
+        lines.push(section_header(theme, icons.chart, "Stats & Analytics"));
+        lines.push(shortcut_row(
+            theme,
+            "v",
+            "Cycle sub-views: week / tags / weekday / hourly",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "Arrows",
+            "Navigate heatmap grid and filter sessions",
+        ));
+        lines.push(shortcut_row(theme, "Esc", "Clear heatmap date filter"));
+        lines.push(shortcut_row(theme, "j / k", "Select session log"));
+        lines.push(shortcut_row(
+            theme,
+            "+ / -",
+            "Adjust session logged minutes",
+        ));
+    }
+
+    let title = if left {
+        " Shortcuts (General & Timer) "
+    } else {
+        " Shortcuts (Tasks & Stats) "
+    };
     let block = Block::default()
         .title(Span::styled(
-            format!(" {} Help ", app.icons.help),
-            Style::default().fg(theme.accent),
+            format!(" {} {title}", icons.help),
+            Style::default().bg(theme.bg).fg(theme.accent),
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.dim));
-    let max_scroll = (text.len() as u16).saturating_sub(area.height.saturating_sub(2));
-    let scroll = app.ui.help_scroll.min(max_scroll);
+        .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
+        .style(Style::default().bg(theme.bg));
 
+    let scroll = app.ui.help_scroll;
     f.render_widget(
-        Paragraph::new(text)
+        Paragraph::new(lines)
+            .style(Style::default().bg(theme.bg))
             .block(block)
-            .wrap(Wrap { trim: false })
+            .scroll((scroll, 0)),
+        area,
+    );
+}
+
+fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
+    let theme = &app.theme;
+    let icons = app.icons;
+    let st_dim = Style::default().bg(theme.bg).fg(theme.dim);
+
+    let lines = vec![
+        section_header(theme, icons.dashboard, "Global & Navigation"),
+        shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"),
+        shortcut_row(theme, "q / Esc", "Quit Void (auto-saves all state)"),
+        shortcut_row(theme, "Ctrl-S", "Export instant JSON backup"),
+        Line::from(Span::styled(" ", st_dim)),
+        section_header(theme, icons.timer, "Timer & Focus"),
+        shortcut_row(theme, "Space / s", "Start / pause timer"),
+        shortcut_row(theme, "z", "Toggle distraction-free Zen mode"),
+        shortcut_row(theme, "m", "Toggle mode (Focus / Custom timer)"),
+        shortcut_row(theme, "+ / -", "Adjust timer duration (+/- 1 min)"),
+        shortcut_row(theme, "n", "Skip session (logs elapsed time)"),
+        shortcut_row(theme, "r", "Reset timer to full duration"),
+        shortcut_row(theme, "E", "End session early with summary"),
+        Line::from(Span::styled(" ", st_dim)),
+        section_header(theme, icons.tasks, "Task Management"),
+        shortcut_row(theme, "a", "Add new task (title, estimate, due, tags)"),
+        shortcut_row(theme, "e", "Edit selected task properties"),
+        shortcut_row(theme, "d", "Delete selected task"),
+        shortcut_row(theme, "Enter", "Cycle status (Pending → Active → Done)"),
+        shortcut_row(theme, "Space / f", "Set task as active for focus timer"),
+        shortcut_row(theme, "t", "Toggle today focus queue"),
+        shortcut_row(theme, "g", "Cycle filters (Open / Today / Done / All)"),
+        shortcut_row(theme, "/", "Instant fuzzy search by title & tags"),
+        shortcut_row(theme, "1 / 2 / 3", "Set priority: Low / Med / High"),
+        Line::from(Span::styled(" ", st_dim)),
+        section_header(theme, icons.tasks, "Subtasks Panel"),
+        shortcut_row(theme, "c", "Quick-add subtask to current task"),
+        shortcut_row(theme, "Tab", "Switch focus to Subtasks panel"),
+        shortcut_row(theme, "x", "Toggle subtask done [✓] / open [ ]"),
+        Line::from(Span::styled(" ", st_dim)),
+        section_header(theme, icons.chart, "Stats & Analytics"),
+        shortcut_row(
+            theme,
+            "v",
+            "Cycle sub-views: week / tags / weekday / hourly",
+        ),
+        shortcut_row(theme, "Arrows", "Navigate heatmap grid and filter sessions"),
+        shortcut_row(theme, "Esc", "Clear heatmap date filter"),
+        Line::from(Span::styled(" ", st_dim)),
+        section_header(theme, icons.settings, "Settings & Appearance"),
+        shortcut_row(theme, "j / k", "Navigate settings rows"),
+        shortcut_row(theme, "Enter / +-", "Toggle / cycle options"),
+        shortcut_row(theme, "Theme mode", "Auto (System OS) / Dark / Light"),
+    ];
+
+    let block = Block::default()
+        .title(Span::styled(
+            format!(" {} Help & Shortcuts ", icons.help),
+            Style::default().bg(theme.bg).fg(theme.accent),
+        ))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
+        .style(Style::default().bg(theme.bg));
+
+    let scroll = app.ui.help_scroll;
+    f.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(theme.bg))
+            .block(block)
             .scroll((scroll, 0)),
         area,
     );
