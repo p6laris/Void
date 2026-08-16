@@ -6,7 +6,8 @@ use ratatui::widgets::ListState;
 use crate::model::{Priority, StoredSession};
 
 use super::{
-    CachedSettingsLabel, FocusTab, InputField, InputMode, Popup, StatsViewMode, TaskFilter,
+    CachedSettingsLabel, FocusTab, InputField, InputMode, Popup, StatsRange, StatsViewMode,
+    TaskFilter,
 };
 
 #[derive(Debug)]
@@ -59,7 +60,6 @@ pub struct TaskUiState {
     pub reordering_task: Option<u64>,
     pub subtask_selected: usize,
     pub subtask_focus: bool,
-    pub subtask_state: ListState,
 }
 
 #[derive(Debug)]
@@ -76,6 +76,10 @@ pub struct StatsState {
     pub heatmap_cursor: Option<chrono::NaiveDate>,
     pub cursor_sessions: Vec<StoredSession>,
     pub stats_view_mode: StatsViewMode,
+    pub stats_range: StatsRange,
+    /// Cached because computing it scans and parses every session row; refreshed with the
+    /// rest of the chart data rather than on every frame.
+    pub peak_hour_label: String,
     pub tag_analytics: Vec<(String, u32)>,
     pub calendar_date: chrono::NaiveDate,
 }

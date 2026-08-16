@@ -44,6 +44,44 @@ pub fn export_json(conn: &Connection) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Exports the session history as CSV, for spreadsheets and external analysis.
+///
+/// JSON stays the backup/restore format; this is a one-way reporting export.
+pub fn export_csv(conn: &Connection) -> Result<PathBuf> {
+    let sessions = load_all_sessions(conn)?;
+
+    let mut out = String::from("date,completed_at,minutes,mode,task_id,pause_count,pause_seconds,tags,note\n");
+    for s in &sessions {
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{}\n",
+            csv_field(&s.date),
+            csv_field(&s.completed_at.to_rfc3339()),
+            s.minutes,
+            csv_field(&format!("{:?}", s.mode)),
+            s.task_id.map(|id| id.to_string()).unwrap_or_default(),
+            s.pause_count,
+            s.pause_seconds,
+            csv_field(&s.tags.join(" ")),
+            csv_field(&s.note),
+        ));
+    }
+
+    let path = data_dir()?.join("sessions.csv");
+    let tmp = path.with_extension("csv.tmp");
+    fs::write(&tmp, out.as_bytes()).context("writing csv export temp file")?;
+    fs::rename(&tmp, &path).context("finalizing csv export")?;
+    Ok(path)
+}
+
+/// Quotes a CSV field when it contains a delimiter, quote or newline (RFC 4180).
+fn csv_field(raw: &str) -> String {
+    if raw.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", raw.replace('"', "\"\""))
+    } else {
+        raw.to_string()
+    }
+}
+
 fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, date, minutes, task_id, mode, completed_at, note, pause_count, pause_seconds
@@ -88,6 +126,17 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         schema::migrate(&conn).unwrap();
         conn
+    }
+
+    #[test]
+    fn csv_field_quotes_only_when_needed() {
+        assert_eq!(csv_field("plain"), "plain");
+        assert_eq!(csv_field(""), "");
+        // A comma would otherwise split into an extra column.
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        // Embedded quotes double up, per RFC 4180.
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(csv_field("line\nbreak"), "\"line\nbreak\"");
     }
 
     #[test]

@@ -5,7 +5,7 @@ use ratatui::layout::{Alignment, Rect};
 use ratatui::style::Color;
 use ratatui::symbols::Marker;
 use ratatui::text::{Line, Span};
-use ratatui::widgets::canvas::{Canvas, Circle, Points};
+use ratatui::widgets::canvas::{Canvas, Points};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
@@ -13,7 +13,7 @@ use crate::model::{TimerMode, TimerState};
 use crate::timer::Timer;
 
 const ARC_STEPS: usize = 360;
-const PARTICLE_COUNT: usize = 12;
+const PARTICLE_COUNT: usize = 7;
 
 // ── public types ─────────────────────────────────────────────────────────────
 
@@ -49,9 +49,6 @@ pub struct SceneStyle {
     pub task: Color,
     pub task_dim: Color,
     pub bg: Color,
-    pub bg_mid: Color,
-    pub bg_light: Color,
-    pub wave: Color,
     pub core: Color,
     pub glow: Color,
     pub particle: Color,
@@ -237,8 +234,8 @@ pub fn draw_scene_canvas(
 
     let remaining = (1.0 - timer.progress()).clamp(0.0, 1.0);
     let motion = scene_motion(timer);
-    let (xb, yb) = square_bounds(area);
     let marker = canvas_marker(area);
+    let (xb, yb) = square_bounds(area, marker);
     let t = time_s();
     let zen = options.layout == SceneLayout::Zen;
     let compact = !zen;
@@ -246,9 +243,6 @@ pub fn draw_scene_canvas(
     let base_r = fit_base_r(extent, options.layout);
 
     let bg = style.bg;
-    let bg_mid = style.bg_mid;
-    let bg_light = style.bg_light;
-    let wave = style.wave;
     let core = style.core;
     let glow = style.glow;
     let particle = style.particle;
@@ -269,6 +263,11 @@ pub fn draw_scene_canvas(
 
     let canvas = Canvas::default()
         .marker(marker)
+        // Canvas defaults to `Color::Reset` and unconditionally repaints its whole area
+        // with it, which erases the theme background and lets the terminal's own colour
+        // show through. On a light terminal running a dark theme that left the scene
+        // sitting in a pale rectangle while every panel around it stayed dark.
+        .background_color(bg)
         .x_bounds(xb)
         .y_bounds(yb)
         .paint(move |ctx| {
@@ -276,64 +275,61 @@ pub fn draw_scene_canvas(
             let breath = motion.breath;
             let base = base_r * motion.scale * (0.86 + 0.14 * remaining);
 
-            if compact {
-                draw_bg_wash_compact(ctx, cx, cy, base, bg, bg_mid);
-            } else {
-                draw_bg_wash(ctx, (xb, yb), (cx, cy, base), (bg, bg_mid, bg_light));
+            // Ambience is zen-only: the dashboard band is about five rows tall, and drifting
+            // stars there just speckle the strip.
+            //
+            // What used to be here as well was a wide background wash ellipse and a pair of
+            // horizontal wave lines. Both were sampled at a fixed point count, so on a wide
+            // terminal their samples ended up cells apart and they degraded into dotted
+            // streaks running straight through the orb — with the wreath and the contours
+            // that made eight nested outlines competing for the same space. The orb is the
+            // subject; the stars are the only atmosphere it needs.
+            if zen {
+                draw_star_halo(
+                    ctx,
+                    (cx, cy, base, t),
+                    motion,
+                    (particle, bg),
+                    if pending == 0 {
+                        PARTICLE_COUNT + 4
+                    } else {
+                        PARTICLE_COUNT
+                    },
+                );
             }
-            draw_bg_waves(
-                ctx,
-                (xb, yb),
-                (cx, cy, base, t),
-                motion,
-                (wave, bg_mid),
-                timer_mode,
-                compact,
-            );
-            draw_particles(
-                ctx,
-                (cx, cy, base, t),
-                motion,
-                (particle, bg),
-                if compact {
-                    5
-                } else if zen && pending == 0 {
-                    PARTICLE_COUNT + 4
-                } else {
-                    PARTICLE_COUNT
-                },
-            );
 
-            if pending == 0 && !compact {
-                let moon_x = if zen {
-                    cx + base * 0.95
+            // The dashboard band is about five rows tall. Everything the constellation and
+            // the orbit encode — how many tasks are open, which one is active — is already
+            // spelled out in the text rows directly under the canvas, and at this height
+            // the extra dots land on top of the wreath and fill the orb in. Zen has the
+            // room for them; the band does not.
+            if zen {
+                if pending == 0 {
+                    draw_idle_marker(ctx, cx + base * 0.95, cy - base * 0.72, t, glow, core);
                 } else {
-                    cx - base * 0.88
-                };
-                draw_idle_marker(ctx, moon_x, cy - base * 0.72, t, glow, core);
-            } else if zen {
-                draw_task_constellation(
-                    ctx,
-                    (cx, cy, base, t),
-                    motion,
-                    pending,
-                    active_idx,
-                    (task, task_dim, bg),
-                );
-            } else {
-                draw_task_orbit(
-                    ctx,
-                    (cx, cy, base, t),
-                    motion,
-                    pending,
-                    active_idx,
-                    (task, task_dim, bg),
-                );
+                    draw_task_constellation(
+                        ctx,
+                        (cx, cy, base, t),
+                        motion,
+                        pending,
+                        active_idx,
+                        (task, task_dim, bg),
+                    );
+                }
             }
 
             draw_soft_progress_wreath(
                 ctx,
-                (cx, cy, base * if zen { 1.18 } else { 1.12 }, t),
+                (
+                    cx,
+                    cy,
+                    base * if zen {
+                        WREATH_RADIUS_ZEN
+                    } else {
+                        WREATH_RADIUS_DASH
+                    },
+                    t,
+                ),
                 remaining,
                 (track, mode),
                 timer_state,
@@ -356,18 +352,15 @@ pub fn draw_scene_canvas(
                 }
             }
 
-            if sessions_total > 0 {
+            // Same reasoning: `◉ ○ ○ ○` is printed under the canvas either way, so the
+            // arc of stars is duplicate information that only zen has the height for.
+            if zen && sessions_total > 0 {
                 draw_session_stars(
                     ctx,
                     (cx, cy, base, t),
                     sessions_done,
                     sessions_total,
                     (session_on, session_off, bg),
-                    if zen {
-                        SessionArc::Top
-                    } else {
-                        SessionArc::Bottom
-                    },
                 );
             }
 
@@ -431,112 +424,27 @@ fn canvas_extent(xb: [f64; 2], yb: [f64; 2]) -> f64 {
 
 fn fit_base_r(extent: f64, layout: SceneLayout) -> f64 {
     let frac = match layout {
-        SceneLayout::Zen => 0.36,
+        // Kept well under half the shorter axis: the zen wreath sits at 1.18x this and the
+        // ring used to run off the top and bottom of a tall terminal.
+        SceneLayout::Zen => 0.30,
         SceneLayout::Dashboard => 0.30,
     };
-    (extent * frac).clamp(7.0, 34.0)
+    // Floor is low because a short dashboard strip has very little vertical room; the old
+    // floor of 7 forced the orb taller than the band and clipped it.
+    (extent * frac).clamp(3.0, 34.0)
 }
 
-fn draw_bg_wash(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    bounds: ([f64; 2], [f64; 2]),
-    geom: (f64, f64, f64),
-    colors: (Color, Color, Color),
-) {
-    let (xb, yb) = bounds;
-    let (cx, cy, base) = geom;
-    let (bg, bg_mid, bg_light) = colors;
-    let w = xb[1] - xb[0];
-    let h = yb[1] - yb[0];
-    let bands = [(0.18, bg), (0.42, bg_mid), (0.68, bg_light)];
-    for (frac, color) in bands {
-        let ry = cy - base * 0.2 + h * frac * 0.35;
-        let rx = w * 0.52;
-        draw_soft_ellipse(ctx, cx, ry, rx, base * 0.55, color, bg);
-    }
-}
+/// Golden angle — spacing successive stars by it keeps them from clumping.
+const GOLDEN_ANGLE: f64 = 2.399_963_229_728_653;
 
-fn draw_bg_wash_compact(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    cx: f64,
-    cy: f64,
-    base: f64,
-    bg: Color,
-    bg_mid: Color,
-) {
-    draw_soft_ellipse(
-        ctx,
-        cx,
-        cy - base * 0.15,
-        base * 1.35,
-        base * 1.05,
-        bg_mid,
-        bg,
-    );
-}
-
-fn draw_soft_ellipse(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    cx: f64,
-    cy: f64,
-    rx: f64,
-    ry: f64,
-    color: Color,
-    bg: Color,
-) {
-    let steps = 72;
-    let mut coords = [(0.0, 0.0); 72];
-    for (i, coord) in coords.iter_mut().enumerate().take(steps) {
-        let a = 2.0 * PI * i as f64 / steps as f64;
-        *coord = (cx + a.cos() * rx, cy + a.sin() * ry);
-    }
-    ctx.draw(&Points {
-        coords: &coords,
-        color: blend_color(bg, color, 0.55),
-    });
-}
-
-fn draw_bg_waves(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    bounds: ([f64; 2], [f64; 2]),
-    geom: (f64, f64, f64, f64),
-    motion: SceneMotion,
-    colors: (Color, Color),
-    mode: TimerMode,
-    compact: bool,
-) {
-    let (xb, _yb) = bounds;
-    let (_cx, cy, base, t) = geom;
-    let (wave, bg) = colors;
-    let w = xb[1] - xb[0];
-    let on_break = mode.is_break();
-    let bands = if compact {
-        1
-    } else if on_break {
-        2
-    } else {
-        3
-    };
-    let samples = if compact { 40 } else { 64 };
-
-    for band in 0..bands {
-        let mut coords = [(0.0, 0.0); 64];
-        let y0 = cy - base * 0.55 + band as f64 * 5.5;
-        let phase = t * motion.speed * 0.12 + band as f64 * 1.7;
-        for (i, coord) in coords.iter_mut().enumerate().take(samples) {
-            let x = xb[0] + w * i as f64 / (samples - 1) as f64;
-            let wave = (x * 0.06 + phase).sin() * 3.5 + (x * 0.025 + phase * 1.4).sin() * 2.0;
-            *coord = (x, y0 + wave);
-        }
-        let mix = 0.28 + band as f64 * 0.12;
-        ctx.draw(&Points {
-            coords: &coords[..samples],
-            color: blend_color(bg, wave, mix * motion.glow),
-        });
-    }
-}
-
-fn draw_particles(
+/// Slow-drifting stars in a ring just outside the wreath.
+///
+/// These used to be scattered across a box `1.45 x base` wide and `0.65` of that tall. Two
+/// problems: the vertical squash was compensating for the old stretched bounds, so with
+/// square units it now reads as a deliberate oval; and a rectangular scatter puts stars in
+/// the corners of the panel where they look like stray pixels rather than a halo. Keeping
+/// them in an annulus around the orb makes them part of the same object.
+fn draw_star_halo(
     ctx: &mut ratatui::widgets::canvas::Context,
     geom: (f64, f64, f64, f64),
     motion: SceneMotion,
@@ -546,23 +454,27 @@ fn draw_particles(
     let (cx, cy, base, t) = geom;
     let (particle, bg) = colors;
     let count = count.min(PARTICLE_COUNT + 4);
-    let spread = base * 1.45;
+    // Clear of the wreath and of the task markers that sit just outside it.
+    let inner = base * 1.62;
+    let band = base * 0.5;
 
     for i in 0..count {
-        let seed = i as f64 * 2.399_963_229_728_653;
-        let fx = cx + (seed * 1.7 + t * (0.08 + i as f64 * 0.008)).sin() * spread;
-        let fy = cy + (seed * 2.1 + t * (0.06 + i as f64 * 0.006)).cos() * spread * 0.65;
+        let seed = i as f64 * GOLDEN_ANGLE;
         let twinkle = 0.5 + 0.5 * (t * 1.6 + seed).sin();
         if twinkle < 0.35 {
             continue;
         }
-        let r = 0.6 + twinkle * 0.9 * motion.glow;
-        ctx.draw(&Circle {
-            x: fx,
-            y: fy,
-            radius: r,
-            color: blend_color(bg, particle, twinkle * 0.85 * motion.glow),
-        });
+        // Each star keeps its own orbit and drifts at its own rate, so the halo turns
+        // slowly instead of pulsing in lockstep.
+        let a = seed + t * motion.speed * (0.012 + i as f64 * 0.0015);
+        let r = inner + band * (0.5 + 0.5 * (seed * 3.1).sin());
+        draw_dot(
+            ctx,
+            cx + a.cos() * r,
+            cy + a.sin() * r,
+            0.6 + twinkle * 0.9 * motion.glow,
+            blend_color(bg, particle, twinkle * 0.85 * motion.glow),
+        );
     }
 }
 
@@ -576,14 +488,15 @@ fn draw_idle_marker(
 ) {
     let pulse = 1.0 + 0.06 * (t * 0.7).sin();
     draw_soft_disc(ctx, mx, my, 4.5 * pulse, glow, glow, 5);
-    ctx.draw(&Circle {
-        x: mx,
-        y: my,
-        radius: 2.2,
-        color: core,
-    });
+    draw_dot(ctx, mx, my, 2.2, core);
 }
 
+/// Open tasks, as markers spaced along an arc outside the wreath.
+///
+/// This used to join the markers with straight chords and give the active one a nested
+/// "soft disc". Both cut across the orb: the chords ran straight through the rings, and the
+/// disc's rings landed a dot apart and hashed into a smudge. Following the arc keeps the
+/// markers reading as part of the circle rather than as marks thrown over it.
 fn draw_task_constellation(
     ctx: &mut ratatui::widgets::canvas::Context,
     geom: (f64, f64, f64, f64),
@@ -594,45 +507,25 @@ fn draw_task_constellation(
 ) {
     let (cx, cy, base, t) = geom;
     let (task, task_dim, bg) = colors;
-    let n = (count as usize).clamp(1, 12);
-    let mut points = [(0.0, 0.0, 0); 12];
+    let n = (count as usize).clamp(1, MAX_CONSTELLATION);
+    // Outside the wreath, and outside the halo ring the active marker gets, so nothing
+    // here can merge with the ring itself.
+    let orbit = base * 1.45;
+    // Anchored to the bottom of the orb, mirroring the session stars along the top. It is
+    // deliberately not rotated: `t` is absolute wall-clock seconds, so any bare `t * k`
+    // rotation puts the arc at an arbitrary angle on every launch.
+    let span = PI * 0.62;
+    let start = -PI / 2.0 - span / 2.0;
 
-    for (i, pt) in points.iter_mut().enumerate().take(n) {
+    for i in 0..n {
         let frac = if n == 1 {
             0.5
         } else {
             i as f64 / (n - 1) as f64
         };
-        let angle = PI * 1.08 + PI * 0.84 * frac;
-        let wobble = (t * 0.35 + i as f64 * 1.3).sin() * 1.8;
-        let dist = base * (1.08 + 0.06 * (i as f64 * 0.5).sin()) + wobble;
-        let px = cx + angle.cos() * dist;
-        let py = cy + angle.sin() * dist * 0.55 - base * 0.08;
-        *pt = (px, py, i);
-    }
-
-    if n > 1 {
-        let mut lines = [(0.0, 0.0); 100];
-        let mut l_idx = 0;
-        for w in points[..n].windows(2) {
-            let (x0, y0, _) = w[0];
-            let (x1, y1, _) = w[1];
-            let steps = 6;
-            for s in 0..=steps {
-                let f = s as f64 / steps as f64;
-                if l_idx < lines.len() {
-                    lines[l_idx] = (lerp(x0, x1, f), lerp(y0, y1, f));
-                    l_idx += 1;
-                }
-            }
-        }
-        ctx.draw(&Points {
-            coords: &lines[..l_idx],
-            color: blend_color(bg, task_dim, 0.35),
-        });
-    }
-
-    for &(px, py, i) in &points[..n] {
+        let a = start + span * frac;
+        let px = cx + a.cos() * orbit;
+        let py = cy + a.sin() * orbit;
         let active = active_idx == Some(i as u32);
         let tw = if active {
             0.75 + 0.25 * (t * 2.2).sin()
@@ -640,106 +533,40 @@ fn draw_task_constellation(
             0.3 + 0.2 * (t * 0.9 + i as f64).sin().max(0.0)
         };
         let color = blend_color(task_dim, task, tw * motion.glow);
-        let r = if active {
-            2.0 + 0.4 * (t * 2.5).sin()
-        } else {
-            1.1
-        };
+        draw_dot(ctx, px, py, if active { 1.9 } else { 1.0 }, color);
         if active {
-            draw_soft_disc(ctx, px, py, r * 2.2, color, bg, 4);
+            // Clear of the marker, so the two do not merge into one blob.
+            draw_ring(ctx, px, py, MIN_RING_GAP, blend_color(bg, color, 0.5));
         }
-        ctx.draw(&Circle {
-            x: px,
-            y: py,
-            radius: r,
-            color,
-        });
     }
 
-    if count > 12 {
-        draw_ring(
-            ctx,
-            cx,
-            cy - base * 0.05,
-            base * 1.28,
-            blend_color(bg, task_dim, 0.5),
-        );
+    if count as usize > MAX_CONSTELLATION {
+        draw_ring(ctx, cx, cy, orbit * 1.1, blend_color(bg, task_dim, 0.4));
     }
 }
 
-fn draw_task_orbit(
-    ctx: &mut ratatui::widgets::canvas::Context,
-    geom: (f64, f64, f64, f64),
-    motion: SceneMotion,
-    count: u32,
-    active_idx: Option<u32>,
-    colors: (Color, Color, Color),
-) {
-    let (cx, cy, base, t) = geom;
-    let (task, task_dim, bg) = colors;
-    let n = (count as usize).clamp(1, 12);
-    let orbit = base * 1.2;
-    let spin = t * motion.speed * 0.22;
+/// Past a dozen the markers stop being countable; an extra ring stands in for the rest.
+const MAX_CONSTELLATION: usize = 12;
 
-    draw_ring(ctx, cx, cy, orbit, blend_color(bg, task_dim, 0.22));
-
-    for i in 0..n {
-        let angle = spin + 2.0 * PI * i as f64 / n as f64;
-        let active = active_idx == Some(i as u32);
-        let dist = if active { orbit * 0.92 } else { orbit };
-        let wobble = (t * 0.4 + i as f64).sin() * 0.8;
-        let px = cx + angle.cos() * (dist + wobble);
-        let py = cy + angle.sin() * (dist + wobble) * 0.88;
-        let tw = if active {
-            0.8 + 0.2 * (t * 2.0).sin()
-        } else {
-            0.35 + 0.15 * (t * 0.8 + i as f64).sin().max(0.0)
-        };
-        let color = blend_color(task_dim, task, tw * motion.glow);
-        let r = if active {
-            1.9 + 0.35 * (t * 2.2).sin()
-        } else {
-            1.05
-        };
-        if active {
-            let mut tether = [(0.0, 0.0); 10];
-            for s in 1..=10 {
-                let f = s as f64 / 10.0 * 0.55;
-                tether[s - 1] = (
-                    cx + angle.cos() * dist * f,
-                    cy + angle.sin() * dist * f * 0.88,
-                );
-            }
-            ctx.draw(&Points {
-                coords: &tether,
-                color: blend_color(bg, task_dim, 0.4),
-            });
-            draw_soft_disc(ctx, px, py, r * 2.0, color, bg, 4);
-        }
-        ctx.draw(&Circle {
-            x: px,
-            y: py,
-            radius: r,
-            color,
-        });
-    }
-
-    if count > 12 {
-        let pulse = 1.0 + 0.04 * (t * 2.0).sin();
-        draw_ring(
-            ctx,
-            cx,
-            cy,
-            orbit * 1.1 * pulse,
-            blend_color(bg, task, 0.35),
-        );
-    }
+/// Angle of a point `frac` of the way around the wreath: clockwise from twelve o'clock.
+fn wreath_angle(frac: f64) -> f64 {
+    PI / 2.0 - 2.0 * PI * frac
 }
 
-#[derive(Clone, Copy)]
-enum SessionArc {
-    Top,
-    Bottom,
+/// Beads to lay around the wreath at a given radius.
+///
+/// A fixed count only works at one size. 48 beads around the short dashboard orb put them
+/// half a unit apart while each was more than a unit across, so they fused into a solid
+/// band — the orb showed up as a filled blob rather than a ring. Spacing them by screen
+/// distance instead keeps them reading as beads at every panel size.
+fn wreath_bead_count(base: f64, compact: bool) -> usize {
+    // One canvas unit is half a braille dot, so the circumference in dots is 4πr.
+    let circumference_dots = 4.0 * PI * base.abs();
+    let spacing = if compact { 3.0 } else { 3.6 };
+    // The zen ring is big enough to need well over the old fixed 72 before the beads stop
+    // touching; the cap is only here so an absurd radius cannot run away with the frame.
+    let cap = if compact { 48 } else { 192 };
+    ((circumference_dots / spacing).round() as usize).clamp(8, cap)
 }
 
 fn draw_soft_progress_wreath(
@@ -752,44 +579,93 @@ fn draw_soft_progress_wreath(
 ) {
     let (cx, cy, base, t) = geom;
     let (track, mode) = colors;
-    let dots = if compact { 48 } else { 72 };
+    let dots = wreath_bead_count(base, compact);
+
+    // Batched into two point sets rather than one shape per dot. This is the hot path of
+    // the whole scene: as individual `Circle`s it was 72 × 360 trig operations a frame.
+    let mut filled_pts: Vec<(f64, f64)> = Vec::with_capacity(dots * MAX_DOT_PTS / 2);
+    let mut track_pts: Vec<(f64, f64)> = Vec::with_capacity(dots * 8);
+    let mut buf = [(0.0, 0.0); MAX_DOT_PTS];
+
     for i in 0..dots {
         let frac = i as f64 / dots as f64;
-        let a = -PI / 2.0 + 2.0 * PI * frac;
+        // Twelve o'clock, depleting clockwise, the way every other progress ring reads.
+        // Canvas y points up, so screen-clockwise is a *decreasing* angle from +PI/2.
+        let a = wreath_angle(frac);
         let px = cx + a.cos() * base;
         let py = cy + a.sin() * base;
-        let filled = frac <= remaining + 0.001;
-        let pulse = if filled && timer_state == TimerState::Running {
-            1.0 + 0.15 * (t * 3.0 + frac * 12.0).sin()
+
+        if frac <= remaining + 0.001 {
+            let pulse = if timer_state == TimerState::Running {
+                1.0 + 0.15 * (t * 3.0 + frac * 12.0).sin()
+            } else {
+                1.0
+            };
+            let r = if compact { 0.55 } else { 0.75 } * pulse;
+            let n = fill_dot(&mut buf, px, py, r);
+            filled_pts.extend_from_slice(&buf[..n]);
+        } else {
+            let r = if compact { 0.35 } else { 0.45 };
+            let n = fill_dot(&mut buf, px, py, r);
+            track_pts.extend_from_slice(&buf[..n]);
+        }
+    }
+
+    let filled_color = if timer_state == TimerState::Paused {
+        blend_color(mode, track, 0.5)
+    } else {
+        mode
+    };
+
+    ctx.draw(&Points {
+        coords: &track_pts,
+        color: track,
+    });
+    ctx.draw(&Points {
+        coords: &filled_pts,
+        color: filled_color,
+    });
+
+    // A brighter head at the boundary. The ring is otherwise uniform, so where the time
+    // has actually got to is hard to find at a glance — the cap gives the eye a target
+    // and makes the depletion direction obvious.
+    if remaining > 0.001 && remaining < 0.999 {
+        let a = wreath_angle(remaining);
+        let hx = cx + a.cos() * base;
+        let hy = cy + a.sin() * base;
+        let pulse = if timer_state == TimerState::Running {
+            1.0 + 0.2 * (t * 2.5).sin()
         } else {
             1.0
         };
-        let color = if filled {
-            if timer_state == TimerState::Paused {
-                blend_color(mode, track, 0.5)
-            } else {
-                mode
-            }
-        } else {
-            track
-        };
-        ctx.draw(&Circle {
-            x: px,
-            y: py,
-            radius: if filled {
-                if compact {
-                    0.55 * pulse
-                } else {
-                    0.75 * pulse
-                }
-            } else if compact {
-                0.35
-            } else {
-                0.45
-            },
-            color,
-        });
+        let r = if compact { 0.9 } else { 1.2 } * pulse;
+        draw_dot(ctx, hx, hy, r * 1.7, blend_color(track, mode, 0.55));
+        draw_dot(ctx, hx, hy, r, mode);
     }
+}
+
+/// Where the outermost contour sits, as a fraction of the orb radius.
+const OUTER_CONTOUR: f64 = 0.96;
+/// Smallest gap between contours, in canvas units, that still reads as two rings.
+///
+/// Bounds are scaled so one unit is half a braille dot, and braille packs 4 dots per row,
+/// so this is about a row and a half of clearance — below that the rings touch.
+const MIN_RING_GAP: f64 = 3.0;
+/// Never more than this many, however large the orb gets: past four the rim rings are too
+/// faint to see and only cost frame time.
+const MAX_CONTOURS: usize = 4;
+
+/// How many contour rings fit inside an orb of radius `outer` sitting `wreath_gap` below
+/// the progress wreath.
+///
+/// Returns zero on a small orb. The dashboard band is about five rows tall; there the rim
+/// contour landed within a dot or two of the wreath and the two merged, which is what made
+/// the orb a solid mass. With no contours the wreath is left alone to be the ring.
+fn contour_count(outer: f64, wreath_gap: f64) -> usize {
+    if wreath_gap < MIN_RING_GAP {
+        return 0;
+    }
+    ((outer * OUTER_CONTOUR / MIN_RING_GAP).floor() as usize).clamp(1, MAX_CONTOURS)
 }
 
 fn draw_timer_orb(
@@ -812,40 +688,46 @@ fn draw_timer_orb(
     let scale = 0.9 + 0.1 * breath;
     let intensity = motion.glow;
 
-    let layers: [(f64, Color, f64); 5] = if compact {
-        [
-            (0.95, blend_color(bg, glow, 0.22 * intensity), 0.35),
-            (0.68, blend_color(bg, warm, 0.5 * intensity), 0.6),
-            (0.38, blend_color(glow, core, 0.7 * intensity), 0.85),
-            (0.0, bg, 0.0),
-            (0.22, blend_color(core, mode, 0.45), 0.95),
-        ]
+    // Widely spaced contour rings, not a filled gradient.
+    //
+    // A braille canvas stores one colour per *cell* while the dots are 1-bit, so densely
+    // nested rings do not blend into a gradient — they interleave into a hatch. Tried it;
+    // it read as noise. A few rings with clear gaps between them stay legible as circles
+    // and leave the wreath free to be the thing you actually look at.
+    //
+    // How many fit depends on the radius. The dashboard orb is only a few rows tall, and
+    // four rings there landed inside one cell of each other and merged into a solid blob.
+    let rim = if compact { 0.82 } else { 0.92 };
+    let wreath = if compact {
+        WREATH_RADIUS_DASH
     } else {
-        [
-            (1.18, blend_color(bg, glow, 0.12 * intensity), 0.15),
-            (0.95, blend_color(bg, glow, 0.28 * intensity), 0.35),
-            (0.72, blend_color(bg, warm, 0.55 * intensity), 0.55),
-            (0.48, blend_color(glow, core, 0.65 * intensity), 0.75),
-            (0.22, blend_color(core, mode, 0.4), 0.95),
-        ]
+        WREATH_RADIUS_ZEN
     };
+    let outer = base * rim * scale;
+    // Counted off the unbreathed radii on purpose. `scale` swings with the breath, and
+    // deciding per frame against a moving radius made the ring count flip between four and
+    // none as the orb inhaled — the contours blinked.
+    let rings = contour_count(base * rim, base * (wreath - rim));
 
-    for (frac, color, alpha) in layers {
-        if frac <= 0.001 || alpha <= 0.001 {
-            continue;
-        }
-        let r = base * frac * scale;
-        let rings = if compact {
-            (5.0 * alpha) as usize
-        } else {
-            (8.0 * alpha) as usize
-        };
-        draw_soft_disc(ctx, cx, cy, r, color, bg, rings.max(3));
+    for i in 1..=rings {
+        let frac = OUTER_CONTOUR * i as f64 / rings as f64;
+        // Faint at the rim, denser towards the core.
+        let alpha = 0.55 - 0.41 * (i - 1) as f64 / (rings.max(2) - 1) as f64;
+        draw_ring(
+            ctx,
+            cx,
+            cy,
+            outer * frac,
+            blend_color(bg, warm, alpha * intensity),
+        );
     }
 
+    // Solid centre so the core does not read as a hole.
+    draw_dot(ctx, cx, cy, outer * 0.16, blend_color(core, mode, 0.35));
+
     if timer_state == TimerState::Running {
-        let halo_r = base * (1.02 + 0.04 * breath);
-        draw_ring(ctx, cx, cy, halo_r, blend_color(bg, warm, 0.4 * intensity));
+        let halo_r = base * (1.06 + 0.05 * breath);
+        draw_ring(ctx, cx, cy, halo_r, blend_color(bg, warm, 0.32 * intensity));
     }
 }
 
@@ -858,7 +740,15 @@ fn draw_soft_disc(
     bg: Color,
     rings: usize,
 ) {
-    let rings = rings.max(3);
+    // Only as many rings as the radius can space out. Braille dots are 1-bit and one colour
+    // per cell, so rings closer than `MIN_RING_GAP` interleave into a hatch instead of a
+    // gradient — a small "soft" disc came out as a dense scribble. Below that, one filled
+    // dot is both cheaper and closer to the intent.
+    let rings = rings.min(((r.abs() / MIN_RING_GAP).floor() as usize).max(1));
+    if rings < 2 {
+        draw_dot(ctx, cx, cy, r, blend_color(bg, color, 0.85));
+        return;
+    }
     for i in 1..=rings {
         let frac = i as f64 / rings as f64;
         let rr = r * frac;
@@ -888,16 +778,14 @@ fn draw_session_stars(
     sessions_done: u32,
     sessions_total: u32,
     colors: (Color, Color, Color),
-    arc: SessionArc,
 ) {
     let (cx, cy, base, t) = geom;
     let (session_on, session_off, _bg) = colors;
     let orbit = base * 1.32;
     let span = PI * 0.55;
-    let start = match arc {
-        SessionArc::Top => PI / 2.0 - span / 2.0,
-        SessionArc::Bottom => -PI / 2.0 - span / 2.0,
-    };
+    // Along the top of the orb. The bottom arc was the dashboard variant, and the dashboard
+    // no longer draws stars at all — `◉ ○ ○ ○` is printed under the band instead.
+    let start = PI / 2.0 - span / 2.0;
     for i in 0..sessions_total {
         let frac = if sessions_total == 1 {
             0.5
@@ -915,12 +803,13 @@ fn draw_session_stars(
         } else {
             session_off
         };
-        ctx.draw(&Circle {
-            x: cx + a.cos() * orbit,
-            y: cy + a.sin() * orbit,
-            radius: if i < sessions_done { 1.5 * tw } else { 1.0 },
+        draw_dot(
+            ctx,
+            cx + a.cos() * orbit,
+            cy + a.sin() * orbit,
+            if i < sessions_done { 1.5 * tw } else { 1.0 },
             color,
-        });
+        );
     }
 }
 
@@ -932,12 +821,7 @@ fn draw_soft_pause(
     color: Color,
 ) {
     for side in [-1.0_f64, 1.0] {
-        ctx.draw(&Circle {
-            x: cx + side * r * 0.55,
-            y: cy,
-            radius: r * 0.35,
-            color: blend_color(color, color, 0.7),
-        });
+        draw_dot(ctx, cx + side * r * 0.55, cy, r * 0.35, color);
     }
 }
 
@@ -961,12 +845,7 @@ fn draw_completion_shimmer(
     for i in 0..8 {
         let a = t * 0.5 + i as f64 * PI / 4.0;
         let dist = base * (1.05 + 0.06 * (t * 3.0 + i as f64).sin());
-        ctx.draw(&Circle {
-            x: cx + a.cos() * dist,
-            y: cy + a.sin() * dist,
-            radius: 0.9,
-            color: glow,
-        });
+        draw_dot(ctx, cx + a.cos() * dist, cy + a.sin() * dist, 0.9, glow);
     }
 }
 
@@ -983,9 +862,6 @@ pub fn draw_timer_canvas(
         task: style.task_progress,
         task_dim: style.task_track,
         bg: style.progress_dim,
-        bg_mid: style.track,
-        bg_light: style.track,
-        wave: style.progress,
         core: style.cap,
         glow: style.progress,
         particle: style.dim,
@@ -1019,20 +895,66 @@ pub fn draw_timer_canvas(
 
 // ── geometry helpers ─────────────────────────────────────────────────────────
 
+/// Samples a ring at a density proportional to its circumference.
+///
+/// Every ring used to be walked at a fixed 360 steps. Most rings in the scene are small —
+/// a radius-2 ring only covers about 25 distinct cells, so 360 samples did the same work
+/// fourteen times over.
+fn ring_steps(r: f64) -> usize {
+    ((r.abs() * 2.0 * PI * 2.0).ceil() as usize).clamp(16, ARC_STEPS)
+}
+
 fn draw_ring(ctx: &mut ratatui::widgets::canvas::Context, cx: f64, cy: f64, r: f64, color: Color) {
+    let steps = ring_steps(r);
     let mut coords = [(0.0, 0.0); ARC_STEPS];
-    for (i, coord) in coords.iter_mut().enumerate().take(ARC_STEPS) {
-        let a = arc_angle(i);
+    for (i, coord) in coords.iter_mut().enumerate().take(steps) {
+        let a = -PI / 2.0 + 2.0 * PI * (i as f64 / steps as f64);
         *coord = (cx + a.cos() * r, cy + a.sin() * r);
     }
     ctx.draw(&Points {
-        coords: &coords,
+        coords: &coords[..steps],
         color,
     });
 }
 
-fn arc_angle(i: usize) -> f64 {
-    -PI / 2.0 + 2.0 * PI * (i as f64 / ARC_STEPS as f64)
+/// Upper bound on the samples [`fill_dot`] writes.
+const MAX_DOT_PTS: usize = 25;
+
+/// Writes a small filled dot into `buf`, returning how many samples were used.
+///
+/// `ratatui`'s `Circle` walks 360 angles whatever its radius, so using it for the sub-unit
+/// dots this scene is built from cost ~360 trig operations each. At these sizes a handful
+/// of samples is visually identical.
+fn fill_dot(buf: &mut [(f64, f64); MAX_DOT_PTS], x: f64, y: f64, r: f64) -> usize {
+    buf[0] = (x, y);
+    let mut n = 1;
+    if r <= 0.35 {
+        return n;
+    }
+    let ring = if r <= 0.8 { 6 } else { 10 };
+    for i in 0..ring {
+        let a = 2.0 * PI * i as f64 / ring as f64;
+        buf[n] = (x + a.cos() * r, y + a.sin() * r);
+        n += 1;
+    }
+    // Larger dots need an inner ring or they render as an outline rather than a disc.
+    if r > 1.1 {
+        for i in 0..ring {
+            let a = 2.0 * PI * (i as f64 + 0.5) / ring as f64;
+            buf[n] = (x + a.cos() * r * 0.55, y + a.sin() * r * 0.55);
+            n += 1;
+        }
+    }
+    n
+}
+
+fn draw_dot(ctx: &mut ratatui::widgets::canvas::Context, x: f64, y: f64, r: f64, color: Color) {
+    let mut buf = [(0.0, 0.0); MAX_DOT_PTS];
+    let n = fill_dot(&mut buf, x, y, r);
+    ctx.draw(&Points {
+        coords: &buf[..n],
+        color,
+    });
 }
 
 fn smoothstep(x: f64) -> f64 {
@@ -1098,36 +1020,84 @@ fn canvas_marker(area: Rect) -> Marker {
     }
 }
 
-fn square_bounds(area: Rect) -> ([f64; 2], [f64; 2]) {
-    let w = area.width as f64;
-    let h = area.height as f64 * 2.0;
-    if w >= h {
-        let pad = (w - h) / 2.0;
-        ([pad, pad + h], [0.0, h])
-    } else {
-        let pad = (h - w) / 2.0;
-        ([0.0, w], [pad, pad + w])
+/// Dots ratatui renders per cell for a marker, horizontally and vertically.
+fn marker_resolution(marker: Marker) -> (f64, f64) {
+    match marker {
+        Marker::Braille => (2.0, 4.0),
+        Marker::HalfBlock => (1.0, 2.0),
+        _ => (1.0, 1.0),
     }
 }
+
+/// Bounds whose units are square on screen.
+///
+/// The canvas maps the x range across `width * res_x` dots and the y range across
+/// `height * res_y` dots. Making both ranges the same *number* — which is what this used
+/// to do — does not make them the same *scale*, because braille packs 2 dots per column
+/// but 4 per row. Circles came out stretched by the ratio: about 2.2x in zen and 10x in
+/// the short dashboard strip, where they smeared into the speckle across the whole band.
+///
+/// The vertical unit is left as it was (one unit per two rows) so the radii tuned against
+/// it still hold; only the width is corrected.
+fn square_bounds(area: Rect, marker: Marker) -> ([f64; 2], [f64; 2]) {
+    let (rx, ry) = marker_resolution(marker);
+    let h = (area.height as f64 * 2.0).max(1.0);
+    let dots_x = area.width as f64 * rx;
+    let dots_y = (area.height as f64 * ry).max(1.0);
+    let w = h * dots_x / dots_y;
+    ([0.0, w], [0.0, h])
+}
+
+/// Widest text plate, in columns, that still sits inside the zen wreath.
+///
+/// The zen overlay clears a rectangle behind its text so the canvas cannot collide with the
+/// digits. Sized from the text alone, that rectangle grew wider than the ring on mid-width
+/// terminals and erased the ring's left and right extremes, leaving a top arc and a bottom
+/// arc that looked accidentally chopped. Bounding the plate by the ring instead keeps the
+/// circle whole and puts the text inside it, which is the composition the scene is for.
+pub fn scene_plate_width(area: Rect) -> u16 {
+    if area.width < 8 || area.height < 4 {
+        return area.width;
+    }
+    let (xb, yb) = square_bounds(area, canvas_marker(area));
+    let base = fit_base_r(canvas_extent(xb, yb), SceneLayout::Zen);
+    // One canvas unit is one column across, so the wreath radius is already in columns.
+    // 1.4x the radius is the chord that leaves room for the plate's own height.
+    let inside = (base * WREATH_RADIUS_ZEN * 1.4) as u16;
+    inside.clamp(MIN_PLATE_W.min(area.width), area.width)
+}
+
+/// Where the wreath sits relative to the orb radius.
+const WREATH_RADIUS_ZEN: f64 = 1.18;
+const WREATH_RADIUS_DASH: f64 = 1.12;
+/// Below this the plate is unreadable, so a small terminal gets an overlapped ring instead.
+const MIN_PLATE_W: u16 = 30;
 
 fn center(xb: [f64; 2], yb: [f64; 2]) -> (f64, f64) {
     ((xb[0] + xb[1]) / 2.0, (yb[0] + yb[1]) / 2.0)
 }
 
-pub fn session_dots(done_in_cycle: u32, cycle_length: u32, in_focus: bool) -> String {
+/// Renders the pomodoro cycle as `● ● ◉ ○` — done, done, current, upcoming.
+///
+/// `on_focus_cycle` marks the current slot. It is deliberately not tied to the timer
+/// *running*: an idle timer is still sitting on a specific session of the cycle, and
+/// without the marker every slot looked identical before the first start.
+pub fn session_dots(done_in_cycle: u32, cycle_length: u32, on_focus_cycle: bool) -> String {
     let cycle = cycle_length.max(1);
     let done = done_in_cycle % cycle;
-    (1..=cycle)
+    let glyphs: Vec<String> = (1..=cycle)
         .map(|i| {
             if i <= done {
                 '●'
-            } else if in_focus && i == done + 1 {
+            } else if on_focus_cycle && i == done + 1 {
                 '◉'
             } else {
                 '○'
             }
+            .to_string()
         })
-        .collect()
+        .collect();
+    glyphs.join(" ")
 }
 
 pub fn format_time_stack(timer: &Timer) -> (String, String, String) {
@@ -1231,6 +1201,84 @@ pub fn draw_simple_timer(
             ))
             .alignment(Alignment::Center),
             layout[1],
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use ratatui::style::Color;
+    use ratatui::Terminal;
+
+    /// One canvas unit must cover the same distance horizontally and vertically.
+    ///
+    /// The canvas spreads `x_bounds` over `width * res_x` dots and `y_bounds` over
+    /// `height * res_y` dots. Braille packs 2 dots per column but 4 per row, so equal
+    /// *ranges* are not equal *scales* — that mismatch is what stretched every circle.
+    #[test]
+    fn a_canvas_unit_is_the_same_size_on_both_axes() {
+        for marker in [Marker::Braille, Marker::HalfBlock] {
+            let (rx, ry) = marker_resolution(marker);
+            for (w, h) in [(190u16, 44u16), (100, 30), (100, 5), (60, 12), (24, 4)] {
+                let area = Rect::new(0, 0, w, h);
+                let (xb, yb) = square_bounds(area, marker);
+
+                let per_dot_x = (xb[1] - xb[0]) / (f64::from(w) * rx);
+                let per_dot_y = (yb[1] - yb[0]) / (f64::from(h) * ry);
+                assert!(
+                    (per_dot_x - per_dot_y).abs() < 1e-9,
+                    "{marker:?} {w}x{h}: {per_dot_x} units/dot across vs {per_dot_y} down",
+                );
+            }
+        }
+    }
+
+    /// Braille dots are square on screen (half a cell wide, a quarter of a cell tall, and
+    /// cells are about twice as tall as they are wide), so a circle drawn in canvas units
+    /// must come out twice as many columns wide as it is rows tall.
+    #[test]
+    fn a_drawn_ring_is_round_on_screen() {
+        let (w, h) = (100u16, 30u16);
+        let area = Rect::new(0, 0, w, h);
+        let (xb, yb) = square_bounds(area, Marker::Braille);
+        let (cx, cy) = center(xb, yb);
+        let r = 12.0;
+
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| {
+            let canvas = Canvas::default()
+                .marker(Marker::Braille)
+                .background_color(Color::Black)
+                .x_bounds(xb)
+                .y_bounds(yb)
+                .paint(|ctx| draw_ring(ctx, cx, cy, r, Color::White));
+            f.render_widget(canvas, area);
+        })
+        .unwrap();
+
+        let buf = term.backend().buffer();
+        let (mut x0, mut x1, mut y0, mut y1) = (u16::MAX, 0u16, u16::MAX, 0u16);
+        for y in 0..h {
+            for x in 0..w {
+                if buf[(x, y)].symbol() != " " {
+                    x0 = x0.min(x);
+                    x1 = x1.max(x);
+                    y0 = y0.min(y);
+                    y1 = y1.max(y);
+                }
+            }
+        }
+        assert!(x1 >= x0, "nothing was drawn");
+
+        let cols = f64::from(x1 - x0 + 1);
+        let rows = f64::from(y1 - y0 + 1);
+        // Two columns per row, within a cell of rounding on each axis.
+        assert!(
+            (cols / rows - 2.0).abs() < 0.2,
+            "ring is {cols} cols x {rows} rows (ratio {:.2}, want 2.0)",
+            cols / rows
         );
     }
 }

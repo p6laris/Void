@@ -323,6 +323,10 @@ impl Database {
         import_export::export_json(&self.conn)
     }
 
+    pub fn export_csv(&self) -> Result<PathBuf> {
+        import_export::export_csv(&self.conn)
+    }
+
     pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
         let conn = self.conn.unchecked_transaction()?;
         import_export::import_json(&conn, path)?;

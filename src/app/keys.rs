@@ -29,6 +29,7 @@ impl App {
             KeyCode::Esc => self.ui.should_quit = true,
             KeyCode::Char('c') if ctrl => self.ui.should_quit = true,
             KeyCode::Char('s') if ctrl => self.export_backup(),
+            KeyCode::Char('e') if ctrl => self.export_sessions_csv(),
             KeyCode::Char('1') => self.ui.tab = FocusTab::Dashboard,
             KeyCode::Char('2') => self.ui.tab = FocusTab::Tasks,
             KeyCode::Char('3') => self.ui.tab = FocusTab::Stats,
@@ -181,22 +182,36 @@ impl App {
     }
 
     pub(crate) fn handle_stats_key(&mut self, key: KeyEvent) {
-        if self.stats.recent_sessions.is_empty() && self.stats.heatmap_cursor.is_none() {
-            if matches!(key.code, KeyCode::Char('e') | KeyCode::Char('E')) {
-                self.end_session();
+        // View-level keys work even with no history at all — otherwise a fresh install
+        // cannot change the range or switch panels.
+        match key.code {
+            KeyCode::Char('v') => {
+                self.stats.stats_view_mode = self.stats.stats_view_mode.next();
+                self.set_status(
+                    format!("View: {}", self.stats.stats_view_mode.label()),
+                    false,
+                );
+                return;
             }
+            KeyCode::Char('r') => {
+                self.stats.stats_range = self.stats.stats_range.next();
+                self.set_status(format!("Range: {}", self.stats.stats_range.label()), false);
+                return;
+            }
+            KeyCode::Char('e') | KeyCode::Char('E') => {
+                self.end_session();
+                return;
+            }
+            _ => {}
+        }
+
+        if self.stats.recent_sessions.is_empty() && self.stats.heatmap_cursor.is_none() {
             return;
         }
         self.clamp_stats_session_selection();
         let n = self.active_stats_sessions().len();
 
         match key.code {
-            KeyCode::Char('v') => {
-                self.stats.stats_view_mode = match self.stats.stats_view_mode {
-                    StatsViewMode::Overview => StatsViewMode::Analytics,
-                    StatsViewMode::Analytics => StatsViewMode::Overview,
-                };
-            }
             KeyCode::Esc => {
                 self.stats.heatmap_cursor = None;
                 self.stats.stats_session_selected = 0;
@@ -272,7 +287,6 @@ impl App {
                     self.after_stats_session_edit();
                 }
             }
-            KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),
             KeyCode::Char('[') if self.stats.stats_session_page > 0 => {
                 self.stats.stats_session_page -= 1;
                 self.stats.stats_session_selected = 0;

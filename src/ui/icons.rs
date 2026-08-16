@@ -49,6 +49,10 @@ pub struct IconSet {
     pub heart: &'static str,
     pub dot: &'static str,
     pub shield: &'static str,
+    /// Heatmap day cell.
+    pub heat_cell: &'static str,
+    /// Heatmap cell for today, so the current day is findable without relying on colour.
+    pub heat_today: &'static str,
 }
 
 const NERD: IconSet = IconSet {
@@ -88,6 +92,8 @@ const NERD: IconSet = IconSet {
     heart: md::MD_HEART,
     dot: "·",
     shield: md::MD_SHIELD,
+    heat_cell: "■",
+    heat_today: "▣",
 };
 
 const ASCII: IconSet = IconSet {
@@ -127,6 +133,8 @@ const ASCII: IconSet = IconSet {
     heart: "<3",
     dot: ".",
     shield: "S",
+    heat_cell: "#",
+    heat_today: "@",
 };
 
 impl IconSet {

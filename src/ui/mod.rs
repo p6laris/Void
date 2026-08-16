@@ -1,6 +1,6 @@
 mod calendar;
 mod chrome;
-mod heatmap;
+pub mod heatmap;
 mod icons;
 mod stats;
 mod widgets;
@@ -25,7 +25,7 @@ use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Cell, Clear, Gauge, List, ListItem, Paragraph, Row, Table, Wrap,
+    Block, BorderType, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table, Wrap,
 };
 use ratatui::Frame;
 
@@ -35,14 +35,16 @@ use crate::canvas_timer::{
     DashboardSceneOptions, ZenSceneOptions,
 };
 use crate::model::TimerMode;
+use crate::theme::Theme;
 
 pub use icons::{IconMode, IconSet};
 
 use chrome::{draw_footer, draw_header, draw_tabs};
 use stats::draw_stats;
 use widgets::{
-    active_task_spans, centered_rect, dense_panel, format_minutes, task_status_color,
-    task_status_icon, timer_panel, truncate,
+    active_task_spans, centered_rect, chip, comment_line, comment_span, dense_panel,
+    format_minutes, meta_row, section_title, status_checkbox, tag_span, task_status_color,
+    text_gauge, timer_panel, truncate, vertical_rule,
 };
 
 pub fn render(f: &mut Frame, app: &mut App) {
