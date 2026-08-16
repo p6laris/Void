@@ -75,11 +75,17 @@ impl ThemeCatalog {
     }
 
     pub fn dark_entries(&self) -> Vec<&ThemeEntry> {
-        self.entries.iter().filter(|e| e.variant.is_dark()).collect()
+        self.entries
+            .iter()
+            .filter(|e| e.variant.is_dark())
+            .collect()
     }
 
     pub fn light_entries(&self) -> Vec<&ThemeEntry> {
-        self.entries.iter().filter(|e| e.variant.is_light()).collect()
+        self.entries
+            .iter()
+            .filter(|e| e.variant.is_light())
+            .collect()
     }
 
     pub fn label(&self, id: &str) -> String {

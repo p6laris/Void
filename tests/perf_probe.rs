@@ -26,8 +26,15 @@ fn time_heatmap_render() {
     for _ in 0..10 {
         term.draw(|f| {
             void::ui::heatmap::draw_focus_heatmap(
-                f, f.area(), &theme, icons, &data,
-                void::ui::heatmap::HeatmapOptions { goal: 120, ..Default::default() },
+                f,
+                f.area(),
+                &theme,
+                icons,
+                &data,
+                void::ui::heatmap::HeatmapOptions {
+                    goal: 120,
+                    ..Default::default()
+                },
             );
         })
         .unwrap();
@@ -38,14 +45,24 @@ fn time_heatmap_render() {
     for _ in 0..n {
         term.draw(|f| {
             void::ui::heatmap::draw_focus_heatmap(
-                f, f.area(), &theme, icons, &data,
-                void::ui::heatmap::HeatmapOptions { goal: 120, ..Default::default() },
+                f,
+                f.area(),
+                &theme,
+                icons,
+                &data,
+                void::ui::heatmap::HeatmapOptions {
+                    goal: 120,
+                    ..Default::default()
+                },
             );
         })
         .unwrap();
     }
     let per = start.elapsed() / n;
-    println!("heatmap render: {per:?} per frame ({} day entries)", data.len());
+    println!(
+        "heatmap render: {per:?} per frame ({} day entries)",
+        data.len()
+    );
 }
 
 #[test]
@@ -78,7 +95,10 @@ fn time_peak_hour_query() {
         for _ in 0..reps {
             let _ = void::storage::most_productive_hour_label(&db);
         }
-        println!("peak-hour query with {n:>6} sessions: {:?} per call", start.elapsed() / reps);
+        println!(
+            "peak-hour query with {n:>6} sessions: {:?} per call",
+            start.elapsed() / reps
+        );
     }
 }
 
@@ -100,15 +120,22 @@ fn time_canvas_scene() {
             active_task_index: Some(1),
             sessions_done: 2,
             sessions_total: 4,
-            layout: if zen { SceneLayout::Zen } else { SceneLayout::Dashboard },
+            layout: if zen {
+                SceneLayout::Zen
+            } else {
+                SceneLayout::Dashboard
+            },
             animated: true,
         };
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
 
         for _ in 0..5 {
             term.draw(|f| {
-                if zen { draw_zen_canvas(f, f.area(), &timer, &style, &opts) }
-                else { draw_dashboard_canvas(f, f.area(), &timer, &style, &opts) }
+                if zen {
+                    draw_zen_canvas(f, f.area(), &timer, &style, &opts)
+                } else {
+                    draw_dashboard_canvas(f, f.area(), &timer, &style, &opts)
+                }
             })
             .unwrap();
         }
@@ -117,8 +144,11 @@ fn time_canvas_scene() {
         let start = Instant::now();
         for _ in 0..n {
             term.draw(|f| {
-                if zen { draw_zen_canvas(f, f.area(), &timer, &style, &opts) }
-                else { draw_dashboard_canvas(f, f.area(), &timer, &style, &opts) }
+                if zen {
+                    draw_zen_canvas(f, f.area(), &timer, &style, &opts)
+                } else {
+                    draw_dashboard_canvas(f, f.area(), &timer, &style, &opts)
+                }
             })
             .unwrap();
         }

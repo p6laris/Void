@@ -325,12 +325,14 @@ impl App {
                     return;
                 }
                 KeyCode::Char('m') | KeyCode::Char('M') => {
-                    self.stats.calendar_date = crate::date::today_naive() + chrono::Duration::days(1);
+                    self.stats.calendar_date =
+                        crate::date::today_naive() + chrono::Duration::days(1);
                     self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }
                 KeyCode::Char('w') | KeyCode::Char('W') => {
-                    self.stats.calendar_date = crate::date::today_naive() + chrono::Duration::days(7);
+                    self.stats.calendar_date =
+                        crate::date::today_naive() + chrono::Duration::days(7);
                     self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
                     return;
                 }

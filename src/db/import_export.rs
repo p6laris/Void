@@ -50,7 +50,9 @@ pub fn export_json(conn: &Connection) -> Result<PathBuf> {
 pub fn export_csv(conn: &Connection) -> Result<PathBuf> {
     let sessions = load_all_sessions(conn)?;
 
-    let mut out = String::from("date,completed_at,minutes,mode,task_id,pause_count,pause_seconds,tags,note\n");
+    let mut out = String::from(
+        "date,completed_at,minutes,mode,task_id,pause_count,pause_seconds,tags,note\n",
+    );
     for s in &sessions {
         out.push_str(&format!(
             "{},{},{},{},{},{},{},{},{}\n",
@@ -166,7 +168,10 @@ pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
         if row.is_empty() || row.iter().all(|c| c.trim().is_empty()) {
             continue;
         }
-        let date = row.get(col_date).map(|s| s.trim().to_string()).unwrap_or_default();
+        let date = row
+            .get(col_date)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
         if date.is_empty() {
             continue;
         }
@@ -183,7 +188,9 @@ pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
         let mode_str = row.get(col_mode).map(|s| s.as_str()).unwrap_or("Focus");
         let mode = parse_mode_str(mode_str);
 
-        let task_id = row.get(col_task_id).and_then(|s| s.trim().parse::<u64>().ok());
+        let task_id = row
+            .get(col_task_id)
+            .and_then(|s| s.trim().parse::<u64>().ok());
         let valid_task_id = if let Some(tid) = task_id {
             let exists: bool = conn
                 .query_row(
@@ -249,18 +256,22 @@ fn parse_mode_str(s: &str) -> TimerMode {
 
 fn parse_csv_tags(input: &str) -> Vec<String> {
     input
-        .split(|c| c == ',' || c == ' ')
+        .split([',', ' '])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
 }
 
-fn parse_completed_at_or_fallback(completed_str: &str, date_str: &str) -> chrono::DateTime<chrono::Utc> {
+fn parse_completed_at_or_fallback(
+    completed_str: &str,
+    date_str: &str,
+) -> chrono::DateTime<chrono::Utc> {
     use chrono::Utc;
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(completed_str.trim()) {
         return dt.with_timezone(&Utc);
     }
-    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(completed_str.trim(), "%Y-%m-%d %H:%M:%S") {
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(completed_str.trim(), "%Y-%m-%d %H:%M:%S")
+    {
         return chrono::DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc);
     }
     if let Ok(d) = chrono::NaiveDate::parse_from_str(date_str.trim(), "%Y-%m-%d") {
@@ -446,8 +457,14 @@ mod tests {
         let records = parse_csv_records(csv);
         assert_eq!(records.len(), 3);
         assert_eq!(records[0], vec!["date", "completed_at", "minutes", "note"]);
-        assert_eq!(records[1], vec!["2026-08-15", "2026-08-15T10:00:00Z", "25", "hello, world"]);
-        assert_eq!(records[2], vec!["2026-08-16", "2026-08-16T11:00:00Z", "50", "say \"hi\""]);
+        assert_eq!(
+            records[1],
+            vec!["2026-08-15", "2026-08-15T10:00:00Z", "25", "hello, world"]
+        );
+        assert_eq!(
+            records[2],
+            vec!["2026-08-16", "2026-08-16T11:00:00Z", "50", "say \"hi\""]
+        );
     }
 
     #[test]

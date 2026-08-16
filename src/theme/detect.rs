@@ -41,7 +41,7 @@ pub fn detect_system_theme() -> SystemTheme {
 
     // Fallback: check COLORFGBG terminal environment variable (format: "fg;bg", e.g. "15;0")
     if let Ok(colorfgbg) = std::env::var("COLORFGBG") {
-        if let Some(bg_str) = colorfgbg.split(';').last() {
+        if let Some(bg_str) = colorfgbg.split(';').next_back() {
             if let Ok(bg_num) = bg_str.trim().parse::<u8>() {
                 // Background color 0-6 or 8 is dark, 7 or 15 is light
                 if bg_num == 7 || bg_num == 15 {
@@ -113,7 +113,10 @@ fn detect_linux_theme() -> Option<SystemTheme> {
             let stdout = String::from_utf8_lossy(&output.stdout);
             if stdout.contains("prefer-dark") || stdout.contains("dark") {
                 return Some(SystemTheme::Dark);
-            } else if stdout.contains("prefer-light") || stdout.contains("light") || stdout.contains("default") {
+            } else if stdout.contains("prefer-light")
+                || stdout.contains("light")
+                || stdout.contains("default")
+            {
                 return Some(SystemTheme::Light);
             }
         }

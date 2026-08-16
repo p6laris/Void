@@ -1,6 +1,9 @@
 use super::*;
-use crate::model::{Priority, TimerMode, TaskStatus};
-use crate::ui::widgets::{chip, format_minutes, status_checkbox, text_gauge, tag_span, comment_line, dense_panel, timer_panel, section_title, truncate};
+use crate::model::{Priority, TaskStatus, TimerMode};
+use crate::ui::widgets::{
+    chip, comment_line, dense_panel, format_minutes, section_title, status_checkbox, tag_span,
+    text_gauge, timer_panel, truncate,
+};
 
 /// Three stacked bands rather than a 2x2 grid of panels:
 ///
@@ -40,11 +43,9 @@ pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
         None => {
             let theme = &app.theme;
             f.render_widget(
-                Paragraph::new(comment_line(theme, "select a task to see its details"))
-                    .block(dense_panel(
-                        theme,
-                        section_title(theme, app.icons.about, "Details"),
-                    )),
+                Paragraph::new(comment_line(theme, "select a task to see its details")).block(
+                    dense_panel(theme, section_title(theme, app.icons.about, "Details")),
+                ),
                 cols[2],
             );
         }
@@ -60,7 +61,11 @@ fn draw_today_band(f: &mut Frame, app: &App, area: Rect) {
     let goal = app.data.daily_goal_minutes.max(1);
     let ratio = today as f64 / goal as f64;
     let goal_met = app.daily_goal_met();
-    let fill = if goal_met { theme.success } else { theme.accent };
+    let fill = if goal_met {
+        theme.success
+    } else {
+        theme.accent
+    };
 
     let block = dense_panel(theme, section_title(theme, icons.target, "Today"));
     let inner = block.inner(area);
@@ -94,18 +99,39 @@ fn draw_today_band(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let mut chip_spans = vec![Span::raw(" ")];
-    chip_spans.extend(chip(icons.fire, format!("{}d streak", app.data.streak_days), theme.warning, theme.comment));
+    chip_spans.extend(chip(
+        icons.fire,
+        format!("{}d streak", app.data.streak_days),
+        theme.warning,
+        theme.comment,
+    ));
     chip_spans.push(Span::raw("  "));
-    chip_spans.extend(chip(icons.target, status_str, if goal_met { theme.success } else { theme.accent }, theme.comment));
+    chip_spans.extend(chip(
+        icons.target,
+        status_str,
+        if goal_met {
+            theme.success
+        } else {
+            theme.accent
+        },
+        theme.comment,
+    ));
     chip_spans.push(Span::raw("  "));
-    chip_spans.extend(chip(icons.tasks, format!("{} open", app.pending_task_count()), theme.info, theme.comment));
+    chip_spans.extend(chip(
+        icons.tasks,
+        format!("{} open", app.pending_task_count()),
+        theme.info,
+        theme.comment,
+    ));
     chip_spans.push(Span::raw("  "));
-    chip_spans.extend(chip(icons.chart, format!("{} all-time", format_minutes(app.data.total_focus_minutes)), theme.dim, theme.comment));
+    chip_spans.extend(chip(
+        icons.chart,
+        format!("{} all-time", format_minutes(app.data.total_focus_minutes)),
+        theme.dim,
+        theme.comment,
+    ));
 
-    let lines = vec![
-        Line::from(spans),
-        Line::from(chip_spans),
-    ];
+    let lines = vec![Line::from(spans), Line::from(chip_spans)];
     f.render_widget(Paragraph::new(lines), inner);
 }
 
@@ -190,19 +216,29 @@ fn draw_dashboard_tasks(f: &mut Frame, app: &mut App, area: Rect) {
                 "  ".into()
             };
 
-            let mut spans = vec![Span::styled(lead, inherit.unwrap_or(Style::default().fg(theme.accent)))];
+            let mut spans = vec![Span::styled(
+                lead,
+                inherit.unwrap_or(Style::default().fg(theme.accent)),
+            )];
             spans.extend(status_checkbox(theme, icons, t.status, inherit));
             spans.push(Span::raw(" "));
 
             // Compact priority glyph
             spans.push(Span::styled(
                 format!("{} ", priority_glyph(t.priority)),
-                inherit.unwrap_or(Style::default().fg(priority_color(theme, t.priority)).add_modifier(Modifier::BOLD)),
+                inherit.unwrap_or(
+                    Style::default()
+                        .fg(priority_color(theme, t.priority))
+                        .add_modifier(Modifier::BOLD),
+                ),
             ));
 
             let title = truncate(&t.title, title_w);
             let pad = title_w.saturating_sub(unicode_width::UnicodeWidthStr::width(title.as_str()));
-            spans.push(Span::styled(format!("{title}{}", " ".repeat(pad)), row_style));
+            spans.push(Span::styled(
+                format!("{title}{}", " ".repeat(pad)),
+                row_style,
+            ));
 
             // Subtask badge
             if let Some((d, n)) = t.subtask_progress() {
@@ -302,32 +338,25 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
     if app.data.canvas_mode == crate::model::CanvasMode::Off {
         let minimal_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(if on_break {
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(2),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(1),
-                ]
-            } else {
-                [
-                    Constraint::Length(1),
-                    Constraint::Length(2),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Min(1),
-                ]
-            })
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(2),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
             .split(inner);
 
         let time_line = Line::from(vec![
             Span::styled(
                 format!("{main_time} "),
                 Style::default()
-                    .fg(if is_finished { theme.success } else { theme.text })
+                    .fg(if is_finished {
+                        theme.success
+                    } else {
+                        theme.text
+                    })
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(tenths, Style::default().fg(theme.dim)),
@@ -337,12 +366,13 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
             minimal_layout[1],
         );
 
-        let mut sub_spans = vec![
-            Span::styled(
-                format!("{} logged today", super::widgets::format_minutes(today_logged)),
-                Style::default().fg(theme.comment),
+        let mut sub_spans = vec![Span::styled(
+            format!(
+                "{} logged today",
+                super::widgets::format_minutes(today_logged)
             ),
-        ];
+            Style::default().fg(theme.comment),
+        )];
         if t.mode == TimerMode::Focus {
             let (quality_label, quality_color) = match t.session_pause_count {
                 0 => ("uninterrupted", theme.success),
@@ -373,7 +403,10 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
         };
         let bar_line = Line::from(vec![
             Span::styled(format!("{pct_str} "), Style::default().fg(theme.dim)),
-            Span::styled(bar_str, Style::default().fg(if is_finished { theme.success } else { mc })),
+            Span::styled(
+                bar_str,
+                Style::default().fg(if is_finished { theme.success } else { mc }),
+            ),
             Span::styled(
                 format!(" {}m", (t.remaining_seconds() / 60)),
                 Style::default().fg(theme.dim),
@@ -397,7 +430,10 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
         } else if let Some(id) = app.task_ui.active_task {
             if let Some(task) = app.data.task(id) {
                 let task_line = Line::from(vec![
-                    Span::styled(format!("{} ", app.icons.task_active), Style::default().fg(theme.accent)),
+                    Span::styled(
+                        format!("{} ", app.icons.task_active),
+                        Style::default().fg(theme.accent),
+                    ),
                     Span::styled(&task.title, Style::default().fg(theme.text)),
                 ]);
                 f.render_widget(
@@ -518,7 +554,8 @@ pub(crate) fn draw_timer_footer(f: &mut Frame, app: &App, areas: &[Rect], mc: Co
         if let Some(mut spans) = active_task_spans(app, theme) {
             if let Some(id) = app.task_ui.active_task {
                 if let Some(task) = app.data.task(id) {
-                    let left = crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
+                    let left =
+                        crate::storage::sessions_remaining_hint(task, app.data.focus_minutes);
                     if left > 0 {
                         spans.push(Span::styled(
                             format!("  ~{} left", left),
@@ -564,7 +601,9 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     lines.push(Line::from(vec![
         Span::styled(
             format!("{} ", priority_glyph(task.priority)),
-            Style::default().fg(priority_color(theme, task.priority)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(priority_color(theme, task.priority))
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             task.title.clone(),
@@ -592,17 +631,33 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     };
     push_chip(
         &mut chips,
-        chip("", task.status.label().to_lowercase(), task_status_color(theme, task.status), theme.comment),
+        chip(
+            "",
+            task.status.label().to_lowercase(),
+            task_status_color(theme, task.status),
+            theme.comment,
+        ),
     );
     push_chip(
         &mut chips,
-        chip("", task.priority.label().to_lowercase(), priority_color(theme, task.priority), theme.comment),
+        chip(
+            "",
+            task.priority.label().to_lowercase(),
+            priority_color(theme, task.priority),
+            theme.comment,
+        ),
     );
     if task.today {
-        push_chip(&mut chips, chip("", "today".into(), theme.accent, theme.comment));
+        push_chip(
+            &mut chips,
+            chip("", "today".into(), theme.accent, theme.comment),
+        );
     }
     if app.task_ui.active_task == Some(task.id) {
-        push_chip(&mut chips, chip("", "focusing".into(), theme.accent, theme.comment));
+        push_chip(
+            &mut chips,
+            chip("", "focusing".into(), theme.accent, theme.comment),
+        );
     }
     lines.push(Line::from(""));
     lines.push(Line::from(chips));
@@ -611,7 +666,11 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     let ratio = task.progress_ratio();
     let pct = format!(" {}%", (ratio * 100.0) as u32);
     let bar_w = text_w.saturating_sub(pct.chars().count() + 2).clamp(4, 28);
-    let fill = if ratio >= 1.0 { theme.success } else { theme.accent };
+    let fill = if ratio >= 1.0 {
+        theme.success
+    } else {
+        theme.accent
+    };
     let mut bar = vec![Span::raw(" ")];
     bar.extend(text_gauge(theme, ratio, bar_w, fill));
     bar.push(Span::styled(
@@ -619,7 +678,11 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
         Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
     ));
     bar.push(Span::styled(
-        format!(" ({}/{})", format_minutes(task.actual_minutes), format_minutes(task.estimated_minutes)),
+        format!(
+            " ({}/{})",
+            format_minutes(task.actual_minutes),
+            format_minutes(task.estimated_minutes)
+        ),
         Style::default().fg(theme.comment),
     ));
     lines.push(Line::from(""));
@@ -629,23 +692,45 @@ fn draw_dashboard_task_details(f: &mut Frame, app: &App, task: &crate::model::Ta
     if !task.subtasks.is_empty() {
         lines.push(Line::from(""));
         let (done, total) = task.subtask_progress().unwrap_or((0, 0));
-        let sub_pct = if total > 0 { (done * 100) / total } else { 0 };
+        let sub_pct = (done * 100).checked_div(total).unwrap_or(0);
         lines.push(Line::from(vec![
-            Span::styled(format!(" {} subtasks ", icons.tasks), Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("({done}/{total} · {sub_pct}%)"), Style::default().fg(theme.comment)),
+            Span::styled(
+                format!(" {} subtasks ", icons.tasks),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("({done}/{total} · {sub_pct}%)"),
+                Style::default().fg(theme.comment),
+            ),
         ]));
 
         for sub in task.subtasks.iter().take(5) {
-            let status = if sub.done { TaskStatus::Done } else { TaskStatus::Pending };
-            let style = if sub.done { Style::default().fg(theme.dim) } else { Style::default().fg(theme.text) };
+            let status = if sub.done {
+                TaskStatus::Done
+            } else {
+                TaskStatus::Pending
+            };
+            let style = if sub.done {
+                Style::default().fg(theme.dim)
+            } else {
+                Style::default().fg(theme.text)
+            };
             let mut spans = vec![Span::raw("  ")];
             spans.extend(status_checkbox(theme, icons, status, None));
             spans.push(Span::raw(" "));
-            spans.push(Span::styled(truncate(&sub.title, text_w.saturating_sub(8)), style));
+            spans.push(Span::styled(
+                truncate(&sub.title, text_w.saturating_sub(8)),
+                style,
+            ));
             lines.push(Line::from(spans));
         }
         if task.subtasks.len() > 5 {
-            lines.push(comment_line(theme, format!("  +{} more in Tasks tab [2]", task.subtasks.len() - 5)));
+            lines.push(comment_line(
+                theme,
+                format!("  +{} more in Tasks tab [2]", task.subtasks.len() - 5),
+            ));
         }
     }
 

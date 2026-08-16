@@ -75,7 +75,14 @@ pub fn subtask_inline_lines(
                 None => subtask.title.clone(),
             };
             Line::from(vec![
-                Span::styled(format!("{indent}[{mark}] "), if subtask.done { Style::default().fg(theme.success) } else { Style::default().fg(theme.dim) }),
+                Span::styled(
+                    format!("{indent}[{mark}] "),
+                    if subtask.done {
+                        Style::default().fg(theme.success)
+                    } else {
+                        Style::default().fg(theme.dim)
+                    },
+                ),
                 Span::styled(title, style),
             ])
         })

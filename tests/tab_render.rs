@@ -102,8 +102,14 @@ fn tasks_renders() {
     let all = lines.join("\n");
     assert!(all.contains("details"), "details panel missing");
     // The progress bar folded into the details panel; it no longer has its own header.
-    assert!(all.contains('░') || all.contains('█'), "progress bar missing");
-    assert!(!all.contains("progress ─"), "progress kept a panel of its own");
+    assert!(
+        all.contains('░') || all.contains('█'),
+        "progress bar missing"
+    );
+    assert!(
+        !all.contains("progress ─"),
+        "progress kept a panel of its own"
+    );
     // meta_row keys are lowercase now. Priority and status moved to chips beside the
     // title, so the rows that remain are the numbers.
     assert!(all.contains("estimate:"), "meta rows missing");
@@ -156,9 +162,10 @@ fn zen_overlay_stays_readable_over_the_canvas() {
         .expect("no clock line rendered");
 
     let chars: Vec<char> = clock.chars().collect();
-    let start = clock.find(|c: char| c.is_ascii_digit()).map(|byte_idx| {
-        clock[..byte_idx].chars().count()
-    }).expect("no digits on the clock line");
+    let start = clock
+        .find(|c: char| c.is_ascii_digit())
+        .map(|byte_idx| clock[..byte_idx].chars().count())
+        .expect("no digits on the clock line");
     let end = chars
         .iter()
         .rposition(|c| c.is_ascii_digit())
@@ -324,14 +331,16 @@ fn all_stats_view_modes_render_cleanly() {
         ("study".into(), 30),
     ];
     app.stats.hourly_distribution = [
-        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80,
-        50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
+        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80, 50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
     ];
 
     for mode in void::app::StatsViewMode::all() {
         app.stats.stats_view_mode = mode;
         let lines = render_tab(&mut app, FocusTab::Stats, 135, 36);
-        assert!(!lines.is_empty(), "Stats mode {mode:?} rendered empty lines");
+        assert!(
+            !lines.is_empty(),
+            "Stats mode {mode:?} rendered empty lines"
+        );
         let rendered = lines.join("\n");
         assert!(
             rendered.contains("[v]"),
@@ -353,13 +362,16 @@ fn preview_stats() {
         ("study".into(), 30),
     ];
     app.stats.hourly_distribution = [
-        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80,
-        50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
+        0, 0, 0, 0, 0, 0, 30, 45, 60, 90, 120, 80, 50, 40, 60, 75, 45, 30, 20, 15, 10, 5, 0, 0,
     ];
     for mode in void::app::StatsViewMode::all() {
         app.stats.stats_view_mode = mode;
         println!("=== STATS MODE: {:?} ===", mode);
-        for (label, w, h) in [("135x36", 135u16, 36u16), ("190x40", 190, 40), ("80x26", 80, 26)] {
+        for (label, w, h) in [
+            ("135x36", 135u16, 36u16),
+            ("190x40", 190, 40),
+            ("80x26", 80, 26),
+        ] {
             println!("--- stats {label} ---");
             for l in render_tab(&mut app, FocusTab::Stats, w, h) {
                 println!("{l}");
@@ -371,12 +383,19 @@ fn preview_stats() {
 #[test]
 fn dashboard_renders_with_all_canvas_modes() {
     let mut app = app_with_tasks();
-    for mode in [void::model::CanvasMode::Animated, void::model::CanvasMode::Static, void::model::CanvasMode::Off] {
+    for mode in [
+        void::model::CanvasMode::Animated,
+        void::model::CanvasMode::Static,
+        void::model::CanvasMode::Off,
+    ] {
         app.data.canvas_mode = mode;
         let lines = render_tab(&mut app, FocusTab::Dashboard, 120, 30);
         assert!(!lines.is_empty());
         let full = lines.join("\n");
-        assert!(full.contains("focus"), "Dashboard missing focus in mode {mode:?}");
+        assert!(
+            full.contains("focus"),
+            "Dashboard missing focus in mode {mode:?}"
+        );
     }
 }
 
@@ -384,12 +403,19 @@ fn dashboard_renders_with_all_canvas_modes() {
 fn zen_renders_with_all_canvas_modes() {
     let mut app = app_with_tasks();
     app.ui.zen_mode = true;
-    for mode in [void::model::CanvasMode::Animated, void::model::CanvasMode::Static, void::model::CanvasMode::Off] {
+    for mode in [
+        void::model::CanvasMode::Animated,
+        void::model::CanvasMode::Static,
+        void::model::CanvasMode::Off,
+    ] {
         app.data.canvas_mode = mode;
         let lines = render_tab(&mut app, FocusTab::Dashboard, 120, 30);
         assert!(!lines.is_empty());
         let full = lines.join("\n");
-        assert!(full.contains("25:00") || full.contains("focus"), "Zen missing content in mode {mode:?}");
+        assert!(
+            full.contains("25:00") || full.contains("focus"),
+            "Zen missing content in mode {mode:?}"
+        );
     }
 }
 
@@ -400,7 +426,10 @@ fn about_tab_renders_with_ursa_minor_constellation() {
         let lines = render_tab(&mut app, FocusTab::About, w, h);
         assert!(!lines.is_empty());
         let full = lines.join("\n");
-        assert!(full.contains("Polaris") || full.contains("Ursa Minor"), "About missing Ursa Minor in {w}x{h}");
+        assert!(
+            full.contains("Polaris") || full.contains("Ursa Minor"),
+            "About missing Ursa Minor in {w}x{h}"
+        );
     }
 }
 
@@ -433,11 +462,14 @@ fn all_popups_render_cleanly_on_various_resolutions() {
                 void::app::Popup::AddSubtask(_) => assert!(full.contains("Add Subtask")),
                 void::app::Popup::EditSubtask(_, _) => assert!(full.contains("Edit Subtask")),
                 void::app::Popup::ConfirmDelete(_) => assert!(full.contains("Delete")),
-                void::app::Popup::BulkConfirm(void::app::BulkAction::Delete) => assert!(full.contains("Bulk Delete")),
-                void::app::Popup::BulkConfirm(void::app::BulkAction::MarkDone) => assert!(full.contains("Bulk Complete")),
+                void::app::Popup::BulkConfirm(void::app::BulkAction::Delete) => {
+                    assert!(full.contains("Bulk Delete"))
+                }
+                void::app::Popup::BulkConfirm(void::app::BulkAction::MarkDone) => {
+                    assert!(full.contains("Bulk Complete"))
+                }
                 void::app::Popup::EmptyQueueChoice => assert!(full.contains("Queue Cleared")),
             }
         }
     }
 }
-

@@ -333,9 +333,16 @@ impl App {
                 self.persist_setting("theme_mode", key);
                 self.refresh_theme();
                 let sys = theme::detect_system_theme();
-                let sys_label = if sys.is_light() { "Light detected" } else { "Dark detected" };
+                let sys_label = if sys.is_light() {
+                    "Light detected"
+                } else {
+                    "Dark detected"
+                };
                 self.set_status(
-                    format!("Theme mode: {} (OS: {sys_label})", self.data.theme_mode.label()),
+                    format!(
+                        "Theme mode: {} (OS: {sys_label})",
+                        self.data.theme_mode.label()
+                    ),
                     false,
                 );
             }

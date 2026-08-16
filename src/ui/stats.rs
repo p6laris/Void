@@ -72,13 +72,19 @@ fn draw_vdivider(f: &mut Frame, area: Rect, theme: &Theme) {
 }
 
 /// Interactive tab toggles for the middle statistics panel: `[v] [week] [tags] [weekday] [hourly]`
-fn stats_submode_tabs(theme: &Theme, current: crate::app::StatsViewMode, width: u16) -> Line<'static> {
+fn stats_submode_tabs(
+    theme: &Theme,
+    current: crate::app::StatsViewMode,
+    width: u16,
+) -> Line<'static> {
     if width < 56 {
         return Line::from(vec![
             Span::styled("[v] ", Style::default().fg(theme.dim)),
             Span::styled(
                 format!("[{}]", current.label()),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ]);
@@ -87,11 +93,7 @@ fn stats_submode_tabs(theme: &Theme, current: crate::app::StatsViewMode, width: 
     let mut spans = Vec::with_capacity(16);
     spans.push(Span::styled("[v] ", Style::default().fg(theme.dim)));
     for mode in crate::app::StatsViewMode::all() {
-        spans.extend(bracket_toggle(
-            theme,
-            mode.label(),
-            mode == current,
-        ));
+        spans.extend(bracket_toggle(theme, mode.label(), mode == current));
         spans.push(Span::raw(" "));
     }
     Line::from(spans)
@@ -109,7 +111,9 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("[r] ", Style::default().fg(theme.dim)),
             Span::styled(
                 format!("[{}]", app.stats.stats_range.label()),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ]
@@ -126,8 +130,11 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
         spans
     };
 
-    let block = dense_panel(theme, section_title(theme, icons.calendar, "Focus activity"))
-        .title(Line::from(range_spans).alignment(Alignment::Right));
+    let block = dense_panel(
+        theme,
+        section_title(theme, icons.calendar, "Focus activity"),
+    )
+    .title(Line::from(range_spans).alignment(Alignment::Right));
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -144,7 +151,6 @@ fn draw_heatmap_section(f: &mut Frame, app: &App, area: Rect) {
             max_weeks: app.stats.stats_range.weeks(),
         },
     );
-
 }
 
 // ── Summary panel ────────────────────────────────────────────────────────────
@@ -233,7 +239,10 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     // The label column gives way on a narrow panel; fixed at 14 it left twelve columns for
     // values like "0d · 0w · 0mo", which clipped.
     let label_w = 14u16.min(inner.width.saturating_sub(13));
-    let table = Table::new(table_rows, [Constraint::Length(label_w), Constraint::Min(6)]);
+    let table = Table::new(
+        table_rows,
+        [Constraint::Length(label_w), Constraint::Min(6)],
+    );
     f.render_widget(table, layout[0]);
 
     let goal_mins = app.data.daily_goal_minutes.max(1) as f64;
@@ -246,7 +255,11 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
         format_minutes(app.data.daily_goal_minutes)
     );
     let bar_w = (layout[2].width as usize).saturating_sub(label.chars().count());
-    let fill = if goal_met { theme.success } else { theme.accent };
+    let fill = if goal_met {
+        theme.success
+    } else {
+        theme.accent
+    };
     let mut spans = super::widgets::text_gauge(theme, percent, bar_w, fill);
     spans.push(Span::styled(
         label,
@@ -254,7 +267,6 @@ fn draw_summary(f: &mut Frame, app: &App, area: Rect) {
     ));
     f.render_widget(Paragraph::new(Line::from(spans)), layout[2]);
     draw_daily_timeline(f, app, layout[3]);
-
 }
 
 // ── Weekly bar chart ─────────────────────────────────────────────────────────
@@ -264,8 +276,10 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     let icons = app.icons;
     let data = &app.stats.weekly_chart;
 
-    let block = dense_panel(theme, section_title(theme, icons.chart, "Last 7 days"))
-        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
+    let block = dense_panel(theme, section_title(theme, icons.chart, "Last 7 days")).title(
+        stats_submode_tabs(theme, app.stats.stats_view_mode, area.width)
+            .alignment(Alignment::Right),
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -282,7 +296,6 @@ fn draw_week_bars(f: &mut Frame, app: &App, area: Rect) {
     } else {
         render_week_chart(f, theme, icons, data, inner);
     }
-
 }
 
 /// Core bar-chart rendering extracted for clarity.
@@ -443,9 +456,9 @@ fn draw_recent_sessions(f: &mut Frame, app: &App, area: Rect) {
         // the whole list, not just the rows that happen to fit.
         let visible = (inner.height as usize).max(1);
         let selected = app.stats.stats_session_selected;
-        let start = selected.saturating_sub(visible - 1).min(
-            data.len().saturating_sub(visible),
-        );
+        let start = selected
+            .saturating_sub(visible - 1)
+            .min(data.len().saturating_sub(visible));
 
         data.iter()
             .enumerate()
@@ -459,10 +472,7 @@ fn draw_recent_sessions(f: &mut Frame, app: &App, area: Rect) {
                 };
 
                 ListItem::new(Line::from(vec![
-                    Span::styled(
-                        s.record.completed_at.format("%H:%M").to_string(),
-                        dim_style,
-                    ),
+                    Span::styled(s.record.completed_at.format("%H:%M").to_string(), dim_style),
                     Span::styled(format!("{:>5}m ", s.record.minutes), mins_style),
                     Span::styled(session_task_label(app, s.record.task_id), style),
                 ]))
@@ -514,8 +524,10 @@ fn draw_weekday_breakdown(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let block = dense_panel(theme, section_title(theme, icons.calendar, "Day of week"))
-        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
+    let block = dense_panel(theme, section_title(theme, icons.calendar, "Day of week")).title(
+        stats_submode_tabs(theme, app.stats.stats_view_mode, area.width)
+            .alignment(Alignment::Right),
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -554,7 +566,11 @@ fn draw_weekday_breakdown(f: &mut Frame, app: &App, area: Rect) {
         } else {
             dim_style
         };
-        let bar_fg = if is_today { theme.success } else { theme.accent };
+        let bar_fg = if is_today {
+            theme.success
+        } else {
+            theme.accent
+        };
 
         lines.push(Line::from(vec![
             Span::styled(format!("{:<3}", WEEKDAY_LABELS[idx]), label_style),
@@ -612,8 +628,10 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let block = dense_panel(theme, section_title(theme, icons.chart, "Tag analytics"))
-        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
+    let block = dense_panel(theme, section_title(theme, icons.chart, "Tag analytics")).title(
+        stats_submode_tabs(theme, app.stats.stats_view_mode, area.width)
+            .alignment(Alignment::Right),
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -629,7 +647,14 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let total_mins: u32 = app.stats.tag_analytics.iter().map(|(_, m)| *m).sum();
-    let max_mins = app.stats.tag_analytics.iter().map(|(_, m)| *m).max().unwrap_or(1).max(1);
+    let max_mins = app
+        .stats
+        .tag_analytics
+        .iter()
+        .map(|(_, m)| *m)
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
     const LABEL_W: usize = 10;
     const MINS_W: usize = 12; // " 100%  99h 59m"
@@ -666,16 +691,27 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
         let tag_truncated = super::widgets::truncate(&tag_display, LABEL_W);
 
         lines.push(Line::from(vec![
-            Span::styled(format!("{:<width$} ", tag_truncated, width = LABEL_W), dim_style),
+            Span::styled(
+                format!("{:<width$} ", tag_truncated, width = LABEL_W),
+                dim_style,
+            ),
             Span::styled("█".repeat(fill), Style::default().fg(theme.accent)),
             Span::styled("░".repeat(empty), track_style),
-            Span::styled(format!(" {:>3}% {:>6}", pct, format_minutes(mins)), text_style),
+            Span::styled(
+                format!(" {:>3}% {:>6}", pct, format_minutes(mins)),
+                text_style,
+            ),
         ]));
     }
 
     if inner.height as usize > visible_tags + 1 {
         lines.push(Line::from(""));
-        let top_tag = app.stats.tag_analytics.first().map(|(t, _)| t.as_str()).unwrap_or("none");
+        let top_tag = app
+            .stats
+            .tag_analytics
+            .first()
+            .map(|(t, _)| t.as_str())
+            .unwrap_or("none");
         lines.push(Line::from(comment_span(
             theme,
             format!(
@@ -696,8 +732,10 @@ fn draw_hourly_breakdown(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let block = dense_panel(theme, section_title(theme, icons.timer, "Time of day"))
-        .title(stats_submode_tabs(theme, app.stats.stats_view_mode, area.width).alignment(Alignment::Right));
+    let block = dense_panel(theme, section_title(theme, icons.timer, "Time of day")).title(
+        stats_submode_tabs(theme, app.stats.stats_view_mode, area.width)
+            .alignment(Alignment::Right),
+    );
     let inner = block.inner(area);
     f.render_widget(block, area);
 
@@ -759,19 +797,25 @@ fn draw_hourly_breakdown(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(format!("{:<width$} ", name, width = LABEL_W), dim_style),
             Span::styled("█".repeat(fill), Style::default().fg(theme.accent)),
             Span::styled("░".repeat(empty), track_style),
-            Span::styled(format!(" {:>3}% {:>6}", pct, format_minutes(mins)), text_style),
+            Span::styled(
+                format!(" {:>3}% {:>6}", pct, format_minutes(mins)),
+                text_style,
+            ),
         ]));
     }
 
     if inner.height >= 7 {
         lines.push(Line::from(""));
-        let peak_quad = quadrants.iter().max_by_key(|(_, m)| *m).map(|(n, _)| *n).unwrap_or("morning");
+        let peak_quad = quadrants
+            .iter()
+            .max_by_key(|(_, m)| *m)
+            .map(|(n, _)| *n)
+            .unwrap_or("morning");
         lines.push(Line::from(comment_span(
             theme,
             format!(
                 "peak window: {} · peak hour: {}",
-                peak_quad,
-                app.stats.peak_hour_label,
+                peak_quad, app.stats.peak_hour_label,
             ),
         )));
     }

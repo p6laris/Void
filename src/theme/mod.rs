@@ -86,8 +86,7 @@ pub const OPTIONAL_TOKEN_NAMES: &[&str] = &[
 pub const HEAT_STEPS: usize = 5;
 
 /// Token names for each heat step, indexed to match `Theme::heat`.
-pub const HEAT_TOKEN_NAMES: [&str; HEAT_STEPS] =
-    ["heat_0", "heat_1", "heat_2", "heat_3", "heat_4"];
+pub const HEAT_TOKEN_NAMES: [&str; HEAT_STEPS] = ["heat_0", "heat_1", "heat_2", "heat_3", "heat_4"];
 
 #[derive(Clone)]
 pub struct Theme {

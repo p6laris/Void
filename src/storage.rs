@@ -29,23 +29,23 @@ pub fn ensure_today_reset(db: &Database, data: &mut AppData) -> Result<bool> {
 }
 
 pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Result<()> {
-    let today_date = match chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d").ok() {
-        Some(d) => d,
-        None => return Ok(()),
+    let today_date = match chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => return Ok(()),
     };
 
     // 1. Reconcile daily session streak
     if let Some(last_str) = &data.last_session_date {
-        if let Some(last_date) = chrono::NaiveDate::parse_from_str(last_str, "%Y-%m-%d").ok() {
+        if let Ok(last_date) = chrono::NaiveDate::parse_from_str(last_str, "%Y-%m-%d") {
             if today_date > last_date {
                 let gap = count_active_gap(last_date, today_date, &data.streak_rest_days);
-                if gap > data.streak_freezes {
-                    if data.streak_days != 0 || data.last_freeze_earned_streak != 0 {
-                        data.streak_days = 0;
-                        data.last_freeze_earned_streak = 0;
-                        db.set_setting("streak_days", "0")?;
-                        db.set_setting("last_freeze_earned_streak", "0")?;
-                    }
+                if gap > data.streak_freezes
+                    && (data.streak_days != 0 || data.last_freeze_earned_streak != 0)
+                {
+                    data.streak_days = 0;
+                    data.last_freeze_earned_streak = 0;
+                    db.set_setting("streak_days", "0")?;
+                    db.set_setting("last_freeze_earned_streak", "0")?;
                 }
             }
         }
@@ -53,7 +53,7 @@ pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Resu
 
     // 2. Reconcile goal streak
     if let Some(last_goal_str) = &data.last_goal_date {
-        if let Some(last_goal_date) = chrono::NaiveDate::parse_from_str(last_goal_str, "%Y-%m-%d").ok() {
+        if let Ok(last_goal_date) = chrono::NaiveDate::parse_from_str(last_goal_str, "%Y-%m-%d") {
             if today_date > last_goal_date {
                 let gap = count_active_gap(last_goal_date, today_date, &data.streak_rest_days);
                 if gap > 0 && data.goal_streak_days != 0 {
@@ -68,22 +68,24 @@ pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Resu
     if let Some(last_week_key) = &data.last_weekly_streak_key {
         let cur_iso = today_date.iso_week();
         let cur_week_key = format!("{}-W{:02}", cur_iso.year(), cur_iso.week());
-        if last_week_key != &cur_week_key && !is_consecutive_week(last_week_key, &cur_week_key) {
-            if data.weekly_streak_weeks != 0 {
-                data.weekly_streak_weeks = 0;
-                db.set_setting("weekly_streak_weeks", "0")?;
-            }
+        if last_week_key != &cur_week_key
+            && !is_consecutive_week(last_week_key, &cur_week_key)
+            && data.weekly_streak_weeks != 0
+        {
+            data.weekly_streak_weeks = 0;
+            db.set_setting("weekly_streak_weeks", "0")?;
         }
     }
 
     // 4. Reconcile monthly streak
     if let Some(last_month_key) = &data.last_monthly_streak_key {
         let cur_month_key = format!("{}-{:02}", today_date.year(), today_date.month());
-        if last_month_key != &cur_month_key && !is_consecutive_month(last_month_key, &cur_month_key) {
-            if data.monthly_streak_months != 0 {
-                data.monthly_streak_months = 0;
-                db.set_setting("monthly_streak_months", "0")?;
-            }
+        if last_month_key != &cur_month_key
+            && !is_consecutive_month(last_month_key, &cur_month_key)
+            && data.monthly_streak_months != 0
+        {
+            data.monthly_streak_months = 0;
+            db.set_setting("monthly_streak_months", "0")?;
         }
     }
 
@@ -609,19 +611,23 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
     db.delete_focus_session(id)?;
 
     // If today's goal was revoked because today's minutes dropped below daily goal:
-    if is_focus && r.date == today && data.today_focus_minutes < data.daily_goal_minutes {
-        if data.last_goal_date.as_deref() == Some(today.as_str()) {
-            data.goal_streak_days = data.goal_streak_days.saturating_sub(1);
-            data.last_goal_date = None;
-        }
+    if is_focus
+        && r.date == today
+        && data.today_focus_minutes < data.daily_goal_minutes
+        && data.last_goal_date.as_deref() == Some(today.as_str())
+    {
+        data.goal_streak_days = data.goal_streak_days.saturating_sub(1);
+        data.last_goal_date = None;
     }
 
     // If all sessions from today were deleted, rollback last_session_date
-    if is_focus && r.date == today && data.today_focus_minutes == 0 {
-        if data.last_session_date.as_deref() == Some(today.as_str()) {
-            data.streak_days = data.streak_days.saturating_sub(1);
-            data.last_session_date = db.latest_focus_session_date()?;
-        }
+    if is_focus
+        && r.date == today
+        && data.today_focus_minutes == 0
+        && data.last_session_date.as_deref() == Some(today.as_str())
+    {
+        data.streak_days = data.streak_days.saturating_sub(1);
+        data.last_session_date = db.latest_focus_session_date()?;
     }
 
     db.persist_session_stats(data)?;
@@ -669,7 +675,8 @@ pub fn adjust_session_minutes(
     db.update_session_minutes(id, new_minutes)?;
 
     // Update goal streak or revoke if reduced below daily goal
-    if is_focus && stored.record.date == today && data.today_focus_minutes < data.daily_goal_minutes {
+    if is_focus && stored.record.date == today && data.today_focus_minutes < data.daily_goal_minutes
+    {
         if data.last_goal_date.as_deref() == Some(today.as_str()) {
             data.goal_streak_days = data.goal_streak_days.saturating_sub(1);
             data.last_goal_date = None;

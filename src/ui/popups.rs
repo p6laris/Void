@@ -62,13 +62,22 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
     let (border_color, title_text) = match &popup {
         Popup::AddTask => (app.theme.accent, format!(" {} Add Task ", icons.plus)),
         Popup::EditTask(_) => (app.theme.accent, format!(" {} Edit Task ", icons.edit)),
-        Popup::ConfirmDelete(_) => (app.theme.error, format!(" {} Confirm Delete ", icons.delete)),
-        Popup::EmptyQueueChoice => (app.theme.success, format!(" {} Queue Cleared ", icons.check)),
+        Popup::ConfirmDelete(_) => (
+            app.theme.error,
+            format!(" {} Confirm Delete ", icons.delete),
+        ),
+        Popup::EmptyQueueChoice => (
+            app.theme.success,
+            format!(" {} Queue Cleared ", icons.check),
+        ),
         Popup::AddSubtask(_) => (app.theme.accent, format!(" {} Add Subtask ", icons.plus)),
         Popup::EditSubtask(_, _) => (app.theme.accent, format!(" {} Edit Subtask ", icons.edit)),
         Popup::BulkConfirm(action) => match action {
             BulkAction::Delete => (app.theme.error, format!(" {} Bulk Delete ", icons.delete)),
-            BulkAction::MarkDone => (app.theme.success, format!(" {} Bulk Complete ", icons.check)),
+            BulkAction::MarkDone => (
+                app.theme.success,
+                format!(" {} Bulk Complete ", icons.check),
+            ),
         },
     };
 
@@ -79,7 +88,9 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
         .style(Style::default().bg(app.theme.bg))
         .title(Span::styled(
             title_text,
-            Style::default().fg(border_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(border_color)
+                .add_modifier(Modifier::BOLD),
         ));
     let body = block.inner(popup_area);
     f.render_widget(block, popup_area);
@@ -110,15 +121,16 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
         .split(body);
 
     let form_area = chunks[0];
-    let (left_area, right_area) = if matches!(app.input.input_field, InputField::DueDate) && form_area.width >= 54 {
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
-            .split(form_area);
-        (cols[0], Some(cols[1]))
-    } else {
-        (form_area, None)
-    };
+    let (left_area, right_area) =
+        if matches!(app.input.input_field, InputField::DueDate) && form_area.width >= 54 {
+            let cols = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
+                .split(form_area);
+            (cols[0], Some(cols[1]))
+        } else {
+            (form_area, None)
+        };
 
     let cursor = |active: bool, text: &str| -> String {
         if active {
@@ -160,59 +172,55 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
 
     let val_max = left_area.width.saturating_sub(20) as usize;
 
-    let mut form_lines = Vec::new();
-
-    // Title Row
-    form_lines.push(popup_field_row(
-        theme,
-        icons.edit,
-        "Title",
-        &title_display,
-        matches!(app.input.input_field, InputField::Title),
-        val_max,
-    ));
-    form_lines.push(Line::from(""));
-
-    // Estimate Row
-    form_lines.push(popup_field_row(
-        theme,
-        icons.timer,
-        "Estimate",
-        &estimate_display,
-        matches!(app.input.input_field, InputField::Estimate),
-        val_max,
-    ));
-    form_lines.push(Line::from(""));
-
-    // Priority Row (Chips)
-    form_lines.push(popup_priority_row(
-        theme,
-        icons.tasks,
-        app.input.input_priority,
-        matches!(app.input.input_field, InputField::Priority),
-    ));
-    form_lines.push(Line::from(""));
-
-    // Due Date Row
-    form_lines.push(popup_field_row(
-        theme,
-        icons.calendar,
-        "Due Date",
-        &due_display,
-        matches!(app.input.input_field, InputField::DueDate),
-        val_max,
-    ));
-    form_lines.push(Line::from(""));
-
-    // Tags Row
-    form_lines.push(popup_field_row(
-        theme,
-        icons.dot,
-        "Tags",
-        &tags_display,
-        matches!(app.input.input_field, InputField::Tags),
-        val_max,
-    ));
+    let form_lines = vec![
+        // Title Row
+        popup_field_row(
+            theme,
+            icons.edit,
+            "Title",
+            &title_display,
+            matches!(app.input.input_field, InputField::Title),
+            val_max,
+        ),
+        Line::from(""),
+        // Estimate Row
+        popup_field_row(
+            theme,
+            icons.timer,
+            "Estimate",
+            &estimate_display,
+            matches!(app.input.input_field, InputField::Estimate),
+            val_max,
+        ),
+        Line::from(""),
+        // Priority Row (Chips)
+        popup_priority_row(
+            theme,
+            icons.tasks,
+            app.input.input_priority,
+            matches!(app.input.input_field, InputField::Priority),
+        ),
+        Line::from(""),
+        // Due Date Row
+        popup_field_row(
+            theme,
+            icons.calendar,
+            "Due Date",
+            &due_display,
+            matches!(app.input.input_field, InputField::DueDate),
+            val_max,
+        ),
+        Line::from(""),
+        // Tags Row
+        popup_field_row(
+            theme,
+            icons.dot,
+            "Tags",
+            &tags_display,
+            matches!(app.input.input_field, InputField::Tags),
+            val_max,
+        ),
+    ];
 
     f.render_widget(Paragraph::new(form_lines), left_area);
 
@@ -223,13 +231,33 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
     if chunks.len() > 1 {
         let hint_line = if matches!(app.input.input_field, InputField::DueDate) {
             Line::from(vec![
-                Span::styled("t", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "t",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" today  ", Style::default().fg(theme.dim)),
-                Span::styled("m", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "m",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" tmrw  ", Style::default().fg(theme.dim)),
-                Span::styled("w", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "w",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" +1wk  ", Style::default().fg(theme.dim)),
-                Span::styled("c", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "c",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" clear  ", Style::default().fg(theme.dim)),
                 Span::styled("Tab", Style::default().fg(theme.accent)),
                 Span::styled(" next  ", Style::default().fg(theme.dim)),
@@ -240,7 +268,12 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
             ])
         } else if matches!(app.input.input_field, InputField::Priority) {
             Line::from(vec![
-                Span::styled("1/2/3", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "1/2/3",
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" set priority  ", Style::default().fg(theme.dim)),
                 Span::styled("Space / ←→", Style::default().fg(theme.accent)),
                 Span::styled(" cycle  ", Style::default().fg(theme.dim)),
@@ -253,13 +286,21 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
             Line::from(vec![
                 Span::styled("Tab / Shift+Tab", Style::default().fg(theme.accent)),
                 Span::styled(" switch field  ", Style::default().fg(theme.dim)),
-                Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Enter",
+                    Style::default()
+                        .fg(theme.success)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" save task  ", Style::default().fg(theme.dim)),
                 Span::styled("Esc", Style::default().fg(theme.dim)),
                 Span::styled(" cancel", Style::default().fg(theme.dim)),
             ])
         };
-        f.render_widget(Paragraph::new(hint_line).alignment(Alignment::Center), chunks[1]);
+        f.render_widget(
+            Paragraph::new(hint_line).alignment(Alignment::Center),
+            chunks[1],
+        );
     }
 }
 
@@ -273,7 +314,9 @@ fn popup_field_row<'a>(
 ) -> Line<'a> {
     let (label_style, val_style) = if active {
         (
-            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         )
     } else {
@@ -304,7 +347,9 @@ fn popup_priority_row<'a>(
     active: bool,
 ) -> Line<'a> {
     let label_style = if active {
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.dim)
     };
@@ -316,19 +361,20 @@ fn popup_priority_row<'a>(
         Span::styled("  ", Style::default().fg(theme.dim))
     };
 
-    let make_chip = |label: &'static str, color: ratatui::style::Color, is_sel: bool| -> Span<'static> {
-        if is_sel {
-            Span::styled(
-                format!(" [● {}] ", label),
-                Style::default().fg(color).bg(theme.panel).add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(
-                format!("  ○ {}  ", label),
-                Style::default().fg(theme.dim),
-            )
-        }
-    };
+    let make_chip =
+        |label: &'static str, color: ratatui::style::Color, is_sel: bool| -> Span<'static> {
+            if is_sel {
+                Span::styled(
+                    format!(" [● {}] ", label),
+                    Style::default()
+                        .fg(color)
+                        .bg(theme.panel)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled(format!("  ○ {}  ", label), Style::default().fg(theme.dim))
+            }
+        };
 
     Line::from(vec![
         active_indicator,
@@ -368,7 +414,10 @@ fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edi
 
     // 1. Parent Task Header
     let header_line = Line::from(vec![
-        Span::styled(format!("{} Parent Task: ", icons.tasks), Style::default().fg(theme.dim)),
+        Span::styled(
+            format!("{} Parent Task: ", icons.tasks),
+            Style::default().fg(theme.dim),
+        ),
         Span::styled(
             super::widgets::truncate(&parent_title, chunks[0].width.saturating_sub(20) as usize),
             Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
@@ -398,7 +447,10 @@ fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edi
             preview_lines.push(Line::from(vec![
                 Span::styled(format!("  {} ", icon), Style::default().fg(color)),
                 Span::styled(
-                    super::widgets::truncate(&sub.title, chunks[1].width.saturating_sub(8) as usize),
+                    super::widgets::truncate(
+                        &sub.title,
+                        chunks[1].width.saturating_sub(8) as usize,
+                    ),
                     if sub.done {
                         Style::default().fg(theme.dim)
                     } else {
@@ -418,7 +470,11 @@ fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edi
     );
 
     // 3. Subtask Input Box
-    let label = if is_edit { " Edit Subtask Title " } else { " New Subtask Title " };
+    let label = if is_edit {
+        " Edit Subtask Title "
+    } else {
+        " New Subtask Title "
+    };
     let input_block = Block::default()
         .title(Span::styled(label, Style::default().fg(theme.accent)))
         .borders(Borders::ALL)
@@ -436,7 +492,10 @@ fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edi
             ])
         } else {
             Line::from(vec![
-                Span::styled(&app.input.input_buffer, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    &app.input.input_buffer,
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("|", Style::default().fg(theme.accent)),
             ])
         };
@@ -446,20 +505,33 @@ fn draw_subtask_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64, is_edi
     // 4. Action Footer
     let footer_line = if is_edit {
         Line::from(vec![
-            Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" save  ", Style::default().fg(theme.dim)),
             Span::styled("Esc", Style::default().fg(theme.dim)),
             Span::styled(" cancel", Style::default().fg(theme.dim)),
         ])
     } else {
         Line::from(vec![
-            Span::styled("Enter", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(" add & type next  ", Style::default().fg(theme.dim)),
             Span::styled("Esc / q", Style::default().fg(theme.dim)),
             Span::styled(" done", Style::default().fg(theme.dim)),
         ])
     };
-    f.render_widget(Paragraph::new(footer_line).alignment(Alignment::Center), chunks[3]);
+    f.render_widget(
+        Paragraph::new(footer_line).alignment(Alignment::Center),
+        chunks[3],
+    );
 }
 
 fn draw_confirm_delete_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64) {
@@ -485,9 +557,12 @@ fn draw_confirm_delete_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64)
 
     // 1. Header
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("{} Permanent Task Deletion", icons.delete), Style::default().fg(theme.error).add_modifier(Modifier::BOLD)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!("{} Permanent Task Deletion", icons.delete),
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
+        )])),
         chunks[0],
     );
 
@@ -506,27 +581,41 @@ fn draw_confirm_delete_popup(f: &mut Frame, app: &App, body: Rect, task_id: u64)
 
     // 3. Metadata Context
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(format!("Contains {} subtask(s) · {}m focused", sub_count, mins), Style::default().fg(theme.dim)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!("Contains {} subtask(s) · {}m focused", sub_count, mins),
+            Style::default().fg(theme.dim),
+        )])),
         chunks[2],
     );
 
     // 4. Warning Alert
     f.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("This action cannot be undone.", Style::default().fg(theme.warning)),
-        ])),
+        Paragraph::new(Line::from(vec![Span::styled(
+            "This action cannot be undone.",
+            Style::default().fg(theme.warning),
+        )])),
         chunks[3],
     );
 
     // 5. Buttons
     let buttons = Line::from(vec![
-        Span::styled(" [y] Delete ", Style::default().fg(theme.error).bg(theme.panel).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " [y] Delete ",
+            Style::default()
+                .fg(theme.error)
+                .bg(theme.panel)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled("    ", Style::default()),
-        Span::styled(" [n / Esc] Cancel ", Style::default().fg(theme.dim).bg(theme.panel)),
+        Span::styled(
+            " [n / Esc] Cancel ",
+            Style::default().fg(theme.dim).bg(theme.panel),
+        ),
     ]);
-    f.render_widget(Paragraph::new(buttons).alignment(Alignment::Center), chunks[4]);
+    f.render_widget(
+        Paragraph::new(buttons).alignment(Alignment::Center),
+        chunks[4],
+    );
 }
 
 fn draw_bulk_confirm_popup(f: &mut Frame, app: &App, body: Rect, action: &BulkAction) {
@@ -546,15 +635,26 @@ fn draw_bulk_confirm_popup(f: &mut Frame, app: &App, body: Rect, action: &BulkAc
 
     let count = app.task_ui.bulk_selected.len();
     let (action_title, action_color) = match action {
-        BulkAction::MarkDone => (format!("{} Complete {} Selected Tasks", icons.check, count), theme.success),
-        BulkAction::Delete => (format!("{} Permanently Delete {} Selected Tasks", icons.delete, count), theme.error),
+        BulkAction::MarkDone => (
+            format!("{} Complete {} Selected Tasks", icons.check, count),
+            theme.success,
+        ),
+        BulkAction::Delete => (
+            format!(
+                "{} Permanently Delete {} Selected Tasks",
+                icons.delete, count
+            ),
+            theme.error,
+        ),
     };
 
     // 1. Header
     f.render_widget(
         Paragraph::new(Line::from(Span::styled(
             action_title,
-            Style::default().fg(action_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(action_color)
+                .add_modifier(Modifier::BOLD),
         ))),
         chunks[0],
     );
@@ -599,12 +699,21 @@ fn draw_bulk_confirm_popup(f: &mut Frame, app: &App, body: Rect, action: &BulkAc
     let buttons = Line::from(vec![
         Span::styled(
             " [y] Confirm ",
-            Style::default().fg(action_color).bg(theme.panel).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(action_color)
+                .bg(theme.panel)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled("    ", Style::default()),
-        Span::styled(" [n / Esc] Cancel ", Style::default().fg(theme.dim).bg(theme.panel)),
+        Span::styled(
+            " [n / Esc] Cancel ",
+            Style::default().fg(theme.dim).bg(theme.panel),
+        ),
     ]);
-    f.render_widget(Paragraph::new(buttons).alignment(Alignment::Center), chunks[3]);
+    f.render_widget(
+        Paragraph::new(buttons).alignment(Alignment::Center),
+        chunks[3],
+    );
 }
 
 fn draw_empty_queue_popup(f: &mut Frame, app: &App, body: Rect) {
@@ -624,8 +733,16 @@ fn draw_empty_queue_popup(f: &mut Frame, app: &App, body: Rect) {
     // 1. Celebratory Banner
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("{} Queue Cleared! ", icons.check), Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
-            Span::styled("All tasks in your queue are completed.", Style::default().fg(theme.text)),
+            Span::styled(
+                format!("{} Queue Cleared! ", icons.check),
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "All tasks in your queue are completed.",
+                Style::default().fg(theme.text),
+            ),
         ])),
         chunks[0],
     );
@@ -642,21 +759,57 @@ fn draw_empty_queue_popup(f: &mut Frame, app: &App, body: Rect) {
     // 3. Option Cards
     let options = vec![
         Line::from(vec![
-            Span::styled(" [Enter] ", Style::default().fg(theme.success).bg(theme.panel).add_modifier(Modifier::BOLD)),
-            Span::styled(" Free Focus   ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-            Span::styled("— Continue timer, log as general focus", Style::default().fg(theme.dim)),
+            Span::styled(
+                " [Enter] ",
+                Style::default()
+                    .fg(theme.success)
+                    .bg(theme.panel)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " Free Focus   ",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "— Continue timer, log as general focus",
+                Style::default().fg(theme.dim),
+            ),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled(" [  p  ] ", Style::default().fg(theme.warning).bg(theme.panel).add_modifier(Modifier::BOLD)),
-            Span::styled(" Pause Timer  ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-            Span::styled("— Pause timer and take a restorative break", Style::default().fg(theme.dim)),
+            Span::styled(
+                " [  p  ] ",
+                Style::default()
+                    .fg(theme.warning)
+                    .bg(theme.panel)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " Pause Timer  ",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "— Pause timer and take a restorative break",
+                Style::default().fg(theme.dim),
+            ),
         ]),
         Line::from(""),
         Line::from(vec![
-            Span::styled(" [  a  ] ", Style::default().fg(theme.accent).bg(theme.panel).add_modifier(Modifier::BOLD)),
-            Span::styled(" Add Task     ", Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-            Span::styled("— Open task creator to add more work", Style::default().fg(theme.dim)),
+            Span::styled(
+                " [  a  ] ",
+                Style::default()
+                    .fg(theme.accent)
+                    .bg(theme.panel)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " Add Task     ",
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "— Open task creator to add more work",
+                Style::default().fg(theme.dim),
+            ),
         ]),
         Line::from(""),
         Line::from(vec![

@@ -129,7 +129,9 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT date FROM focus_sessions WHERE mode IN ('focus', 'custom') ORDER BY completed_at DESC LIMIT 1",
         )?;
-        let date = stmt.query_row([], |row| row.get::<_, String>(0)).optional()?;
+        let date = stmt
+            .query_row([], |row| row.get::<_, String>(0))
+            .optional()?;
         Ok(date)
     }
 

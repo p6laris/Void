@@ -4,14 +4,14 @@ use crate::ui::widgets::bracket_toggle;
 
 // Row column widths. Fixed so titles, counts, minutes and tags line up down the list
 // instead of drifting with the length of whatever is to their left.
-const ACTIVE_W: usize = 2;   // active marker + gap
-const FLAG_W: usize = 2;     // overdue + today
-const CHECK_W: usize = 3;    // [x]
-const PRIO_W: usize = 2;     // "★ " — compact 1-char symbol + space
-const BULK_W: usize = 2;     // selection circle + gap, only in bulk mode
-const SUB_W: usize = 7;      // "(9/9) "
-const TIME_W: usize = 10;    // " 999/999m"
-const HIGHLIGHT_W: usize = 2;// "▸ ", which the List takes out of the item area
+const ACTIVE_W: usize = 2; // active marker + gap
+const FLAG_W: usize = 2; // overdue + today
+const CHECK_W: usize = 3; // [x]
+const PRIO_W: usize = 2; // "★ " — compact 1-char symbol + space
+const BULK_W: usize = 2; // selection circle + gap, only in bulk mode
+const SUB_W: usize = 7; // "(9/9) "
+const TIME_W: usize = 10; // " 999/999m"
+const HIGHLIGHT_W: usize = 2; // "▸ ", which the List takes out of the item area
 const MIN_TITLE_W: usize = 12;
 
 /// Widest tag column we will ever give up.
@@ -119,7 +119,9 @@ fn tasks_filter_tabs(theme: &Theme, current: TaskFilter, width: u16) -> Line<'st
             Span::styled("[g] ", Style::default().fg(theme.dim)),
             Span::styled(
                 format!("[{}]", current.label().to_lowercase()),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ]);
@@ -175,20 +177,25 @@ fn draw_task_list(f: &mut Frame, app: &mut App, area: Rect) {
         theme.accent
     };
 
-    let title_spans = vec![
-        Span::styled(
-            format!(
-                " {} tasks ({}){} ",
-                icons.tasks,
-                filtered_count,
-                if app.task_ui.bulk_mode { " · bulk" } else { "" }
-            ),
-            Style::default().fg(title_color).add_modifier(Modifier::BOLD),
+    let title_spans = vec![Span::styled(
+        format!(
+            " {} tasks ({}){} ",
+            icons.tasks,
+            filtered_count,
+            if app.task_ui.bulk_mode {
+                " · bulk"
+            } else {
+                ""
+            }
         ),
-    ];
+        Style::default()
+            .fg(title_color)
+            .add_modifier(Modifier::BOLD),
+    )];
 
-    let block = dense_panel(theme, Line::from(title_spans))
-        .title(tasks_filter_tabs(theme, app.task_ui.task_filter, area.width).alignment(Alignment::Right));
+    let block = dense_panel(theme, Line::from(title_spans)).title(
+        tasks_filter_tabs(theme, app.task_ui.task_filter, area.width).alignment(Alignment::Right),
+    );
 
     let list = List::new(items)
         .block(block)
@@ -253,9 +260,7 @@ fn task_row<'a>(
         spans.push(if bulk_selected {
             Span::styled(
                 icons.check,
-                Style::default()
-                    .fg(theme.info)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.info).add_modifier(Modifier::BOLD),
             )
         } else {
             Span::styled("○", Style::default().fg(theme.dim))
@@ -283,7 +288,9 @@ fn task_row<'a>(
     // Compact priority glyph
     spans.push(Span::styled(
         format!("{} ", priority_glyph(task.priority)),
-        Style::default().fg(priority_color(theme, task.priority)).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(priority_color(theme, task.priority))
+            .add_modifier(Modifier::BOLD),
     ));
 
     let reorder = if app.task_ui.reordering_task == Some(task.id) {
@@ -293,10 +300,7 @@ fn task_row<'a>(
     } else {
         ""
     };
-    let title = truncate(
-        &format!("{reorder}{}", task.title),
-        cols.title,
-    );
+    let title = truncate(&format!("{reorder}{}", task.title), cols.title);
     spans.push(Span::styled(
         pad_to(&title, cols.title),
         if reorder.is_empty() {
@@ -314,10 +318,7 @@ fn task_row<'a>(
                 Style::default().fg(theme.comment)
             };
             let s = format!("({d}/{n})");
-            spans.push(Span::styled(
-                format!("{:>SUB_W$}", s),
-                sub_style,
-            ));
+            spans.push(Span::styled(format!("{:>SUB_W$}", s), sub_style));
         } else {
             spans.push(Span::raw(" ".repeat(SUB_W)));
         }
@@ -375,10 +376,7 @@ fn fit_tags<'a>(theme: &Theme, tags: &[String], budget: usize) -> (Vec<Span<'a>>
         }
         let rest_str = format!("+{rest}");
         used += rest_str.chars().count();
-        spans.push(Span::styled(
-            rest_str,
-            Style::default().fg(theme.comment),
-        ));
+        spans.push(Span::styled(rest_str, Style::default().fg(theme.comment)));
     }
     (spans, used)
 }
@@ -415,7 +413,7 @@ fn draw_subtasks_panel(f: &mut Frame, app: &App, area: Rect) {
     let t = &app.data.tasks[task_idx];
 
     let (done, total) = t.subtask_progress().unwrap_or((0, 0));
-    let sub_pct = if total > 0 { (done * 100) / total } else { 0 };
+    let sub_pct = (done * 100).checked_div(total).unwrap_or(0);
 
     let count_label = if total > 0 {
         format!("({done}/{total} · {sub_pct}%) ")
@@ -424,16 +422,24 @@ fn draw_subtasks_panel(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let title_style = if focused {
-        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.panel_border)
     };
 
-    let mut right_spans = vec![
-        Span::styled(count_label, Style::default().fg(if focused { theme.accent } else { theme.comment })),
-    ];
+    let mut right_spans = vec![Span::styled(
+        count_label,
+        Style::default().fg(if focused { theme.accent } else { theme.comment }),
+    )];
     if focused {
-        right_spans.push(Span::styled("[FOCUS]", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)));
+        right_spans.push(Span::styled(
+            "[FOCUS]",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ));
         right_spans.push(Span::raw(" "));
     }
 
@@ -455,7 +461,11 @@ fn draw_subtasks_panel(f: &mut Frame, app: &App, area: Rect) {
         const SUB_BAR_MAX: usize = 32;
         let bar_w = inner_w.saturating_sub(8).clamp(4, SUB_BAR_MAX);
         let ratio = done as f64 / total as f64;
-        let fill = if done == total { theme.success } else { theme.accent };
+        let fill = if done == total {
+            theme.success
+        } else {
+            theme.accent
+        };
         let mut sub_gauge = text_gauge(theme, ratio, bar_w, fill);
         sub_gauge.push(Span::styled(
             format!(" {:>3}%", sub_pct),
@@ -496,7 +506,9 @@ fn draw_subtasks_panel(f: &mut Frame, app: &App, area: Rect) {
 
             let marker = if on_cursor { "▸ " } else { "  " };
             let marker_style = if on_cursor {
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.dim)
             };
@@ -586,7 +598,9 @@ pub(crate) fn build_task_detail(app: &App, width: u16) -> Vec<Line<'_>> {
     lines.push(Line::from(vec![
         Span::styled(
             format!("{} ", priority_glyph(t.priority)),
-            Style::default().fg(priority_color(theme, t.priority)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(priority_color(theme, t.priority))
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             t.title.clone(),
@@ -797,7 +811,9 @@ fn draw_search_popup(f: &mut Frame, app: &App, area: Rect) {
         Paragraph::new(vec![
             Line::from(Span::styled(
                 "search tasks",
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             )),
             comment_line(theme, "matches title or tags"),
             Line::from(""),

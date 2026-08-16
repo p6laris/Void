@@ -475,27 +475,18 @@ fn cell_span(
         // Selected cell: exact same cell shape and size, highlighted with crisp bold text color
         return Span::styled(
             tile(glyph, stride),
-            Style::default()
-                .fg(theme.text)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         );
     }
 
     if flags.is_today {
-        let mut style = Style::default().fg(if mins == 0 {
-            theme.dim
-        } else {
-            color
-        });
+        let mut style = Style::default().fg(if mins == 0 { theme.dim } else { color });
         style = style.add_modifier(Modifier::BOLD);
         return Span::styled(tile(glyph, stride), style);
     }
 
     if mins == 0 {
-        return Span::styled(
-            tile(glyph, stride),
-            Style::default().fg(theme.task_track),
-        );
+        return Span::styled(tile(glyph, stride), Style::default().fg(theme.task_track));
     }
 
     Span::styled(tile(glyph, stride), Style::default().fg(color))
@@ -573,9 +564,7 @@ fn build_caption_row<'a>(theme: &Theme, grid: &GridData, cursor: Option<NaiveDat
             Span::raw(" ".repeat(LABEL_COL)),
             Span::styled(
                 format!("{} {} ", month_abbr(date.month()), date.day()),
-                Style::default()
-                    .fg(theme.text)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
             ),
             Span::styled(format!("· {detail}"), comment),
         ]);
@@ -696,7 +685,10 @@ mod tests {
     fn stride_stays_within_bounds() {
         for width in [10usize, 40, 80, 120, 200, 400, 5000] {
             let l = layout(width);
-            assert!((MIN_STRIDE..=MAX_STRIDE).contains(&l.stride), "width {width}");
+            assert!(
+                (MIN_STRIDE..=MAX_STRIDE).contains(&l.stride),
+                "width {width}"
+            );
         }
     }
 
@@ -714,7 +706,10 @@ mod tests {
                     l.stride
                 );
             }
-            assert!(l.grid_end() <= width, "width {width}: grid runs past the panel");
+            assert!(
+                l.grid_end() <= width,
+                "width {width}: grid runs past the panel"
+            );
         }
     }
 

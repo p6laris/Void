@@ -90,9 +90,21 @@ fn renders_grid_legend_and_caption() {
 
     // Month header, seven weekday rows, blank, legend, caption. Only Mon/Wed/Fri are
     // labelled — seven labels at full strength competed with the grid.
-    assert!(lines[1].starts_with("Mon"), "expected Mon row, got {:?}", lines[1]);
-    assert!(lines[3].starts_with("Wed"), "expected Wed row, got {:?}", lines[3]);
-    assert!(lines[5].starts_with("Fri"), "expected Fri row, got {:?}", lines[5]);
+    assert!(
+        lines[1].starts_with("Mon"),
+        "expected Mon row, got {:?}",
+        lines[1]
+    );
+    assert!(
+        lines[3].starts_with("Wed"),
+        "expected Wed row, got {:?}",
+        lines[3]
+    );
+    assert!(
+        lines[5].starts_with("Fri"),
+        "expected Fri row, got {:?}",
+        lines[5]
+    );
     for row in [2usize, 4, 6, 7] {
         assert!(
             lines[row].starts_with("    "),
@@ -101,11 +113,15 @@ fn renders_grid_legend_and_caption() {
         );
     }
     assert!(
-        lines.iter().any(|l| l.contains("less") && l.contains("more")),
+        lines
+            .iter()
+            .any(|l| l.contains("less") && l.contains("more")),
         "legend missing"
     );
     assert!(
-        lines.iter().any(|l| l.contains("days tracked") && l.contains("perfect")),
+        lines
+            .iter()
+            .any(|l| l.contains("days tracked") && l.contains("perfect")),
         "caption missing"
     );
 }
@@ -119,8 +135,10 @@ fn renders_grid_legend_and_caption() {
 fn today_is_marked_exactly_once() {
     let lines = render(150, 12);
     let icons = void::ui::IconSet::detect();
-    let grid: String = lines[1..8].join("
-");
+    let grid: String = lines[1..8].join(
+        "
+",
+    );
     assert!(
         grid.contains(icons.heat_today),
         "today marker {:?} not drawn",

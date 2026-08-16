@@ -25,25 +25,49 @@ pub(crate) fn draw_about(f: &mut Frame, app: &App, area: Rect) {
 
     let footer = if two_column {
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("{} h/l / Tab", icons.chevron), Style::default().bg(theme.bg).fg(theme.accent)),
-            Span::styled(" switch section  ", Style::default().bg(theme.bg).fg(theme.dim)),
-            Span::styled("j/k / Up/Down", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled(
+                format!("{} h/l / Tab", icons.chevron),
+                Style::default().bg(theme.bg).fg(theme.accent),
+            ),
+            Span::styled(
+                " switch section  ",
+                Style::default().bg(theme.bg).fg(theme.dim),
+            ),
+            Span::styled(
+                "j/k / Up/Down",
+                Style::default().bg(theme.bg).fg(theme.accent),
+            ),
             Span::styled(" scroll  ", Style::default().bg(theme.bg).fg(theme.dim)),
             Span::styled("1-6", Style::default().bg(theme.bg).fg(theme.accent)),
-            Span::styled(" switch tabs  ", Style::default().bg(theme.bg).fg(theme.dim)),
+            Span::styled(
+                " switch tabs  ",
+                Style::default().bg(theme.bg).fg(theme.dim),
+            ),
             Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
-            Span::styled(" return to dashboard", Style::default().bg(theme.bg).fg(theme.dim)),
+            Span::styled(
+                " return to dashboard",
+                Style::default().bg(theme.bg).fg(theme.dim),
+            ),
         ]))
         .style(Style::default().bg(theme.bg))
         .alignment(Alignment::Center)
     } else {
         Paragraph::new(Line::from(vec![
-            Span::styled(format!("{} j/k / Up/Down", icons.chevron), Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled(
+                format!("{} j/k / Up/Down", icons.chevron),
+                Style::default().bg(theme.bg).fg(theme.accent),
+            ),
             Span::styled(" scroll  ", Style::default().bg(theme.bg).fg(theme.dim)),
             Span::styled("Tab / 1-6", Style::default().bg(theme.bg).fg(theme.accent)),
-            Span::styled(" switch tabs  ", Style::default().bg(theme.bg).fg(theme.dim)),
+            Span::styled(
+                " switch tabs  ",
+                Style::default().bg(theme.bg).fg(theme.dim),
+            ),
             Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
-            Span::styled(" return to dashboard", Style::default().bg(theme.bg).fg(theme.dim)),
+            Span::styled(
+                " return to dashboard",
+                Style::default().bg(theme.bg).fg(theme.dim),
+            ),
         ]))
         .style(Style::default().bg(theme.bg))
         .alignment(Alignment::Center)
@@ -87,7 +111,10 @@ fn format_constellation_line<'a>(theme: &Theme, line: &'a str) -> Line<'a> {
         let ch_is_star = ch == '#' || ch == '+' || ch == '✦' || ch.is_alphabetic();
         if !current.is_empty() && ch_is_star != is_star {
             let style = if is_star {
-                Style::default().bg(theme.bg).fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .bg(theme.bg)
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().bg(theme.bg).fg(theme.dim)
             };
@@ -99,7 +126,10 @@ fn format_constellation_line<'a>(theme: &Theme, line: &'a str) -> Line<'a> {
     }
     if !current.is_empty() {
         let style = if is_star {
-            Style::default().bg(theme.bg).fg(theme.accent).add_modifier(Modifier::BOLD)
+            Style::default()
+                .bg(theme.bg)
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().bg(theme.bg).fg(theme.dim)
         };
@@ -114,18 +144,28 @@ fn draw_about_left(f: &mut Frame, app: &App, area: Rect) {
 
     let st_dim = Style::default().bg(theme.bg).fg(theme.dim);
     let st_text = Style::default().bg(theme.bg).fg(theme.text);
-    let st_bold = Style::default().bg(theme.bg).fg(theme.text).add_modifier(Modifier::BOLD);
-    let st_accent = Style::default().bg(theme.bg).fg(theme.accent).add_modifier(Modifier::BOLD);
+    let st_bold = Style::default()
+        .bg(theme.bg)
+        .fg(theme.text)
+        .add_modifier(Modifier::BOLD);
+    let st_accent = Style::default()
+        .bg(theme.bg)
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
     let st_focus = Style::default().bg(theme.bg).fg(theme.mode_focus);
     let st_success = Style::default().bg(theme.bg).fg(theme.success);
     let st_warn = Style::default().bg(theme.bg).fg(theme.warning);
 
+    let version_str = format!("v{}", env!("CARGO_PKG_VERSION"));
     let mut lines = vec![
         Line::from(vec![
             Span::styled(" 󰖔 Void ", st_accent),
-            Span::styled("v0.5.0-beta.2", st_focus),
+            Span::styled(version_str, st_focus),
         ]),
-        Line::from(Span::styled("  A distraction-free terminal sanctuary for deep focus.", st_dim)),
+        Line::from(Span::styled(
+            "  A distraction-free terminal sanctuary for deep focus.",
+            st_dim,
+        )),
         Line::from(Span::styled(" ", st_dim)),
         Line::from(vec![
             Span::styled("  [", st_dim),
@@ -150,26 +190,42 @@ fn draw_about_left(f: &mut Frame, app: &App, area: Rect) {
     lines.push(Line::from(Span::styled(" ", st_dim)));
     lines.push(Line::from(vec![
         Span::styled("  • Keyboard-Centric: ", st_bold),
-        Span::styled("Every action is controllable instantly without touching a mouse.", st_text),
+        Span::styled(
+            "Every action is controllable instantly without touching a mouse.",
+            st_text,
+        ),
     ]));
     lines.push(Line::from(Span::styled(" ", st_dim)));
     lines.push(Line::from(vec![
         Span::styled("  • Fluid Pomodoro: ", st_bold),
-        Span::styled("Effortlessly transition between deep focus and restorative breaks.", st_text),
+        Span::styled(
+            "Effortlessly transition between deep focus and restorative breaks.",
+            st_text,
+        ),
     ]));
     lines.push(Line::from(Span::styled(" ", st_dim)));
     lines.push(Line::from(vec![
         Span::styled("  • Absolute Privacy: ", st_bold),
-        Span::styled("Zero telemetry and zero cloud dependencies. Your data never leaves your machine.", st_text),
+        Span::styled(
+            "Zero telemetry and zero cloud dependencies. Your data never leaves your machine.",
+            st_text,
+        ),
     ]));
     lines.push(Line::from(Span::styled(" ", st_dim)));
     lines.push(Line::from(vec![
         Span::styled("  • Adaptive Themes: ", st_bold),
-        Span::styled("Auto-detects OS Light/Dark appearance and applies your preferred palette.", st_text),
+        Span::styled(
+            "Auto-detects OS Light/Dark appearance and applies your preferred palette.",
+            st_text,
+        ),
     ]));
 
     let is_focused = app.ui.about_active_column == 0;
-    let border_color = if is_focused { theme.accent } else { theme.panel_border };
+    let border_color = if is_focused {
+        theme.accent
+    } else {
+        theme.panel_border
+    };
     let block = Block::default()
         .title(Span::styled(
             format!(" {} Overview & Philosophy ", icons.about),
@@ -196,10 +252,19 @@ fn draw_about_right(f: &mut Frame, app: &App, area: Rect) {
 
     let st_dim = Style::default().bg(theme.bg).fg(theme.dim);
     let st_text = Style::default().bg(theme.bg).fg(theme.text);
-    let st_bold = Style::default().bg(theme.bg).fg(theme.text).add_modifier(Modifier::BOLD);
-    let st_accent = Style::default().bg(theme.bg).fg(theme.accent).add_modifier(Modifier::BOLD);
+    let st_bold = Style::default()
+        .bg(theme.bg)
+        .fg(theme.text)
+        .add_modifier(Modifier::BOLD);
+    let st_accent = Style::default()
+        .bg(theme.bg)
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
     let st_link = Style::default().bg(theme.bg).fg(theme.accent);
-    let st_focus = Style::default().bg(theme.bg).fg(theme.mode_focus).add_modifier(Modifier::BOLD);
+    let st_focus = Style::default()
+        .bg(theme.bg)
+        .fg(theme.mode_focus)
+        .add_modifier(Modifier::BOLD);
 
     let acks = [
         ("Ratatui", "Terminal UI & rendering engine"),
@@ -211,7 +276,10 @@ fn draw_about_right(f: &mut Frame, app: &App, area: Rect) {
     ];
 
     let mut lines = Vec::new();
-    lines.push(Line::from(Span::styled(" Open-Source Ecosystem", st_accent)));
+    lines.push(Line::from(Span::styled(
+        " Open-Source Ecosystem",
+        st_accent,
+    )));
     lines.push(Line::from(Span::styled(" ", st_dim)));
 
     for (name, desc) in acks {
@@ -241,7 +309,11 @@ fn draw_about_right(f: &mut Frame, app: &App, area: Rect) {
     ]));
 
     let is_focused = app.ui.about_active_column == 1;
-    let border_color = if is_focused { theme.accent } else { theme.panel_border };
+    let border_color = if is_focused {
+        theme.accent
+    } else {
+        theme.panel_border
+    };
     let block = Block::default()
         .title(Span::styled(
             format!(" {} Tech Stack & Credits ", icons.star),
@@ -268,17 +340,27 @@ fn draw_about_single(f: &mut Frame, app: &App, area: Rect) {
 
     let st_dim = Style::default().bg(theme.bg).fg(theme.dim);
     let st_text = Style::default().bg(theme.bg).fg(theme.text);
-    let st_bold = Style::default().bg(theme.bg).fg(theme.text).add_modifier(Modifier::BOLD);
-    let st_accent = Style::default().bg(theme.bg).fg(theme.accent).add_modifier(Modifier::BOLD);
+    let st_bold = Style::default()
+        .bg(theme.bg)
+        .fg(theme.text)
+        .add_modifier(Modifier::BOLD);
+    let st_accent = Style::default()
+        .bg(theme.bg)
+        .fg(theme.accent)
+        .add_modifier(Modifier::BOLD);
     let st_link = Style::default().bg(theme.bg).fg(theme.accent);
     let st_focus = Style::default().bg(theme.bg).fg(theme.mode_focus);
 
+    let version_str = format!("v{}", env!("CARGO_PKG_VERSION"));
     let mut lines = vec![
         Line::from(vec![
             Span::styled(" 󰖔 Void ", st_accent),
-            Span::styled("v0.5.0-beta.2", st_focus),
+            Span::styled(version_str, st_focus),
         ]),
-        Line::from(Span::styled("  A minimalist, keyboard-driven productivity sanctuary.", st_dim)),
+        Line::from(Span::styled(
+            "  A minimalist, keyboard-driven productivity sanctuary.",
+            st_dim,
+        )),
         Line::from(Span::styled(" ", st_dim)),
     ];
 
@@ -287,9 +369,18 @@ fn draw_about_single(f: &mut Frame, app: &App, area: Rect) {
     }
 
     lines.push(Line::from(Span::styled(" ", st_dim)));
-    lines.push(Line::from(Span::styled("  • 100% Offline with local SQLite storage", st_text)));
-    lines.push(Line::from(Span::styled("  • Fluid Pomodoro & task workflow", st_text)));
-    lines.push(Line::from(Span::styled("  • Adaptive OS Light/Dark theme detection", st_text)));
+    lines.push(Line::from(Span::styled(
+        "  • 100% Offline with local SQLite storage",
+        st_text,
+    )));
+    lines.push(Line::from(Span::styled(
+        "  • Fluid Pomodoro & task workflow",
+        st_text,
+    )));
+    lines.push(Line::from(Span::styled(
+        "  • Adaptive OS Light/Dark theme detection",
+        st_text,
+    )));
     lines.push(Line::from(Span::styled(" ", st_dim)));
     lines.push(Line::from(vec![
         Span::styled("  GitHub: ", st_bold),

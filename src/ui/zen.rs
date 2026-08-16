@@ -121,7 +121,11 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
         if !shown.is_empty() {
             overlay_lines.push(Line::from(""));
             overlay_lines.extend(super::widgets::subtask_inline_lines(
-                &shown, theme, icons, "", Some(text_cap),
+                &shown,
+                theme,
+                icons,
+                "",
+                Some(text_cap),
             ));
             if task.subtasks.len() > shown.len() {
                 overlay_lines.push(comment_line(

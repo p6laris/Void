@@ -253,7 +253,11 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 return Ok(true);
             }
 
-            let is_csv = path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("csv")).unwrap_or(false);
+            let is_csv = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("csv"))
+                .unwrap_or(false);
             if is_csv {
                 print!("Import sessions from CSV into your current database? (y/N): ");
                 if let Err(e) = std::io::stdout().flush() {
@@ -269,7 +273,10 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
 
                 let db = void::db::Database::open()?;
                 match db.import_csv(&path) {
-                    Ok(count) => println!("Successfully imported {count} session(s) from {}", path.display()),
+                    Ok(count) => println!(
+                        "Successfully imported {count} session(s) from {}",
+                        path.display()
+                    ),
                     Err(e) => eprintln!("CSV import failed: {e:#}"),
                 }
             } else {
@@ -319,7 +326,10 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
 
             let db = void::db::Database::open()?;
             match db.import_csv(&path) {
-                Ok(count) => println!("Successfully imported {count} session(s) from {}", path.display()),
+                Ok(count) => println!(
+                    "Successfully imported {count} session(s) from {}",
+                    path.display()
+                ),
                 Err(e) => eprintln!("CSV import failed: {e:#}"),
             }
             Ok(true)
