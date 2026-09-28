@@ -20,8 +20,10 @@ fn main() -> Result<()> {
 
     void::sound::init_audio();
 
-    let mut terminal = setup_terminal()?;
+    // Built first so a startup error can't leave the terminal in raw mode.
     let mut app = App::new()?;
+    let mut terminal = setup_terminal()?;
+    install_panic_hook();
     let res = run_app(&mut terminal, &mut app);
     restore_terminal(&mut terminal)?;
     if let Err(e) = res {
@@ -348,6 +350,20 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     )?;
     let backend = CrosstermBackend::new(stdout);
     Ok(Terminal::new(backend)?)
+}
+
+/// Restores the terminal before the default panic handler prints.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(
+            io::stdout(),
+            LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture
+        );
+        default_hook(info);
+    }));
 }
 
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
