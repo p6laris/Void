@@ -448,6 +448,7 @@ fn all_popups_render_cleanly_on_various_resolutions() {
         void::app::Popup::BulkConfirm(void::app::BulkAction::Delete),
         void::app::Popup::BulkConfirm(void::app::BulkAction::MarkDone),
         void::app::Popup::EmptyQueueChoice,
+        void::app::Popup::ConfirmQuit,
     ];
 
     for popup in popups {
@@ -469,6 +470,9 @@ fn all_popups_render_cleanly_on_various_resolutions() {
                     assert!(full.contains("Bulk Complete"))
                 }
                 void::app::Popup::EmptyQueueChoice => assert!(full.contains("Queue Cleared")),
+                void::app::Popup::ConfirmQuit => {
+                    assert!(full.contains("Quit Void") && full.contains("Discard"))
+                }
             }
         }
     }

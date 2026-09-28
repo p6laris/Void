@@ -184,6 +184,18 @@ impl Timer {
         self.state = crate::model::TimerState::Paused;
     }
 
+    /// Pauses at the last ticked position, counting `gap_secs` as pause time.
+    pub fn pause_after_gap(&mut self, gap_secs: u32) {
+        if self.state != crate::model::TimerState::Running {
+            return;
+        }
+        self.session_pause_count = self.session_pause_count.saturating_add(1);
+        self.session_pause_seconds = self.session_pause_seconds.saturating_add(gap_secs);
+        self.pause_started_at = Some(Instant::now());
+        self.started_at = None;
+        self.state = crate::model::TimerState::Paused;
+    }
+
     pub fn commit_pause_duration(&mut self) {
         if let Some(start) = self.pause_started_at.take() {
             self.session_pause_seconds = self

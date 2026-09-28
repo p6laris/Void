@@ -25,9 +25,9 @@ impl App {
             KeyCode::Char('q') if self.task_ui.bulk_mode && self.ui.tab == FocusTab::Tasks => {
                 self.toggle_bulk_mode();
             }
-            KeyCode::Char('q') => self.ui.should_quit = true,
-            KeyCode::Esc => self.ui.should_quit = true,
-            KeyCode::Char('c') if ctrl => self.ui.should_quit = true,
+            KeyCode::Char('q') => self.request_quit(),
+            KeyCode::Esc => self.request_quit(),
+            KeyCode::Char('c') if ctrl => self.force_quit(),
             KeyCode::Char('s') if ctrl => self.export_backup(),
             KeyCode::Char('e') if ctrl => self.export_sessions_csv(),
             KeyCode::Char('1') => self.ui.tab = FocusTab::Dashboard,
@@ -140,10 +140,7 @@ impl App {
                 }
             }
             KeyCode::Char('r') => self.reset_timer(),
-            KeyCode::Char('n') => {
-                self.timer.skip();
-                self.on_timer_finished(true);
-            }
+            KeyCode::Char('n') => self.skip_session(),
             KeyCode::Char('m') => self.cycle_mode(),
             KeyCode::Char('P') => self.cycle_timer_preset(),
             KeyCode::Char('+') | KeyCode::Char('=') => self.adjust_minutes(1),

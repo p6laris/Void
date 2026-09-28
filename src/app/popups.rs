@@ -99,7 +99,7 @@ impl App {
                 self.delete_task_confirmed(id);
                 self.close_popup();
             }
-            Some(Popup::EmptyQueueChoice) => {}
+            Some(Popup::EmptyQueueChoice) | Some(Popup::ConfirmQuit) => {}
             Some(Popup::AddSubtask(id)) => {
                 let title = self.input.input_buffer.trim().to_string();
                 if title.is_empty() {
@@ -191,6 +191,21 @@ impl App {
     }
 
     pub(crate) fn handle_popup_key(&mut self, key: KeyEvent) {
+        if matches!(self.input.popup, Some(Popup::ConfirmQuit)) {
+            match key.code {
+                KeyCode::Char('l') | KeyCode::Char('L') | KeyCode::Enter => {
+                    self.close_popup();
+                    self.force_quit();
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    self.close_popup();
+                    self.ui.should_quit = true;
+                }
+                KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => self.close_popup(),
+                _ => {}
+            }
+            return;
+        }
         if matches!(self.input.popup, Some(Popup::EmptyQueueChoice)) {
             match key.code {
                 KeyCode::Esc => self.close_popup(),

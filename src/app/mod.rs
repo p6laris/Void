@@ -65,6 +65,7 @@ pub enum Popup {
     EditTask(u64),
     ConfirmDelete(u64),
     EmptyQueueChoice,
+    ConfirmQuit,
     AddSubtask(u64),
     EditSubtask(u64, u64), // (task_id, subtask_id)
     BulkConfirm(BulkAction),
@@ -140,6 +141,7 @@ pub struct App {
     pub data_version: u64,
     pub end_warning_shown: bool,
     pub last_activity: Instant,
+    pub last_tick_wall: Option<std::time::SystemTime>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -401,6 +403,7 @@ impl App {
             data_version: 0,
             end_warning_shown: false,
             last_activity: Instant::now(),
+            last_tick_wall: None,
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();
@@ -668,13 +671,8 @@ impl App {
         self.data.long_break_every = self.timer.config.long_break_every;
     }
 
-    fn elapsed_minutes(&self, skipped: bool) -> u32 {
-        let secs = self.timer.current_elapsed_seconds();
-        if skipped {
-            secs.div_ceil(60).max(1)
-        } else {
-            (secs / 60).max(1)
-        }
+    fn elapsed_minutes(&self) -> u32 {
+        (self.timer.current_elapsed_seconds() / 60).max(1)
     }
 
     pub fn hint(&self) -> String {

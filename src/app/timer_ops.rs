@@ -1,7 +1,96 @@
 use super::*;
 use crate::model::TimerMode;
+use std::time::SystemTime;
+
+/// Focus time below this is discarded rather than logged as a session.
+const MIN_LOGGED_SECS: u32 = 60;
+
+/// A wall-clock gap between ticks longer than this is treated as system sleep.
+const SLEEP_GAP: Duration = Duration::from_secs(60);
 
 impl App {
+    /// True while a focus or custom session holds enough time to be worth logging.
+    pub(crate) fn has_loggable_focus(&self) -> bool {
+        matches!(self.timer.mode, TimerMode::Focus | TimerMode::Custom)
+            && matches!(self.timer.state, TimerState::Running | TimerState::Paused)
+            && self.timer.current_elapsed_seconds() >= MIN_LOGGED_SECS
+    }
+
+    /// Records the in-progress focus session and leaves the timer idle in Focus.
+    pub(crate) fn log_partial_focus(&mut self) -> u32 {
+        let mode = self.timer.mode;
+        let mins = self.elapsed_minutes();
+        let task_id = self.task_ui.active_task;
+        let meta = self.timer.session_meta();
+        self.persist_data(|db, data| {
+            storage::record_focus_session_with_meta(db, data, mins, task_id, mode, meta)
+        });
+        self.maybe_complete_task_estimate(task_id);
+        self.bump_data();
+        self.timer.configure(TimerMode::Focus);
+        self.timer.reset_session_pauses();
+        self.persist_timer_state();
+        mins
+    }
+
+    pub fn skip_session(&mut self) {
+        let in_progress = matches!(self.timer.state, TimerState::Running | TimerState::Paused);
+        match self.timer.mode {
+            TimerMode::Focus | TimerMode::Custom if !in_progress => {
+                self.set_status("Nothing to skip — start a session first.", false);
+            }
+            TimerMode::Focus | TimerMode::Custom if !self.has_loggable_focus() => {
+                self.timer.reset();
+                if self.timer.mode == TimerMode::Focus {
+                    self.advance_to_break();
+                } else {
+                    self.timer.configure(TimerMode::Focus);
+                }
+                self.set_status("Skipped — under a minute, not logged.", false);
+            }
+            TimerMode::ShortBreak | TimerMode::LongBreak if !in_progress => {
+                self.set_status("Break skipped.", false);
+                self.advance_to_focus();
+            }
+            _ => {
+                self.timer.skip();
+                self.on_timer_finished(true);
+            }
+        }
+    }
+
+    /// Asks before quitting when a session with loggable time is in progress.
+    pub fn request_quit(&mut self) {
+        if self.has_loggable_focus() {
+            self.input.popup = Some(Popup::ConfirmQuit);
+        } else {
+            self.ui.should_quit = true;
+        }
+    }
+
+    /// Ctrl-C quits immediately, but still saves a session worth logging.
+    pub fn force_quit(&mut self) {
+        if self.has_loggable_focus() {
+            self.log_partial_focus();
+        }
+        self.ui.should_quit = true;
+    }
+
+    /// Pauses at the last pre-sleep position when the wall clock jumps; call before `tick()`.
+    pub(crate) fn handle_wall_clock_gap(&mut self, now: SystemTime) {
+        let prev = self.last_tick_wall.replace(now);
+        let Some(gap) = prev.and_then(|p| now.duration_since(p).ok()) else {
+            return;
+        };
+        if gap > SLEEP_GAP && self.timer.state == TimerState::Running {
+            self.timer.pause_after_gap(gap.as_secs() as u32);
+            self.set_status(
+                format!("Paused — system was asleep for {} min.", gap.as_secs() / 60),
+                false,
+            );
+        }
+    }
+
     pub(crate) fn maybe_complete_task_estimate(&mut self, task_id: Option<u64>) {
         let Some(id) = task_id else {
             return;
@@ -42,9 +131,21 @@ impl App {
     }
 
     pub fn end_session(&mut self) {
-        if self.timer.state == TimerState::Running {
-            self.pause_timer();
-        }
+        let in_progress = matches!(self.timer.state, TimerState::Running | TimerState::Paused);
+        let logged = if self.has_loggable_focus() {
+            Some(self.log_partial_focus())
+        } else {
+            if in_progress {
+                self.timer.configure(TimerMode::Focus);
+                self.timer.reset_session_pauses();
+            }
+            None
+        };
+        let logged_note = match logged {
+            Some(mins) => format!("+{mins} min logged"),
+            None if in_progress => "under a minute, not logged".to_string(),
+            None => "nothing running".to_string(),
+        };
         let today = storage::today_focus_minutes(&self.data);
         let goal = self.data.daily_goal_minutes;
         let queue_note = if self.queue_empty() {
@@ -54,7 +155,7 @@ impl App {
         };
         self.set_status(
             format!(
-                "Session ended — today {}/{} min · goal streak {} days · {queue_note}",
+                "Session ended ({logged_note}) — today {}/{} min · goal streak {} days · {queue_note}",
                 today, goal, self.data.goal_streak_days
             ),
             false,
@@ -90,6 +191,7 @@ impl App {
         if !self.timer.is_one_minute_warning() {
             self.end_warning_shown = false;
         }
+        self.handle_wall_clock_gap(SystemTime::now());
         let just_finished = self.timer.tick();
         if just_finished {
             self.on_timer_finished(false);
@@ -105,7 +207,7 @@ impl App {
     pub(crate) fn on_timer_finished(&mut self, skipped: bool) {
         let mode = self.timer.mode;
         if mode == TimerMode::Focus {
-            let mins = self.elapsed_minutes(skipped);
+            let mins = self.elapsed_minutes();
             let task_id = self.task_ui.active_task;
             let meta = self.timer.session_meta();
             self.persist_data(|db, data| {
@@ -148,7 +250,7 @@ impl App {
             self.timer.reset_session_pauses();
             self.advance_to_break();
         } else if mode == TimerMode::Custom {
-            let mins = self.elapsed_minutes(skipped);
+            let mins = self.elapsed_minutes();
             let task_id = self.task_ui.active_task;
             let meta = self.timer.session_meta();
             self.persist_data(|db, data| {
@@ -167,7 +269,7 @@ impl App {
             self.timer.reset_session_pauses();
             self.persist_timer_state();
         } else {
-            let break_mins = self.elapsed_minutes(false);
+            let break_mins = self.elapsed_minutes();
             self.persist_data(|db, data| storage::record_break_session(db, data, mode, break_mins));
             if self.data.sound_enabled {
                 sound::play_break_complete();
@@ -362,6 +464,125 @@ impl App {
 mod tests {
     use super::*;
     use crate::db::Database;
+
+    fn app() -> App {
+        App::with_database(Database::open_in_memory().unwrap()).unwrap()
+    }
+
+    /// Puts a focus session `secs` in, paused so elapsed time is exact.
+    fn paused_focus(app: &mut App, secs: u32) {
+        app.timer.configure(TimerMode::Focus);
+        app.timer.elapsed_seconds = secs;
+        app.timer.state = TimerState::Paused;
+    }
+
+    #[test]
+    fn skip_on_an_idle_focus_timer_logs_nothing() {
+        let mut app = app();
+        app.skip_session();
+        assert_eq!(app.data.total_sessions, 0);
+        assert_eq!(app.data.streak_days, 0);
+        assert_eq!(app.timer.mode, TimerMode::Focus);
+    }
+
+    #[test]
+    fn skip_under_a_minute_moves_on_without_logging() {
+        let mut app = app();
+        paused_focus(&mut app, 30);
+        app.skip_session();
+        assert_eq!(app.data.total_sessions, 0);
+        assert_eq!(app.timer.mode, TimerMode::ShortBreak);
+    }
+
+    #[test]
+    fn skip_after_ten_minutes_logs_ten() {
+        let mut app = app();
+        paused_focus(&mut app, 10 * 60 + 40);
+        app.skip_session();
+        assert_eq!(app.data.total_sessions, 1);
+        assert_eq!(app.data.total_focus_minutes, 10);
+    }
+
+    #[test]
+    fn skipping_an_idle_break_returns_to_focus() {
+        let mut app = app();
+        app.timer.configure(TimerMode::ShortBreak);
+        app.skip_session();
+        assert_eq!(app.timer.mode, TimerMode::Focus);
+    }
+
+    #[test]
+    fn end_session_logs_the_partial_session_and_idles() {
+        let mut app = app();
+        paused_focus(&mut app, 12 * 60);
+        app.end_session();
+        assert_eq!(app.data.total_sessions, 1);
+        assert_eq!(app.data.total_focus_minutes, 12);
+        assert_eq!(app.timer.state, TimerState::Idle);
+        assert_eq!(app.timer.mode, TimerMode::Focus);
+    }
+
+    #[test]
+    fn end_session_under_a_minute_discards() {
+        let mut app = app();
+        paused_focus(&mut app, 20);
+        app.end_session();
+        assert_eq!(app.data.total_sessions, 0);
+        assert_eq!(app.timer.state, TimerState::Idle);
+    }
+
+    #[test]
+    fn quitting_mid_session_asks_first() {
+        let mut app = app();
+        paused_focus(&mut app, 5 * 60);
+        app.request_quit();
+        assert!(!app.ui.should_quit);
+        assert!(matches!(app.input.popup, Some(Popup::ConfirmQuit)));
+    }
+
+    #[test]
+    fn quitting_with_nothing_to_log_is_immediate() {
+        let mut app = app();
+        app.request_quit();
+        assert!(app.ui.should_quit);
+        assert!(app.input.popup.is_none());
+    }
+
+    #[test]
+    fn force_quit_saves_the_session() {
+        let mut app = app();
+        paused_focus(&mut app, 8 * 60);
+        app.force_quit();
+        assert!(app.ui.should_quit);
+        assert_eq!(app.data.total_focus_minutes, 8);
+    }
+
+    #[test]
+    fn a_wall_clock_jump_pauses_without_crediting_the_gap() {
+        let mut app = app();
+        app.timer.configure(TimerMode::Focus);
+        app.timer.start();
+        app.timer.elapsed_seconds = 300;
+        let now = SystemTime::now();
+        app.last_tick_wall = Some(now - Duration::from_secs(2 * 3600));
+
+        app.handle_wall_clock_gap(now);
+
+        assert_eq!(app.timer.state, TimerState::Paused);
+        assert_eq!(app.timer.elapsed_seconds, 300);
+        assert!(app.timer.session_pause_seconds >= 2 * 3600);
+    }
+
+    #[test]
+    fn a_normal_tick_interval_does_not_pause() {
+        let mut app = app();
+        app.timer.configure(TimerMode::Focus);
+        app.timer.start();
+        let now = SystemTime::now();
+        app.last_tick_wall = Some(now - Duration::from_millis(150));
+        app.handle_wall_clock_gap(now);
+        assert_eq!(app.timer.state, TimerState::Running);
+    }
 
     #[test]
     fn on_tick_resets_metrics_and_marks_dirty_on_midnight_rollover() {
