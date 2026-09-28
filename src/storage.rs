@@ -392,11 +392,26 @@ pub fn record_focus_session_with_meta(
 ) -> Result<()> {
     ensure_today_reset(db, data)?;
     let mins = minutes.max(1);
+    let today = crate::date::today_str();
+
+    // Insert first so a failed write leaves counters and streaks untouched.
+    let record = FocusSessionRecord {
+        date: today.clone(),
+        minutes: mins,
+        task_id,
+        mode,
+        completed_at: Utc::now(),
+        note: meta.note,
+        tags: meta.tags,
+        pause_count: meta.pause_count,
+        pause_seconds: meta.pause_seconds,
+    };
+    db.insert_focus_session(&record)?;
+
     data.total_focus_minutes = data.total_focus_minutes.saturating_add(mins);
     data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
     data.total_sessions = data.total_sessions.saturating_add(1);
 
-    let today = crate::date::today_str();
     match &data.last_session_date {
         Some(last) if last == &today => {}
         Some(last) => {
@@ -437,18 +452,6 @@ pub fn record_focus_session_with_meta(
     data.last_session_date = Some(today.clone());
     data.today_date = Some(today.clone());
 
-    let record = FocusSessionRecord {
-        date: today.clone(),
-        minutes: mins,
-        task_id,
-        mode,
-        completed_at: Utc::now(),
-        note: meta.note,
-        tags: meta.tags,
-        pause_count: meta.pause_count,
-        pause_seconds: meta.pause_seconds,
-    };
-    db.insert_focus_session(&record)?;
     update_goal_streak(data)?;
     update_period_streaks(data, &today)?;
     db.persist_session_stats(data)?;
@@ -1058,6 +1061,27 @@ mod tests {
         assert_eq!(sorted.len(), 2);
         assert_eq!(sorted[0].id, 2); // High priority first
         assert_eq!(sorted[1].id, 1);
+    }
+
+    #[test]
+    fn a_failed_session_insert_leaves_data_unchanged() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let before = data.total_sessions;
+
+        let err = record_focus_session_with_meta(
+            &db,
+            &mut data,
+            25,
+            Some(999), // no such task
+            TimerMode::Focus,
+            SessionMeta::default(),
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().to_lowercase().contains("foreign key"));
+        assert_eq!(data.total_sessions, before);
+        assert_eq!(data.today_focus_minutes, 0);
     }
 
     #[test]

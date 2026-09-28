@@ -150,6 +150,9 @@ impl App {
                 };
                 match result {
                     Ok(n) => {
+                        if self.task_ui.active_task.is_some_and(|id| ids.contains(&id)) {
+                            self.set_active_task(None);
+                        }
                         self.task_ui.bulk_selected.clear();
                         self.task_ui.bulk_mode = false;
                         self.bump_tasks();
@@ -403,5 +406,63 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use crate::storage;
+
+    fn app_with_one_task() -> (App, u64) {
+        let db = Database::open_in_memory().unwrap();
+        let mut app = App::with_database(db).unwrap();
+        let id = storage::add_task_full(
+            &app.db,
+            &mut app.data,
+            storage::TaskPayload {
+                title: "Bulk me".into(),
+                notes: String::new(),
+                estimated_minutes: 25,
+                priority: Priority::Medium,
+                tags: Vec::new(),
+                due_date: None,
+            },
+        )
+        .unwrap();
+        app.recompute_task_caches();
+        app.set_active_task(Some(id));
+        (app, id)
+    }
+
+    #[test]
+    fn bulk_delete_of_the_active_task_clears_it() {
+        let (mut app, id) = app_with_one_task();
+        assert_eq!(app.task_ui.active_task, Some(id));
+
+        app.task_ui.bulk_mode = true;
+        app.task_ui.bulk_selected.insert(id);
+        app.input.popup = Some(Popup::BulkConfirm(BulkAction::Delete));
+        app.submit_popup();
+
+        assert_eq!(
+            app.task_ui.active_task, None,
+            "a deleted task must not stay active"
+        );
+    }
+
+    #[test]
+    fn bulk_mark_done_of_the_active_task_clears_it() {
+        let (mut app, id) = app_with_one_task();
+        app.task_ui.bulk_mode = true;
+        app.task_ui.bulk_selected.insert(id);
+        app.input.popup = Some(Popup::BulkConfirm(BulkAction::MarkDone));
+        app.submit_popup();
+
+        assert_eq!(
+            app.task_ui.active_task, None,
+            "a completed task must not stay active"
+        );
     }
 }
