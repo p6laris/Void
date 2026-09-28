@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{Datelike, NaiveDate, Utc, Weekday};
 
 use crate::db::Database;
@@ -188,7 +188,8 @@ pub fn promote_task_on_activate(db: &Database, data: &mut AppData, id: u64) -> R
 
 pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
     let (recurrence, title, notes, priority, tags, due_date, estimated, subtasks, blocked_by) = {
-        let Some(t) = data.task(id) else {
+        // Already-done tasks are left alone so a recurrence never spawns twice.
+        let Some(t) = data.task(id).filter(|t| t.status != TaskStatus::Done) else {
             return Ok(());
         };
         (
@@ -296,20 +297,21 @@ fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<St
 }
 
 pub fn cycle_task_status(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.task_mut(id) {
-        match t.status {
-            TaskStatus::Pending => t.status = TaskStatus::InProgress,
-            TaskStatus::InProgress => {
-                t.status = TaskStatus::Done;
-                t.completed_at = Some(Utc::now());
-            }
-            TaskStatus::Done => {
-                t.status = TaskStatus::Pending;
-                t.completed_at = None;
-            }
+    let Some(t) = data.task_mut(id) else {
+        return Ok(());
+    };
+    match t.status {
+        TaskStatus::Pending => t.status = TaskStatus::InProgress,
+        TaskStatus::InProgress => return mark_task_done(db, data, id),
+        TaskStatus::Done if t.recurrence != TaskRecurrence::None => {
+            bail!("recurring task already has a next occurrence; reopen that one instead")
         }
-        db.upsert_task(t)?;
+        TaskStatus::Done => {
+            t.status = TaskStatus::Pending;
+            t.completed_at = None;
+        }
     }
+    db.upsert_task(t)?;
     Ok(())
 }
 
@@ -344,32 +346,25 @@ pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Resu
     Ok(())
 }
 
+/// First unblocked task in the same order the "up next" list shows.
 pub fn pick_best_task(data: &AppData) -> Option<u64> {
-    data.tasks
-        .values()
-        .filter(|t| t.is_open())
-        .max_by(|a, b| {
-            a.priority
-                .rank()
-                .cmp(&b.priority.rank())
-                .then(b.today.cmp(&a.today))
-                .then(a.sort_order.cmp(&b.sort_order))
-        })
+    sorted_pending_tasks(data)
+        .into_iter()
+        .find(|t| !t.is_blocked(&data.tasks))
         .map(|t| t.id)
 }
 
+/// The unblocked task after `current` in "up next" order, wrapping around.
 pub fn advance_to_next_task(data: &AppData, current: Option<u64>) -> Option<u64> {
-    let pending: Vec<&Task> = pending_tasks(data).collect();
-    if pending.is_empty() {
-        return None;
+    let ready: Vec<u64> = sorted_pending_tasks(data)
+        .into_iter()
+        .filter(|t| !t.is_blocked(&data.tasks))
+        .map(|t| t.id)
+        .collect();
+    if let Some(pos) = current.and_then(|cur| ready.iter().position(|&id| id == cur)) {
+        return ready.get(pos + 1).or(ready.first()).copied();
     }
-    if let Some(cur) = current {
-        if let Some(pos) = pending.iter().position(|t| t.id == cur) {
-            let next = (pos + 1) % pending.len();
-            return Some(pending[next].id);
-        }
-    }
-    pick_best_task(data)
+    ready.first().copied()
 }
 
 pub fn record_focus_session(
@@ -1061,6 +1056,83 @@ mod tests {
         assert_eq!(sorted.len(), 2);
         assert_eq!(sorted[0].id, 2); // High priority first
         assert_eq!(sorted[1].id, 1);
+    }
+
+    fn daily_task(db: &Database, data: &mut AppData) -> u64 {
+        let id = add_task_full(
+            db,
+            data,
+            TaskPayload {
+                title: "Stretch".into(),
+                notes: String::new(),
+                estimated_minutes: 25,
+                priority: Priority::Medium,
+                tags: Vec::new(),
+                due_date: None,
+            },
+        )
+        .unwrap();
+        data.task_mut(id).unwrap().recurrence = TaskRecurrence::Daily;
+        id
+    }
+
+    #[test]
+    fn completing_a_recurring_task_via_status_cycle_spawns_the_next() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+
+        cycle_task_status(&db, &mut data, id).unwrap(); // -> in progress
+        cycle_task_status(&db, &mut data, id).unwrap(); // -> done
+
+        assert_eq!(data.tasks.len(), 2);
+        let next = data.tasks.values().find(|t| t.id != id).unwrap();
+        assert_eq!(next.status, TaskStatus::Pending);
+        let tomorrow =
+            crate::date::format_date(crate::date::today_naive() + chrono::Duration::days(1));
+        assert_eq!(next.due_date.as_deref(), Some(tomorrow.as_str()));
+    }
+
+    #[test]
+    fn marking_a_recurring_task_done_twice_spawns_once() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+
+        mark_task_done(&db, &mut data, id).unwrap();
+        mark_task_done(&db, &mut data, id).unwrap();
+
+        assert_eq!(data.tasks.len(), 2);
+    }
+
+    #[test]
+    fn reopening_a_done_recurring_task_is_refused() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        mark_task_done(&db, &mut data, id).unwrap();
+
+        assert!(cycle_task_status(&db, &mut data, id).is_err());
+        assert_eq!(data.task(id).unwrap().status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn pick_best_task_follows_the_up_next_order_and_skips_blocked() {
+        let mut data = AppData::default();
+        let first = Task::new(1, "First in list".into());
+        let mut today = Task::new(2, "Flagged today".into());
+        today.today = true;
+        let mut blocked = Task::new(3, "Blocked high".into());
+        blocked.priority = Priority::High;
+        blocked.blocked_by = vec![1];
+        for t in [first, today, blocked] {
+            data.tasks.insert(t.id, t);
+        }
+
+        // Same priority: the task flagged for today wins; the blocked one is skipped.
+        assert_eq!(pick_best_task(&data), Some(2));
+        assert_eq!(advance_to_next_task(&data, Some(2)), Some(1));
+        assert_eq!(advance_to_next_task(&data, Some(1)), Some(2));
     }
 
     #[test]

@@ -220,6 +220,14 @@ impl App {
     }
 
     pub fn cycle_task_status_for(&mut self, id: u64, set_active: bool) {
+        let done_recurring = self.data.task(id).is_some_and(|t| {
+            t.status == crate::model::TaskStatus::Done
+                && t.recurrence != crate::model::TaskRecurrence::None
+        });
+        if done_recurring {
+            self.set_status("Recurring task — reopen its next occurrence instead.", true);
+            return;
+        }
         if set_active {
             self.set_active_task(Some(id));
         }
@@ -278,6 +286,15 @@ impl App {
 
     pub(crate) fn maybe_advance_task(&mut self) {
         if !self.data.auto_advance_task {
+            return;
+        }
+        // Stay on a task until it's done or its estimate is used up.
+        let keep_current = self
+            .task_ui
+            .active_task
+            .and_then(|id| self.data.task(id))
+            .is_some_and(|t| t.is_open() && t.actual_minutes < t.estimated_minutes);
+        if keep_current {
             return;
         }
         let next = storage::advance_to_next_task(&self.data, self.task_ui.active_task);
@@ -549,5 +566,48 @@ impl App {
         self.input.input_buffer = sub.title.clone();
         self.input.popup = Some(Popup::EditSubtask(task_id, sub.id));
         self.input.input_mode = InputMode::Editing;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn app() -> App {
+        App::with_database(Database::open_in_memory().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn auto_advance_stays_on_a_task_until_its_estimate_is_used() {
+        let mut app = app();
+        app.data.auto_advance_task = true;
+        let mut ids = Vec::new();
+        for title in ["Long task", "Next task"] {
+            ids.push(
+                storage::add_task_full(
+                    &app.db,
+                    &mut app.data,
+                    storage::TaskPayload {
+                        title: title.into(),
+                        notes: String::new(),
+                        estimated_minutes: 100,
+                        priority: crate::model::Priority::Medium,
+                        tags: Vec::new(),
+                        due_date: None,
+                    },
+                )
+                .unwrap(),
+            );
+        }
+        app.set_active_task(Some(ids[0]));
+
+        app.data.task_mut(ids[0]).unwrap().actual_minutes = 25;
+        app.maybe_advance_task();
+        assert_eq!(app.task_ui.active_task, Some(ids[0]));
+
+        app.data.task_mut(ids[0]).unwrap().actual_minutes = 100;
+        app.maybe_advance_task();
+        assert_eq!(app.task_ui.active_task, Some(ids[1]));
     }
 }
