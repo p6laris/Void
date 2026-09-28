@@ -16,7 +16,7 @@ use rusqlite::{params, Connection};
 
 use crate::model::{
     AppData, EmptyQueueBehavior, EstimateCompleteBehavior, FocusSessionRecord, Priority,
-    StoredSession, Subtask, Task, TaskRecurrence, TaskStatus, TimerMode,
+    StoredSession, Subtask, Task, TaskRecurrence, TaskStatus, ThemeMode, TimerMode,
 };
 use crate::theme;
 
@@ -39,6 +39,7 @@ impl Database {
 
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         schema::migrate(&conn)?;
         Ok(Self { conn })
     }
@@ -47,6 +48,18 @@ impl Database {
         let mut data = AppData::default();
         load_settings(&self.conn, &mut data)?;
         data.tasks = load_tasks(&self.conn)?;
+
+        // A stale or imported `next_id` could otherwise collide with an existing id.
+        let max_task_id = data.tasks.keys().copied().max().unwrap_or(0);
+        let max_subtask_id = data
+            .tasks
+            .values()
+            .flat_map(|t| t.subtasks.iter())
+            .map(|s| s.id)
+            .max()
+            .unwrap_or(0);
+        data.next_id = data.next_id.max(max_task_id + 1).max(max_subtask_id + 1);
+
         Ok(data)
     }
 
@@ -334,6 +347,10 @@ impl Database {
         import_export::export_json(&self.conn)
     }
 
+    pub fn export_json_to(&self, path: &std::path::Path) -> Result<()> {
+        import_export::export_json_to(&self.conn, path)
+    }
+
     pub fn export_csv(&self) -> Result<PathBuf> {
         import_export::export_csv(&self.conn)
     }
@@ -535,6 +552,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
     let long_break_minutes = data.long_break_minutes.to_string();
     let long_break_every = data.long_break_every.to_string();
     let theme = data.theme.clone();
+    let theme_mode = encode_theme_mode(data.theme_mode);
+    let dark_theme = data.dark_theme.clone();
+    let light_theme = data.light_theme.clone();
     let active_task_id = data
         .active_task_id
         .map(|id| id.to_string())
@@ -577,6 +597,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ("auto_pick_task", bool_str(data.auto_pick_task)),
         ("auto_advance_task", bool_str(data.auto_advance_task)),
         ("theme", &theme),
+        ("theme_mode", theme_mode),
+        ("dark_theme", &dark_theme),
+        ("light_theme", &light_theme),
         ("active_task_id", &active_task_id),
         ("notify_on_finish", bool_str(data.notify_on_finish)),
         ("goal_streak_days", &goal_streak_days),
@@ -647,6 +670,17 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
         "auto_advance_task" => data.auto_advance_task = parse_bool(value, data.auto_advance_task),
         "theme" if !value.is_empty() => {
             data.theme = theme::normalize_theme_id(value);
+        }
+        "theme_mode" => {
+            if let Some(mode) = decode_theme_mode(value) {
+                data.theme_mode = mode;
+            }
+        }
+        "dark_theme" if !value.is_empty() => {
+            data.dark_theme = theme::normalize_theme_id(value);
+        }
+        "light_theme" if !value.is_empty() => {
+            data.light_theme = theme::normalize_theme_id(value);
         }
         "active_task_id" => data.active_task_id = value.parse().ok(),
         "notify_on_finish" => data.notify_on_finish = parse_bool(value, data.notify_on_finish),
@@ -808,13 +842,23 @@ fn sync_tasks(conn: &Connection, tasks: &IndexMap<u64, Task>) -> Result<()> {
     conn.execute("DELETE FROM task_blocked_by", [])?;
     conn.execute("DELETE FROM subtasks", [])?;
     conn.execute("DELETE FROM tasks", [])?;
+    // Insert every task before any `blocked_by` row can reference it.
     for task in tasks.values() {
-        upsert_task_row(conn, task)?;
+        upsert_task_core(conn, task)?;
+    }
+    for task in tasks.values() {
+        upsert_task_blocked_by(conn, task)?;
     }
     Ok(())
 }
 
 fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
+    upsert_task_core(conn, task)?;
+    upsert_task_blocked_by(conn, task)?;
+    Ok(())
+}
+
+fn upsert_task_core(conn: &Connection, task: &Task) -> Result<()> {
     conn.execute(
         "INSERT INTO tasks (
             id, title, notes, priority, status, estimated_minutes, actual_minutes,
@@ -880,6 +924,10 @@ fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
             ],
         )?;
     }
+    Ok(())
+}
+
+fn upsert_task_blocked_by(conn: &Connection, task: &Task) -> Result<()> {
     conn.execute(
         "DELETE FROM task_blocked_by WHERE task_id = ?1",
         params![task.id as i64],
@@ -993,6 +1041,23 @@ fn decode_task_status(s: &str) -> TaskStatus {
     }
 }
 
+fn encode_theme_mode(m: ThemeMode) -> &'static str {
+    match m {
+        ThemeMode::Auto => "auto",
+        ThemeMode::Dark => "dark",
+        ThemeMode::Light => "light",
+    }
+}
+
+fn decode_theme_mode(s: &str) -> Option<ThemeMode> {
+    Some(match s {
+        "dark" => ThemeMode::Dark,
+        "light" => ThemeMode::Light,
+        "auto" => ThemeMode::Auto,
+        _ => return None,
+    })
+}
+
 fn encode_empty_queue(b: EmptyQueueBehavior) -> &'static str {
     match b {
         EmptyQueueBehavior::FreeFocus => "free-focus",
@@ -1096,6 +1161,41 @@ mod tests {
         let db = Database::open_in_memory().expect("failed to open in memory db");
         let data = db.load_app_data().expect("failed to load app data");
         assert_eq!(data.tasks.len(), 0);
+    }
+
+    #[test]
+    fn load_app_data_reconciles_next_id_above_existing_tasks() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        for id in 1..=3u64 {
+            data.tasks.insert(id, Task::new(id, format!("Task {id}")));
+        }
+        // A stale/imported counter that undercounts what's already in use.
+        data.next_id = 1;
+        db.save_app_data(&data).unwrap();
+
+        let loaded = db.load_app_data().unwrap();
+        assert_eq!(
+            loaded.next_id, 4,
+            "next_id must clear every existing task id"
+        );
+    }
+
+    #[test]
+    fn theme_preferences_round_trip() {
+        let db = Database::open_in_memory().unwrap();
+        let data = AppData {
+            theme_mode: ThemeMode::Dark,
+            dark_theme: "matrix".into(),
+            light_theme: "light".into(),
+            ..Default::default()
+        };
+        db.save_app_data(&data).unwrap();
+
+        let loaded = db.load_app_data().unwrap();
+        assert_eq!(loaded.theme_mode, ThemeMode::Dark);
+        assert_eq!(loaded.dark_theme, "matrix");
+        assert_eq!(loaded.light_theme, "light");
     }
 
     #[test]

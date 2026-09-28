@@ -246,7 +246,7 @@ impl App {
     /// Builds an app around an already-open database, so tests can drive the full UI
     /// against an in-memory database instead of the user's real data directory.
     pub fn with_database(db: Database) -> Result<Self> {
-        let mut data = db.load_app_data().unwrap_or_default();
+        let mut data = db.load_app_data()?;
         let _ = storage::ensure_today_reset(&db, &mut data);
         let config = TimerConfig::from_app_data(&data);
         let mut timer = Timer::new(config);

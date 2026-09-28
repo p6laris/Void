@@ -86,7 +86,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             }
 
             let db = void::db::Database::open()?;
-            let mut data = db.load_app_data().unwrap_or_default();
+            let mut data = db.load_app_data()?;
             let id = void::storage::add_task_full(
                 &db,
                 &mut data,
@@ -104,7 +104,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
         }
         "list" => {
             let db = void::db::Database::open()?;
-            let data = db.load_app_data().unwrap_or_default();
+            let data = db.load_app_data()?;
             let pending = void::storage::sorted_pending_tasks(&data);
             if pending.is_empty() {
                 println!("No pending tasks. You're all caught up!");
@@ -136,7 +136,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 return Ok(true);
             };
             let db = void::db::Database::open()?;
-            let mut data = db.load_app_data().unwrap_or_default();
+            let mut data = db.load_app_data()?;
 
             if data.task(id).is_some() {
                 void::storage::mark_task_done(&db, &mut data, id)?;
@@ -155,7 +155,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 return Ok(true);
             };
             let db = void::db::Database::open()?;
-            let mut data = db.load_app_data().unwrap_or_default();
+            let mut data = db.load_app_data()?;
 
             if data
                 .tasks
@@ -193,7 +193,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
                 return Ok(true);
             }
             let db = void::db::Database::open()?;
-            let data = db.load_app_data().unwrap_or_default();
+            let data = db.load_app_data()?;
             let archived: Vec<_> = void::storage::archived_tasks(&data).collect();
             if archived.is_empty() {
                 println!("No archived tasks.");
@@ -220,9 +220,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
             } else {
                 let path = if args.len() >= 3 {
                     let dest = std::path::PathBuf::from(&args[2]);
-                    let data = db.load_app_data().unwrap_or_default();
-                    let raw = serde_json::to_string_pretty(&data)?;
-                    std::fs::write(&dest, raw)?;
+                    db.export_json_to(&dest)?;
                     dest
                 } else {
                     db.export_json()?

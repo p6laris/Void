@@ -28,6 +28,13 @@ struct ImportSnapshot {
 }
 
 pub fn export_json(conn: &Connection) -> Result<PathBuf> {
+    let path = data_dir()?.join("data.json");
+    export_json_to(conn, &path)?;
+    Ok(path)
+}
+
+/// Writes a full backup (settings, tasks and session history) to `path`.
+pub fn export_json_to(conn: &Connection, path: &std::path::Path) -> Result<()> {
     let mut data = AppData::default();
     load_settings(conn, &mut data)?;
     data.tasks = load_tasks(conn)?;
@@ -36,12 +43,13 @@ pub fn export_json(conn: &Connection) -> Result<PathBuf> {
         session_history: load_all_sessions(conn)?,
     };
 
-    let path = data_dir()?.join("data.json");
     let raw = serde_json::to_string_pretty(&snapshot).context("serializing export")?;
-    let tmp = path.with_extension("json.tmp");
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
     fs::write(&tmp, &raw).context("writing export temp file")?;
-    fs::rename(&tmp, &path).context("finalizing export")?;
-    Ok(path)
+    fs::rename(&tmp, path).context("finalizing export")?;
+    Ok(())
 }
 
 /// Exports the session history as CSV, for spreadsheets and external analysis.
@@ -110,7 +118,14 @@ pub fn import_json(conn: &Connection, path: &std::path::Path) -> Result<()> {
 
     conn.execute("DELETE FROM focus_sessions", [])?;
     for record in &snapshot.session_history {
-        insert_focus_session_conn(conn, record)?;
+        // Drop links to tasks missing from the export instead of failing the import.
+        let mut record = record.clone();
+        if let Some(id) = record.task_id {
+            if !snapshot.data.tasks.contains_key(&id) {
+                record.task_id = None;
+            }
+        }
+        insert_focus_session_conn(conn, &record)?;
     }
     super::schema::optimize(conn).context("optimizing database after import")?;
     Ok(())
@@ -341,12 +356,89 @@ mod tests {
     use chrono::Utc;
 
     use crate::db::schema;
-    use crate::model::{AppData, TimerMode};
+    use crate::model::{AppData, Task, TimerMode};
 
     fn mem_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
         schema::migrate(&conn).unwrap();
         conn
+    }
+
+    #[test]
+    fn export_to_path_round_trips_sessions() {
+        let conn = mem_conn();
+        insert_focus_session_conn(
+            &conn,
+            &FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let path = std::env::temp_dir().join(format!("void-export-{}.json", std::process::id()));
+        export_json_to(&conn, &path).unwrap();
+
+        let fresh = mem_conn();
+        import_json(&fresh, &path).unwrap();
+        let _ = fs::remove_file(&path);
+        let n: i64 = fresh
+            .query_row("SELECT COUNT(*) FROM focus_sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "path export must carry session history");
+    }
+
+    #[test]
+    fn import_accepts_a_forward_referencing_blocker() {
+        let conn = mem_conn();
+        // Task 1 (lower id, inserted first) is blocked by task 2.
+        let mut blocked = Task::new(1, "First".into());
+        blocked.blocked_by = vec![2];
+        let blocker = Task::new(2, "Second".into());
+        let mut tasks = indexmap::IndexMap::new();
+        tasks.insert(1, blocked);
+        tasks.insert(2, blocker);
+
+        super::super::sync_tasks(&conn, &tasks).expect("forward-referencing blocker");
+
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM task_blocked_by WHERE task_id = 1 AND blocker_id = 2",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn import_json_drops_a_session_pointing_at_a_missing_task() {
+        let conn = mem_conn();
+        let mut data = AppData::default();
+        data.tasks.insert(1, Task::new(1, "Kept".into()));
+        let snapshot = ExportSnapshot {
+            data: &data,
+            session_history: vec![FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                task_id: Some(99), // not in `data.tasks`
+                completed_at: Utc::now(),
+                ..Default::default()
+            }],
+        };
+        let path = std::env::temp_dir().join(format!("void-dangling-{}.json", std::process::id()));
+        fs::write(&path, serde_json::to_string(&snapshot).unwrap()).unwrap();
+
+        import_json(&conn, &path).expect("a dangling session task_id must not fail the import");
+        let _ = fs::remove_file(&path);
+
+        let task_id: Option<i64> = conn
+            .query_row("SELECT task_id FROM focus_sessions LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(task_id, None);
     }
 
     #[test]
