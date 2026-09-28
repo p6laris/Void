@@ -67,47 +67,100 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// True if `table` already has a column named `column`.
+fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get(1)?;
+        if name == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn migrate_v2(conn: &Connection) -> Result<()> {
     const TARGET_VERSION: i32 = 2;
     let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version >= TARGET_VERSION {
+        return Ok(());
+    }
 
-    if version < TARGET_VERSION {
-        conn.execute_batch(
-            "
-            ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
-            ALTER TABLE tasks ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'none';
+    // One transaction, so a crash can't leave the schema half-migrated.
+    let tx = conn.unchecked_transaction()?;
 
-            CREATE TABLE IF NOT EXISTS subtasks (
-                id      INTEGER PRIMARY KEY,
-                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                title   TEXT NOT NULL,
-                done    INTEGER NOT NULL DEFAULT 0,
-                sort_order INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE TABLE IF NOT EXISTS task_blocked_by (
-                task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                blocker_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                PRIMARY KEY (task_id, blocker_id)
-            );
-
-            ALTER TABLE focus_sessions ADD COLUMN note TEXT NOT NULL DEFAULT '';
-            ALTER TABLE focus_sessions ADD COLUMN pause_count INTEGER NOT NULL DEFAULT 0;
-            ALTER TABLE focus_sessions ADD COLUMN pause_seconds INTEGER NOT NULL DEFAULT 0;
-
-            CREATE TABLE IF NOT EXISTS session_tags (
-                session_id INTEGER NOT NULL REFERENCES focus_sessions(id) ON DELETE CASCADE,
-                tag        TEXT NOT NULL,
-                PRIMARY KEY (session_id, tag)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived);
-            CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);
-
-            PRAGMA user_version = 2;
-            ",
+    if !column_exists(&tx, "tasks", "archived")? {
+        tx.execute_batch("ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")?;
+    }
+    if !column_exists(&tx, "tasks", "recurrence")? {
+        tx.execute_batch("ALTER TABLE tasks ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'none';")?;
+    }
+    if !column_exists(&tx, "focus_sessions", "note")? {
+        tx.execute_batch("ALTER TABLE focus_sessions ADD COLUMN note TEXT NOT NULL DEFAULT '';")?;
+    }
+    if !column_exists(&tx, "focus_sessions", "pause_count")? {
+        tx.execute_batch(
+            "ALTER TABLE focus_sessions ADD COLUMN pause_count INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+    if !column_exists(&tx, "focus_sessions", "pause_seconds")? {
+        tx.execute_batch(
+            "ALTER TABLE focus_sessions ADD COLUMN pause_seconds INTEGER NOT NULL DEFAULT 0;",
         )?;
     }
 
+    tx.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS subtasks (
+            id      INTEGER PRIMARY KEY,
+            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            title   TEXT NOT NULL,
+            done    INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS task_blocked_by (
+            task_id    INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            blocker_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            PRIMARY KEY (task_id, blocker_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS session_tags (
+            session_id INTEGER NOT NULL REFERENCES focus_sessions(id) ON DELETE CASCADE,
+            tag        TEXT NOT NULL,
+            PRIMARY KEY (session_id, tag)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived);
+        CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id);
+        ",
+    )?;
+
+    tx.pragma_update(None, "user_version", TARGET_VERSION)?;
+    tx.commit()?;
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrate_is_idempotent_after_a_partially_applied_v2() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate_v1(&conn).unwrap();
+        // A v2 column exists but user_version is still 1, as after a crash.
+        conn.execute_batch("ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;")
+            .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+        assert!(column_exists(&conn, "tasks", "recurrence").unwrap());
+    }
 }
