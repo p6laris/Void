@@ -43,7 +43,7 @@ pub(crate) fn draw_about(f: &mut Frame, app: &App, area: Rect) {
                 " switch tabs  ",
                 Style::default().bg(theme.bg).fg(theme.dim),
             ),
-            Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("Esc", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " return to dashboard",
                 Style::default().bg(theme.bg).fg(theme.dim),
@@ -58,12 +58,12 @@ pub(crate) fn draw_about(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().bg(theme.bg).fg(theme.accent),
             ),
             Span::styled(" scroll  ", Style::default().bg(theme.bg).fg(theme.dim)),
-            Span::styled("Tab / 1-6", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("1-6", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " switch tabs  ",
                 Style::default().bg(theme.bg).fg(theme.dim),
             ),
-            Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("Esc", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " return to dashboard",
                 Style::default().bg(theme.bg).fg(theme.dim),

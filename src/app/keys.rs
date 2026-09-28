@@ -17,6 +17,8 @@ impl App {
             return;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // In Zen mode digits tick the active task's subtasks instead of switching tabs.
+        let zen = self.ui.zen_mode && self.ui.tab == FocusTab::Dashboard;
         match key.code {
             KeyCode::Char('q') if self.task_ui.subtask_focus && self.ui.tab == FocusTab::Tasks => {
                 self.task_ui.subtask_focus = false;
@@ -26,18 +28,28 @@ impl App {
                 self.toggle_bulk_mode();
             }
             KeyCode::Char('q') => self.request_quit(),
-            KeyCode::Esc => self.request_quit(),
+            KeyCode::Esc if zen => self.ui.zen_mode = false,
+            KeyCode::Esc if self.ui.tab == FocusTab::Dashboard => self.request_quit(),
+            KeyCode::Esc
+                if self.ui.tab == FocusTab::Stats && self.stats.heatmap_cursor.is_some() =>
+            {
+                self.handle_stats_key(key);
+            }
+            KeyCode::Esc => self.ui.tab = FocusTab::Dashboard,
             KeyCode::Char('c') if ctrl => self.force_quit(),
             KeyCode::Char('s') if ctrl => self.export_backup(),
             KeyCode::Char('e') if ctrl => self.export_sessions_csv(),
-            KeyCode::Char('1') => self.ui.tab = FocusTab::Dashboard,
-            KeyCode::Char('2') => self.ui.tab = FocusTab::Tasks,
-            KeyCode::Char('3') => self.ui.tab = FocusTab::Stats,
-            KeyCode::Char('4') => self.ui.tab = FocusTab::Settings,
-            KeyCode::Char('5') | KeyCode::Char('h') => self.ui.tab = FocusTab::Help,
-            KeyCode::Char('6') => self.ui.tab = FocusTab::About,
+            KeyCode::Char(c @ '1'..='6') if !zen => {
+                self.ui.tab = FocusTab::all()[(c as u8 - b'1') as usize];
+            }
+            KeyCode::Char('h') if self.ui.tab != FocusTab::About => {
+                self.ui.tab = FocusTab::Help;
+            }
             KeyCode::Tab if self.ui.tab == FocusTab::Tasks => {
                 self.toggle_subtask_focus();
+            }
+            KeyCode::Tab | KeyCode::BackTab if self.ui.tab == FocusTab::About => {
+                self.handle_about_key(key);
             }
             KeyCode::Tab => self.next_tab(),
             KeyCode::BackTab if self.ui.tab == FocusTab::Tasks && self.task_ui.subtask_focus => {
@@ -197,13 +209,8 @@ impl App {
                 }
             }
             KeyCode::Char('e') | KeyCode::Char('E') => self.end_session(),
-            KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
-                let target = if self.ui.zen_mode {
-                    self.task_ui.active_task
-                } else {
-                    self.dashboard_selected_task_id()
-                };
-                if let Some(id) = target {
+            KeyCode::Char(c) if self.ui.zen_mode && c.is_ascii_digit() && c != '0' => {
+                if let Some(id) = self.task_ui.active_task {
                     let idx = (c as u8 - b'1') as usize;
                     self.persist_data(|db, data| {
                         if let Some(task) = data.task(id) {
@@ -370,6 +377,7 @@ impl App {
         if changed {
             self.task_ui.task_search_lower = self.task_ui.task_search.to_lowercase();
             self.recompute_task_caches();
+            self.clamp_task_selection_after_mutation();
         }
     }
 
@@ -459,28 +467,16 @@ impl App {
                     self.set_status("Task set as active for the timer.", false);
                 }
             }
-            KeyCode::Char('1') => {
+            KeyCode::Char('p') => {
                 if let Some(id) = self.selected_task_id() {
-                    self.persist_data(|db, data| {
-                        storage::set_priority(db, data, id, Priority::Low)
-                    });
+                    let next = match self.data.task(id).map(|t| t.priority) {
+                        Some(Priority::Low) => Priority::Medium,
+                        Some(Priority::Medium) => Priority::High,
+                        _ => Priority::Low,
+                    };
+                    self.persist_data(|db, data| storage::set_priority(db, data, id, next));
                     self.bump_tasks();
-                }
-            }
-            KeyCode::Char('2') => {
-                if let Some(id) = self.selected_task_id() {
-                    self.persist_data(|db, data| {
-                        storage::set_priority(db, data, id, Priority::Medium)
-                    });
-                    self.bump_tasks();
-                }
-            }
-            KeyCode::Char('3') => {
-                if let Some(id) = self.selected_task_id() {
-                    self.persist_data(|db, data| {
-                        storage::set_priority(db, data, id, Priority::High)
-                    });
-                    self.bump_tasks();
+                    self.set_status(format!("Priority: {}", next.label()), false);
                 }
             }
             KeyCode::Down | KeyCode::Char('j') if !ctrl && self.task_ui.subtask_focus => {
@@ -597,5 +593,192 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::settings::{SettingsItem, SECTION_STARTS};
+    use crate::db::Database;
+    use crate::model::Priority;
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    fn app_with(titles: &[&str]) -> App {
+        let mut app = App::with_database(Database::open_in_memory().unwrap()).unwrap();
+        for title in titles {
+            storage::add_task_full(
+                &app.db,
+                &mut app.data,
+                storage::TaskPayload {
+                    title: title.to_string(),
+                    notes: String::new(),
+                    estimated_minutes: 25,
+                    priority: Priority::Medium,
+                    tags: Vec::new(),
+                    due_date: None,
+                },
+            )
+            .unwrap();
+        }
+        app.recompute_task_caches();
+        app.task_ui.task_state.select(Some(0));
+        app
+    }
+
+    fn select_setting(app: &mut App, item: SettingsItem) {
+        app.ui.tab = FocusTab::Settings;
+        app.settings_state.selected = app
+            .settings_state
+            .items
+            .iter()
+            .position(|&i| i == item)
+            .unwrap();
+    }
+
+    #[test]
+    fn every_settings_row_is_labelled_for_its_own_item() {
+        let app = app_with(&[]);
+        let labels = app.build_settings_labels();
+        assert_eq!(labels.len(), app.settings_state.items.len());
+        let key_of = |item| {
+            let i = app
+                .settings_state
+                .items
+                .iter()
+                .position(|&x| x == item)
+                .unwrap();
+            labels[i].key
+        };
+        assert_eq!(key_of(SettingsItem::RestDays), "Rest days");
+        assert_eq!(key_of(SettingsItem::TerminalTitle), "Terminal title");
+        assert_eq!(key_of(SettingsItem::ArchiveAfterDays), "Archive after");
+    }
+
+    #[test]
+    fn enter_on_terminal_title_toggles_terminal_title() {
+        let mut app = app_with(&[]);
+        let before = app.data.show_terminal_title;
+        let rest_before = app.data.streak_rest_days.clone();
+        select_setting(&mut app, SettingsItem::TerminalTitle);
+        press(&mut app, KeyCode::Enter);
+        assert_ne!(app.data.show_terminal_title, before);
+        assert_eq!(app.data.streak_rest_days, rest_before);
+    }
+
+    #[test]
+    fn settings_visual_row_counts_every_section_header() {
+        let app = app_with(&[]);
+        let last = app.settings_state.items.len() - 1;
+        assert_eq!(app.settings_visual_row(0), 1);
+        assert_eq!(app.settings_visual_row(last), last + SECTION_STARTS.len());
+    }
+
+    #[test]
+    fn digits_switch_tabs_from_tasks_and_dashboard() {
+        let mut app = app_with(&["One"]);
+        app.ui.tab = FocusTab::Tasks;
+        press(&mut app, KeyCode::Char('3'));
+        assert_eq!(app.ui.tab, FocusTab::Stats);
+        app.ui.tab = FocusTab::Dashboard;
+        press(&mut app, KeyCode::Char('2'));
+        assert_eq!(app.ui.tab, FocusTab::Tasks);
+    }
+
+    #[test]
+    fn p_cycles_the_selected_task_priority() {
+        let mut app = app_with(&["One"]);
+        app.ui.tab = FocusTab::Tasks;
+        let id = app.selected_task_id().unwrap();
+        press(&mut app, KeyCode::Char('p'));
+        assert_eq!(app.data.task(id).unwrap().priority, Priority::High);
+        press(&mut app, KeyCode::Char('p'));
+        assert_eq!(app.data.task(id).unwrap().priority, Priority::Low);
+        assert_eq!(app.ui.tab, FocusTab::Tasks);
+    }
+
+    #[test]
+    fn digits_in_zen_tick_the_active_task_subtasks() {
+        let mut app = app_with(&["One"]);
+        let id = app.selected_task_id().unwrap();
+        storage::add_subtask(&app.db, &mut app.data, id, "Sub".into()).unwrap();
+        app.set_active_task(Some(id));
+        app.ui.tab = FocusTab::Dashboard;
+        app.ui.zen_mode = true;
+        press(&mut app, KeyCode::Char('1'));
+        assert_eq!(app.ui.tab, FocusTab::Dashboard);
+        assert!(app.data.task(id).unwrap().subtasks[0].done);
+    }
+
+    #[test]
+    fn esc_clears_the_heatmap_cursor_before_leaving_stats() {
+        let mut app = app_with(&[]);
+        app.ui.tab = FocusTab::Stats;
+        app.stats.heatmap_cursor = Some(crate::date::today_naive());
+        press(&mut app, KeyCode::Esc);
+        assert!(app.stats.heatmap_cursor.is_none());
+        assert_eq!(app.ui.tab, FocusTab::Stats);
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.ui.tab, FocusTab::Dashboard);
+        assert!(!app.ui.should_quit);
+    }
+
+    #[test]
+    fn esc_returns_to_dashboard_and_only_quits_from_there() {
+        let mut app = app_with(&[]);
+        for tab in [
+            FocusTab::Tasks,
+            FocusTab::Settings,
+            FocusTab::Help,
+            FocusTab::About,
+        ] {
+            app.ui.tab = tab;
+            press(&mut app, KeyCode::Esc);
+            assert_eq!(app.ui.tab, FocusTab::Dashboard, "from {tab:?}");
+            assert!(!app.ui.should_quit);
+        }
+        press(&mut app, KeyCode::Esc);
+        assert!(app.ui.should_quit);
+    }
+
+    #[test]
+    fn esc_in_zen_exits_zen_instead_of_quitting() {
+        let mut app = app_with(&[]);
+        app.ui.tab = FocusTab::Dashboard;
+        app.ui.zen_mode = true;
+        press(&mut app, KeyCode::Esc);
+        assert!(!app.ui.zen_mode);
+        assert!(!app.ui.should_quit);
+    }
+
+    #[test]
+    fn search_keeps_a_valid_selection() {
+        let titles: Vec<String> = (0..10).map(|i| format!("Task {i}")).collect();
+        let mut refs: Vec<&str> = titles.iter().map(String::as_str).collect();
+        refs.extend(["Alpha one", "Alpha two"]);
+        let mut app = app_with(&refs);
+        app.ui.tab = FocusTab::Tasks;
+        app.task_ui.task_state.select(Some(6));
+        app.task_ui.searching = true;
+        for c in "alpha".chars() {
+            press(&mut app, KeyCode::Char(c));
+        }
+        assert!(app.selected_task_id().is_some());
+    }
+
+    #[test]
+    fn about_keeps_h_and_tab_for_its_columns() {
+        let mut app = app_with(&[]);
+        app.ui.tab = FocusTab::About;
+        app.ui.about_active_column = 1;
+        press(&mut app, KeyCode::Char('h'));
+        assert_eq!(app.ui.tab, FocusTab::About);
+        assert_eq!(app.ui.about_active_column, 0);
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.ui.tab, FocusTab::About);
+        assert_eq!(app.ui.about_active_column, 1);
     }
 }
