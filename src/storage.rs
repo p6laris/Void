@@ -16,7 +16,11 @@ pub fn next_id(db: &Database, data: &mut AppData) -> Result<u64> {
 
 pub fn ensure_today_reset(db: &Database, data: &mut AppData) -> Result<bool> {
     let today = crate::date::today_str();
-    let is_new_day = data.today_date.as_deref() != Some(today.as_str());
+    // Only a forward date change starts a new day; a clock set back keeps today's totals.
+    let is_new_day = data
+        .today_date
+        .as_deref()
+        .is_none_or(|last| last < today.as_str());
     if is_new_day {
         data.today_focus_minutes = 0;
         data.today_date = Some(today.clone());
@@ -126,6 +130,8 @@ pub struct SessionMeta {
     pub tags: Vec<String>,
     pub pause_count: u32,
     pub pause_seconds: u32,
+    /// When the session began; it is dated by this day, not the completion day.
+    pub started_at: Option<chrono::DateTime<Utc>>,
 }
 
 pub struct TaskPayload {
@@ -377,7 +383,24 @@ pub fn record_focus_session(
     record_focus_session_with_meta(db, data, minutes, task_id, mode, SessionMeta::default())
 }
 
+/// Records a focus session; its database writes and `data` changes apply together or not at all.
 pub fn record_focus_session_with_meta(
+    db: &Database,
+    data: &mut AppData,
+    minutes: u32,
+    task_id: Option<u64>,
+    mode: TimerMode,
+    meta: SessionMeta,
+) -> Result<()> {
+    let before = data.clone();
+    let result = db.atomically(|| record_session_inner(db, data, minutes, task_id, mode, meta));
+    if result.is_err() {
+        *data = before;
+    }
+    result
+}
+
+fn record_session_inner(
     db: &Database,
     data: &mut AppData,
     minutes: u32,
@@ -388,10 +411,15 @@ pub fn record_focus_session_with_meta(
     ensure_today_reset(db, data)?;
     let mins = minutes.max(1);
     let today = crate::date::today_str();
+    // A session that crosses midnight belongs to the day it started.
+    let session_day = meta
+        .started_at
+        .map(|t| crate::date::format_date(t.with_timezone(&chrono::Local).date_naive()))
+        .unwrap_or_else(|| today.clone());
 
     // Insert first so a failed write leaves counters and streaks untouched.
     let record = FocusSessionRecord {
-        date: today.clone(),
+        date: session_day.clone(),
         minutes: mins,
         task_id,
         mode,
@@ -404,14 +432,16 @@ pub fn record_focus_session_with_meta(
     db.insert_focus_session(&record)?;
 
     data.total_focus_minutes = data.total_focus_minutes.saturating_add(mins);
-    data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
+    if session_day == today {
+        data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
+    }
     data.total_sessions = data.total_sessions.saturating_add(1);
 
     match &data.last_session_date {
-        Some(last) if last == &today => {}
+        Some(last) if last.as_str() >= session_day.as_str() => {}
         Some(last) => {
             let last_date = chrono::NaiveDate::parse_from_str(last, "%Y-%m-%d").ok();
-            let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").ok();
+            let today_date = chrono::NaiveDate::parse_from_str(&session_day, "%Y-%m-%d").ok();
             if let (Some(l), Some(t)) = (last_date, today_date) {
                 let gap = count_active_gap(l, t, &data.streak_rest_days);
                 if gap == 0 {
@@ -444,11 +474,17 @@ pub fn record_focus_session_with_meta(
             .min(crate::model::STREAK_FREEZE_MAX);
         data.last_freeze_earned_streak = data.streak_days;
     }
-    data.last_session_date = Some(today.clone());
+    if data
+        .last_session_date
+        .as_deref()
+        .is_none_or(|last| last < session_day.as_str())
+    {
+        data.last_session_date = Some(session_day.clone());
+    }
     data.today_date = Some(today.clone());
 
     update_goal_streak(data)?;
-    update_period_streaks(data, &today)?;
+    update_period_streaks(data, &session_day)?;
     db.persist_session_stats(data)?;
 
     if let Some(id) = task_id {

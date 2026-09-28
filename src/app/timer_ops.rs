@@ -164,7 +164,9 @@ impl App {
 
     pub fn on_tick(&mut self) {
         if let Ok(true) = storage::ensure_today_reset(&self.db, &mut self.data) {
-            self.timer.completed_focus_sessions = 0;
+            if !matches!(self.timer.state, TimerState::Running | TimerState::Paused) {
+                self.timer.completed_focus_sessions = 0;
+            }
             self.persist_timer_state();
             self.stats.chart_dirty = true;
             self.refresh_frame_today_cache();
@@ -172,6 +174,7 @@ impl App {
         }
         if self.data.auto_pause_idle_minutes > 0
             && self.timer.state == TimerState::Running
+            && matches!(self.timer.mode, TimerMode::Focus | TimerMode::Custom)
             && self.last_activity.elapsed()
                 > Duration::from_secs(self.data.auto_pause_idle_minutes as u64 * 60)
         {
@@ -179,17 +182,15 @@ impl App {
             self.set_status("Auto-paused — terminal idle.", false);
         }
         if self.data.warn_one_minute
+            && matches!(self.timer.mode, TimerMode::Focus | TimerMode::Custom)
             && self.timer.is_one_minute_warning()
-            && !self.end_warning_shown
+            && self.warned_session != self.timer.session_started_at
         {
-            self.end_warning_shown = true;
+            self.warned_session = self.timer.session_started_at;
             if self.data.sound_enabled {
                 sound::play_warning();
             }
             self.set_status("1 minute remaining!", false);
-        }
-        if !self.timer.is_one_minute_warning() {
-            self.end_warning_shown = false;
         }
         self.handle_wall_clock_gap(SystemTime::now());
         let just_finished = self.timer.tick();
@@ -213,7 +214,10 @@ impl App {
             self.persist_data(|db, data| {
                 storage::record_focus_session_with_meta(db, data, mins, task_id, mode, meta)
             });
-            self.maybe_complete_task_estimate(task_id);
+            // A skip that covered at least half the session still counts toward the long break.
+            if skipped && mins * 2 >= self.timer.config.focus_minutes {
+                self.timer.completed_focus_sessions += 1;
+            }
             if self.data.sound_enabled {
                 if skipped {
                     sound::play_skip();
@@ -244,11 +248,10 @@ impl App {
             );
             self.maybe_advance_task();
             self.bump_data();
-            if !skipped {
-                self.persist_timer_state();
-            }
             self.timer.reset_session_pauses();
             self.advance_to_break();
+            // Last, so an estimate nudge isn't overwritten by the messages above.
+            self.maybe_complete_task_estimate(task_id);
         } else if mode == TimerMode::Custom {
             let mins = self.elapsed_minutes();
             let task_id = self.task_ui.active_task;
@@ -346,7 +349,6 @@ impl App {
         }
         let is_resume = self.timer.current_elapsed_seconds() > 0;
         self.timer.start();
-        self.end_warning_shown = false;
         if self.data.sound_enabled {
             if is_resume {
                 sound::play_resume();
@@ -429,16 +431,14 @@ impl App {
             TimerMode::ShortBreak => {
                 let cur = self.timer.config.short_break_minutes as i32 + delta;
                 let v = cur.clamp(1, 60) as u32;
-                self.timer.config.short_break_minutes = v;
+                self.timer.set_short_break_minutes(v);
                 self.data.short_break_minutes = v;
-                self.timer.total_seconds = self.timer.duration_seconds();
             }
             TimerMode::LongBreak => {
                 let cur = self.timer.config.long_break_minutes as i32 + delta;
                 let v = cur.clamp(1, 120) as u32;
-                self.timer.config.long_break_minutes = v;
+                self.timer.set_long_break_minutes(v);
                 self.data.long_break_minutes = v;
-                self.timer.total_seconds = self.timer.duration_seconds();
             }
             TimerMode::Custom => {
                 let cur = self.timer.custom_minutes as i32 + delta;
@@ -582,6 +582,125 @@ mod tests {
         app.last_tick_wall = Some(now - Duration::from_millis(150));
         app.handle_wall_clock_gap(now);
         assert_eq!(app.timer.state, TimerState::Running);
+    }
+
+    #[test]
+    fn a_long_skip_counts_toward_the_long_break() {
+        let mut app = app();
+        paused_focus(&mut app, 13 * 60);
+        app.skip_session();
+        assert_eq!(app.timer.completed_focus_sessions, 1);
+    }
+
+    #[test]
+    fn a_short_skip_does_not_count_toward_the_long_break() {
+        let mut app = app();
+        paused_focus(&mut app, 5 * 60);
+        app.skip_session();
+        assert_eq!(app.timer.completed_focus_sessions, 0);
+    }
+
+    #[test]
+    fn a_session_that_crosses_midnight_is_dated_by_its_start() {
+        let mut app = app();
+        let today = crate::date::today_naive();
+        let yesterday = crate::date::format_date(today - chrono::Duration::days(1));
+        paused_focus(&mut app, 25 * 60);
+        app.timer.session_started_at = Some(chrono::Utc::now() - chrono::Duration::days(1));
+
+        app.end_session();
+
+        assert_eq!(
+            app.data.last_session_date.as_deref(),
+            Some(yesterday.as_str())
+        );
+        assert_eq!(app.data.today_focus_minutes, 0);
+        assert_eq!(app.data.total_focus_minutes, 25);
+    }
+
+    #[test]
+    fn midnight_keeps_the_cycle_count_of_a_running_session() {
+        let mut app = app();
+        app.data.today_date = Some("2020-01-01".into());
+        app.timer.completed_focus_sessions = 3;
+        app.timer.configure(TimerMode::Focus);
+        app.timer.start();
+        app.on_tick();
+        assert_eq!(app.timer.completed_focus_sessions, 3);
+    }
+
+    #[test]
+    fn a_clock_set_back_keeps_todays_minutes() {
+        let mut app = app();
+        let tomorrow = crate::date::today_naive() + chrono::Duration::days(1);
+        app.data.today_date = Some(crate::date::format_date(tomorrow));
+        app.data.today_focus_minutes = 90;
+        let new_day = storage::ensure_today_reset(&app.db, &mut app.data).unwrap();
+        assert!(!new_day);
+        assert_eq!(app.data.today_focus_minutes, 90);
+    }
+
+    #[test]
+    fn the_estimate_nudge_is_the_last_status_after_a_session() {
+        let mut app = app();
+        app.data.auto_start_breaks = true;
+        let id = storage::add_task_full(
+            &app.db,
+            &mut app.data,
+            storage::TaskPayload {
+                title: "Tiny".into(),
+                notes: String::new(),
+                estimated_minutes: 10,
+                priority: crate::model::Priority::Medium,
+                tags: Vec::new(),
+                due_date: None,
+            },
+        )
+        .unwrap();
+        app.set_active_task(Some(id));
+        paused_focus(&mut app, 12 * 60);
+        app.skip_session();
+        assert!(app
+            .ui
+            .status
+            .as_deref()
+            .unwrap_or("")
+            .contains("Estimate reached"));
+    }
+
+    #[test]
+    fn the_one_minute_warning_fires_once_per_session() {
+        let mut app = app();
+        app.data.warn_one_minute = true;
+        app.data.sound_enabled = false;
+        app.timer.configure(TimerMode::Focus);
+        app.timer.start();
+        let near_end = app.timer.total_seconds - 30;
+        app.timer.started_at = Some(Instant::now() - Duration::from_secs(near_end as u64));
+        app.on_tick();
+        assert_eq!(app.ui.status.as_deref(), Some("1 minute remaining!"));
+
+        app.timer.pause();
+        app.timer.start();
+        app.set_status("resumed", false);
+        app.on_tick();
+        assert_eq!(app.ui.status.as_deref(), Some("resumed"));
+    }
+
+    #[test]
+    fn breaks_get_no_warning_and_are_not_idle_paused() {
+        let mut app = app();
+        app.data.warn_one_minute = true;
+        app.data.sound_enabled = false;
+        app.data.auto_pause_idle_minutes = 1;
+        app.last_activity = Instant::now() - Duration::from_secs(10 * 60);
+        app.timer.configure(TimerMode::ShortBreak);
+        app.timer.start();
+        let near_end = app.timer.total_seconds - 30;
+        app.timer.started_at = Some(Instant::now() - Duration::from_secs(near_end as u64));
+        app.on_tick();
+        assert_eq!(app.timer.state, TimerState::Running);
+        assert_ne!(app.ui.status.as_deref(), Some("1 minute remaining!"));
     }
 
     #[test]

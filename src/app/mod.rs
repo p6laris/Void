@@ -139,7 +139,8 @@ pub struct App {
     pub theme_catalog: ThemeCatalog,
     pub icons: IconSet,
     pub data_version: u64,
-    pub end_warning_shown: bool,
+    /// Start time of the session the one-minute warning last fired for.
+    pub warned_session: Option<chrono::DateTime<chrono::Utc>>,
     pub last_activity: Instant,
     pub last_tick_wall: Option<std::time::SystemTime>,
 }
@@ -401,7 +402,7 @@ impl App {
             theme_catalog,
             icons,
             data_version: 0,
-            end_warning_shown: false,
+            warned_session: None,
             last_activity: Instant::now(),
             last_tick_wall: None,
         };

@@ -20,6 +20,43 @@ use crate::model::{
 };
 use crate::theme;
 
+/// A savepoint that rolls back on drop unless committed; unlike `BEGIN`, it nests.
+pub(crate) struct Atomic<'a> {
+    conn: &'a Connection,
+    open: bool,
+}
+
+impl<'a> Atomic<'a> {
+    pub(crate) fn begin(conn: &'a Connection) -> Result<Self> {
+        conn.execute_batch("SAVEPOINT atomic")?;
+        Ok(Self { conn, open: true })
+    }
+
+    pub(crate) fn commit(mut self) -> Result<()> {
+        self.open = false;
+        self.conn.execute_batch("RELEASE atomic")?;
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for Atomic<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        self.conn
+    }
+}
+
+impl Drop for Atomic<'_> {
+    fn drop(&mut self) {
+        if self.open {
+            let _ = self
+                .conn
+                .execute_batch("ROLLBACK TO atomic; RELEASE atomic");
+        }
+    }
+}
+
 pub struct Database {
     conn: Connection,
 }
@@ -63,8 +100,16 @@ impl Database {
         Ok(data)
     }
 
+    /// Runs `f` so that all of its writes land together or not at all.
+    pub fn atomically<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let tx = Atomic::begin(&self.conn)?;
+        let value = f()?;
+        tx.commit()?;
+        Ok(value)
+    }
+
     pub fn save_app_data(&self, data: &AppData) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         save_settings(&tx, data)?;
         sync_tasks(&tx, &data.tasks)?;
         tx.commit()?;
@@ -255,7 +300,7 @@ impl Database {
         if tasks.is_empty() {
             return Ok(());
         }
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         for task in tasks {
             upsert_task_row(&tx, task)?;
         }
@@ -270,7 +315,7 @@ impl Database {
     }
 
     pub fn sync_sort_orders(&self, tasks: &IndexMap<u64, Task>) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         {
             let mut stmt = tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
             for task in tasks.values() {
@@ -282,7 +327,7 @@ impl Database {
     }
 
     pub fn persist_session_stats(&self, data: &AppData) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         set_setting_conn(
             &tx,
             "total_focus_minutes",
@@ -356,16 +401,16 @@ impl Database {
     }
 
     pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
-        let conn = self.conn.unchecked_transaction()?;
-        import_export::import_json(&conn, path)?;
-        conn.commit()?;
+        let tx = Atomic::begin(&self.conn)?;
+        import_export::import_json(&self.conn, path)?;
+        tx.commit()?;
         Ok(())
     }
 
     pub fn import_csv(&self, path: &std::path::Path) -> Result<usize> {
-        let conn = self.conn.unchecked_transaction()?;
-        let count = import_export::import_csv(&conn, path)?;
-        conn.commit()?;
+        let tx = Atomic::begin(&self.conn)?;
+        let count = import_export::import_csv(&self.conn, path)?;
+        tx.commit()?;
         Ok(count)
     }
 
@@ -660,12 +705,17 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
             data.today_focus_minutes = parse_u32(value, data.today_focus_minutes)
         }
         "today_date" => data.today_date = opt_string(value),
-        "focus_minutes" => data.focus_minutes = parse_u32(value, data.focus_minutes),
+        // Clamped to the Settings tab's ranges, so a zero or huge stored value can't break the timer.
+        "focus_minutes" => data.focus_minutes = parse_u32(value, data.focus_minutes).clamp(1, 240),
         "short_break_minutes" => {
-            data.short_break_minutes = parse_u32(value, data.short_break_minutes)
+            data.short_break_minutes = parse_u32(value, data.short_break_minutes).clamp(1, 60)
         }
-        "long_break_minutes" => data.long_break_minutes = parse_u32(value, data.long_break_minutes),
-        "long_break_every" => data.long_break_every = parse_u32(value, data.long_break_every),
+        "long_break_minutes" => {
+            data.long_break_minutes = parse_u32(value, data.long_break_minutes).clamp(1, 120)
+        }
+        "long_break_every" => {
+            data.long_break_every = parse_u32(value, data.long_break_every).clamp(1, 12)
+        }
         "auto_pick_task" => data.auto_pick_task = parse_bool(value, data.auto_pick_task),
         "auto_advance_task" => data.auto_advance_task = parse_bool(value, data.auto_advance_task),
         "theme" if !value.is_empty() => {
@@ -1179,6 +1229,48 @@ mod tests {
             loaded.next_id, 4,
             "next_id must clear every existing task id"
         );
+    }
+
+    fn session_count(db: &Database) -> i64 {
+        db.conn
+            .query_row("SELECT COUNT(*) FROM focus_sessions", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn atomically_rolls_back_every_write_on_error() {
+        let db = Database::open_in_memory().unwrap();
+        let result: Result<()> = db.atomically(|| {
+            db.insert_focus_session(&FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                ..Default::default()
+            })?;
+            // A nested atomic write inside the outer one.
+            db.upsert_task(&Task::new(1, "Nested".into()))?;
+            anyhow::bail!("fail after both writes")
+        });
+        assert!(result.is_err());
+        assert_eq!(session_count(&db), 0);
+        assert!(db.load_app_data().unwrap().tasks.is_empty());
+    }
+
+    #[test]
+    fn atomically_commits_on_success() {
+        let db = Database::open_in_memory().unwrap();
+        db.atomically(|| db.upsert_task(&Task::new(1, "Kept".into())))
+            .unwrap();
+        assert_eq!(db.load_app_data().unwrap().tasks.len(), 1);
+    }
+
+    #[test]
+    fn out_of_range_timer_settings_are_clamped_on_load() {
+        let db = Database::open_in_memory().unwrap();
+        db.set_setting("focus_minutes", "0").unwrap();
+        db.set_setting("long_break_minutes", "999999999").unwrap();
+        let data = db.load_app_data().unwrap();
+        assert_eq!(data.focus_minutes, 1);
+        assert_eq!(data.long_break_minutes, 120);
     }
 
     #[test]

@@ -249,7 +249,7 @@ impl App {
                     60,
                     |app| app.timer.config.short_break_minutes,
                     |app, v| {
-                        app.timer.config.short_break_minutes = v;
+                        app.timer.set_short_break_minutes(v);
                         app.data.short_break_minutes = v;
                     },
                     |v| format!("Short break: {} min", v),
@@ -262,7 +262,7 @@ impl App {
                     120,
                     |app| app.timer.config.long_break_minutes,
                     |app, v| {
-                        app.timer.config.long_break_minutes = v;
+                        app.timer.set_long_break_minutes(v);
                         app.data.long_break_minutes = v;
                     },
                     |v| format!("Long break: {} min", v),
