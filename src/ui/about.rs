@@ -159,7 +159,7 @@ fn draw_about_left(f: &mut Frame, app: &App, area: Rect) {
     let version_str = format!("v{}", env!("CARGO_PKG_VERSION"));
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(" 󰖔 Void ", st_accent),
+            Span::styled(format!(" {} Void ", icons.logo), st_accent),
             Span::styled(version_str, st_focus),
         ]),
         Line::from(Span::styled(
@@ -354,7 +354,7 @@ fn draw_about_single(f: &mut Frame, app: &App, area: Rect) {
     let version_str = format!("v{}", env!("CARGO_PKG_VERSION"));
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(" 󰖔 Void ", st_accent),
+            Span::styled(format!(" {} Void ", icons.logo), st_accent),
             Span::styled(version_str, st_focus),
         ]),
         Line::from(Span::styled(
