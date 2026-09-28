@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="phosphor" gradientUnits="userSpaceOnUse" x1="18" y1="18" x2="82" y2="82">
+      <stop offset="0" stop-color="#D9F99D"/>
+      <stop offset=".5" stop-color="#4ADE80"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="glow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="140" height="140">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+  <!-- Void, simplified for 16-32px: one ring of larger dots. -->
+  <g fill="url(#phosphor)" filter="url(#glow)" opacity=".55">
+      <circle cx="80.00" cy="50.00" r="5.2"/>
+      <circle cx="77.03" cy="63.02" r="5.2"/>
+      <circle cx="68.70" cy="73.45" r="5.2"/>
+      <circle cx="56.68" cy="79.25" r="5.2"/>
+      <circle cx="43.32" cy="79.25" r="5.2"/>
+      <circle cx="31.30" cy="73.45" r="5.2"/>
+      <circle cx="22.97" cy="63.02" r="5.2"/>
+      <circle cx="20.00" cy="50.00" r="5.2"/>
+      <circle cx="22.97" cy="36.98" r="5.2"/>
+      <circle cx="31.30" cy="26.55" r="5.2"/>
+      <circle cx="43.32" cy="20.75" r="5.2"/>
+      <circle cx="56.68" cy="20.75" r="5.2"/>
+      <circle cx="68.70" cy="26.55" r="5.2"/>
+      <circle cx="77.03" cy="36.98" r="5.2"/>
+  </g>
+  <g fill="url(#phosphor)">
+      <circle cx="80.00" cy="50.00" r="5.2"/>
+      <circle cx="77.03" cy="63.02" r="5.2"/>
+      <circle cx="68.70" cy="73.45" r="5.2"/>
+      <circle cx="56.68" cy="79.25" r="5.2"/>
+      <circle cx="43.32" cy="79.25" r="5.2"/>
+      <circle cx="31.30" cy="73.45" r="5.2"/>
+      <circle cx="22.97" cy="63.02" r="5.2"/>
+      <circle cx="20.00" cy="50.00" r="5.2"/>
+      <circle cx="22.97" cy="36.98" r="5.2"/>
+      <circle cx="31.30" cy="26.55" r="5.2"/>
+      <circle cx="43.32" cy="20.75" r="5.2"/>
+      <circle cx="56.68" cy="20.75" r="5.2"/>
+      <circle cx="68.70" cy="26.55" r="5.2"/>
+      <circle cx="77.03" cy="36.98" r="5.2"/>
+  </g>
+  <circle cx="81.82" cy="18.18" r="6.5" fill="#ECFCCB"/>
+</svg>
