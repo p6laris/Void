@@ -362,7 +362,8 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     execute!(
         stdout,
         EnterAlternateScreen,
-        crossterm::event::EnableMouseCapture
+        crossterm::event::EnableMouseCapture,
+        crossterm::event::EnableBracketedPaste
     )?;
     let backend = CrosstermBackend::new(stdout);
     Ok(Terminal::new(backend)?)
@@ -376,7 +377,8 @@ fn install_panic_hook() {
         let _ = execute!(
             io::stdout(),
             LeaveAlternateScreen,
-            crossterm::event::DisableMouseCapture
+            crossterm::event::DisableMouseCapture,
+            crossterm::event::DisableBracketedPaste
         );
         default_hook(info);
     }));
@@ -387,7 +389,8 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        crossterm::event::DisableMouseCapture
+        crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
     Ok(())
@@ -439,6 +442,10 @@ where
                         app.handle_mouse(mouse);
                         needs_draw = true;
                     }
+                }
+                Event::Paste(text) => {
+                    app.handle_paste(&text);
+                    needs_draw = true;
                 }
                 Event::Resize(_, _) => {
                     needs_draw = true;

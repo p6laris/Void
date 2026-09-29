@@ -68,6 +68,40 @@ impl App {
         }
     }
 
+    /// Inserts pasted text into the active text field or search, as one line.
+    pub fn handle_paste(&mut self, text: &str) {
+        self.last_activity = Instant::now();
+        let line: String = text
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect();
+        if self.task_ui.searching {
+            self.task_ui.task_search.push_str(&line);
+            self.task_ui.task_search_lower = self.task_ui.task_search.to_lowercase();
+            self.recompute_task_caches();
+            self.clamp_task_selection_after_mutation();
+            return;
+        }
+        let buf = match (&self.input.popup, self.input.input_field) {
+            (Some(Popup::AddSubtask(_)) | Some(Popup::EditSubtask(_, _)), _) => {
+                &mut self.input.input_buffer
+            }
+            (Some(Popup::AddTask) | Some(Popup::EditTask(_)), InputField::Title) => {
+                &mut self.input.input_buffer
+            }
+            (Some(Popup::AddTask) | Some(Popup::EditTask(_)), InputField::Tags) => {
+                &mut self.input.input_tags
+            }
+            (Some(Popup::AddTask) | Some(Popup::EditTask(_)), InputField::DueDate) => {
+                self.input.input_due_date.push_str(line.trim());
+                self.sync_calendar_to_due_date();
+                return;
+            }
+            _ => return,
+        };
+        buf.push_str(&line);
+    }
+
     pub(crate) fn handle_about_key(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Char('h') | KeyCode::Left => {
@@ -737,6 +771,32 @@ mod tests {
             press(&mut app, KeyCode::Char(c));
         }
         assert!(app.selected_task_id().is_some());
+    }
+
+    #[test]
+    fn a_multi_line_paste_goes_into_the_field_as_one_line() {
+        let mut app = app_with(&[]);
+        app.ui.tab = FocusTab::Tasks;
+        app.open_add_task();
+        app.handle_paste(
+            "first line
+d
+y",
+        );
+        assert_eq!(app.input.input_buffer, "first line d y");
+        assert!(matches!(app.input.popup, Some(Popup::AddTask)));
+    }
+
+    #[test]
+    fn a_paste_outside_a_text_field_is_ignored() {
+        let mut app = app_with(&["Keep me"]);
+        app.ui.tab = FocusTab::Tasks;
+        app.handle_paste(
+            "d
+y",
+        );
+        assert!(app.input.popup.is_none());
+        assert_eq!(app.data.tasks.len(), 1);
     }
 
     #[test]
