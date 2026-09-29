@@ -259,6 +259,18 @@ pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
+    // A pending status message (errors especially) takes the stats' place until it expires.
+    if let Some(msg) = &app.ui.status {
+        let color = if app.ui.status_error {
+            theme.error
+        } else {
+            theme.dim
+        };
+        let line = Line::from(Span::styled(format!(" {msg}"), Style::default().fg(color)));
+        draw_footer_bar(f, app, area, line);
+        return;
+    }
+
     let mut chips = streak_goal_chips(app, theme, icons);
     chips.push(Span::raw(" "));
     chips.extend(session_total_spans(app, theme, icons, true));

@@ -477,3 +477,22 @@ fn all_popups_render_cleanly_on_various_resolutions() {
         }
     }
 }
+
+#[test]
+fn the_clock_stays_visible_on_short_terminals() {
+    let mut app = app_with_tasks();
+    let clock = app.timer.format_remaining();
+    for h in [18u16, 20, 22, 24] {
+        let screen = render_tab(&mut app, FocusTab::Dashboard, 100, h).join("\n");
+        assert!(screen.contains(&clock), "clock {clock} missing at 100x{h}");
+    }
+}
+
+#[test]
+fn zen_mode_shows_status_messages() {
+    let mut app = app_with_tasks();
+    app.ui.zen_mode = true;
+    app.set_status("Save error: disk full", true);
+    let screen = render_tab(&mut app, FocusTab::Dashboard, 100, 30).join("\n");
+    assert!(screen.contains("Save error: disk full"));
+}
