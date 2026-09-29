@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-09-29
+
+### 🚀 Features
+
+- *(ui)* Use the dots-circle logo in the header
+
+### 🐛 Bug Fixes
+
+- *(db)* Run schema migrations in a single transaction
+- *(tasks)* Keep the active task and session stats consistent
+- *(startup)* Keep the terminal usable after a panic or startup error
+- *(db)* Stop failed loads, exports and imports from losing data
+- *(timer)* Make skip, end and quit handle in-progress sessions correctly
+- *(tasks)* Spawn recurrences reliably and keep auto-advance on task
+- *(settings)* Label each row by its own item and keep it in view
+- *(keys)* Route digits, Esc and About keys to what the UI describes
+- *(timer)* Keep session time, cycles and warnings correct across edge cases
+- *(tasks)* Harden tags, archiving, reordering, recurrence and imports
+- *(sound)* Fall back to beeps reliably and log errors off-screen
+- *(icons)* Use ASCII icons on terminals without Nerd Font support
+- *(cli)* Return exit codes and reject bad arguments
+- *(form)* Make the task form's estimate, text and due date usable
+- *(input)* Insert pasted text as one line instead of keystrokes
+- *(ui)* Keep the clock visible on short terminals and show status in Zen
+- *(theme)* Keep secondary text readable and report bad theme files
+- *(data)* Keep resume time, archiving and freezes accurate
+- *(cli)* Align list output, write exports directly and add --yes
+- *(ui)* Tag filter key, bounded scrolling, and other polish
+
+### 📚 Documentation
+
+- New README showcase and app icon
+- Document the updated keys and CLI behaviour
+
+### ⚡ Performance
+
+- *(db)* Load session tags per page and index session lookups
+- *(ui)* Redraw only on change and tick slowly when idle
+
 ## [0.6.0-beta.1] - 2026-08-16
 
 ### 🚀 Features
@@ -50,18 +89,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(ui)* Add multi-resolution render tests for all popups
 
-## [0.5.0-beta.1] - 2026-07-13
+## [0.5.0-beta.2] - 2026-07-21
 
 ### 🚀 Features
 
-- *(ui)* Detach dashboard task view from tasks tab filters
-- *(db)* Add cli export and import support for full database state
 - *(model)* Add streak freeze and rest day fields
 - *(db)* Persist streak freeze and rest day settings
 - *(streak)* Add rest days and streak freeze logic
 - *(ui)* Display streak freeze count in summary panel
 - *(settings)* Add rest days toggle to settings
 - *(subtask)* Add reorder, rename, and edit subtask support
+
+### 🐛 Bug Fixes
+
+- *(ui)* Prevent empty bar chart rendering and rename weekly panel
+- *(stats)* Refresh tag analytics on chart dirty flag
+- *(ui)* Always show streak freeze count in top bar and summary
+- *(ui)* Move streak freezes to dedicated summary row
+- *(ui)* Show freeze count as available/max in top bar
+- *(model)* Default to 3/3 streak freezes for new users
+- *(subtask)* Guard x/- behind focus mode and fix Tab fallthrough
+- *(test)* Resolve clippy warnings for struct initialization in tests
+
+### 🚜 Refactor
+
+- *(timer)* Simplify mode toggle to Focus/Custom only
+
+### 📚 Documentation
+
+- *(help)* Update subtask key bindings documentation
+
+### ⚡ Performance
+
+- Optimize dev profile to reduce debug memory usage
+- Initialize audio lazily and reduce render tick rate
+
+### 🎨 Styling
+
+- *(zen)* Anchor break tip to the bottom edge of the canvas
+- Format code to pass CI
+
+### 🧪 Testing
+
+- *(streak)* Add tests for rest days and streak freezes
+
+## [0.5.0-beta.1] - 2026-07-13
+
+### 🚀 Features
+
+- *(ui)* Detach dashboard task view from tasks tab filters
+- *(db)* Add cli export and import support for full database state
 
 ### 🐛 Bug Fixes
 
@@ -80,14 +157,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(cli)* Reject invalid task ids and handle import flush errors
 - *(storage)* Assign unique subtask ids on recurring spawn
 - *(ci)* Harden publish release workflow push and token handling
-- *(ui)* Prevent empty bar chart rendering and rename weekly panel
-- *(stats)* Refresh tag analytics on chart dirty flag
-- *(ui)* Always show streak freeze count in top bar and summary
-- *(ui)* Move streak freezes to dedicated summary row
-- *(ui)* Show freeze count as available/max in top bar
-- *(model)* Default to 3/3 streak freezes for new users
-- *(subtask)* Guard x/- behind focus mode and fix Tab fallthrough
-- *(test)* Resolve clippy warnings for struct initialization in tests
 
 ### 🚜 Refactor
 
@@ -108,7 +177,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(ui)* Share streak, goal, and session chips in chrome
 - *(ui)* Share footer layout between normal and zen modes
 - *(ui)* Centralize inline subtask line rendering
-- *(timer)* Simplify mode toggle to Focus/Custom only
 
 ### 📚 Documentation
 
@@ -116,7 +184,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add custom theme documentation to README
 - Add data import and export section to README
 - Update clippy command to include --all-targets
-- *(help)* Update subtask key bindings documentation
 
 ### ⚡ Performance
 
@@ -141,19 +208,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(ui)* Avoid cloning task for subtask panel each frame
 - *(db)* Run PRAGMA optimize after migrations and imports
 - *(model)* Store tasks in IndexMap for O(1) ID lookups
-- Optimize dev profile to reduce debug memory usage
-- Initialize audio lazily and reduce render tick rate
 
 ### 🎨 Styling
 
 - Fix clippy warnings and unused imports
 - Apply cargo fmt
-- *(zen)* Anchor break tip to the bottom edge of the canvas
-- Format code to pass CI
 
 ### 🧪 Testing
 
 - Fix clippy test warnings for struct defaults
-- *(streak)* Add tests for rest days and streak freezes
 
 
