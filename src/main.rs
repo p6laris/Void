@@ -78,8 +78,8 @@ Commands:
   archive list         List archived tasks
   export [path]        Export a full JSON backup (CSV if the path ends in .csv)
   export-csv [path]    Export focus and break sessions to CSV
-  import <path>        Restore a JSON backup, or add sessions from a CSV
-  import-csv <path>    Add sessions from a CSV file
+  import <path> [--yes]      Restore a JSON backup, or add sessions from a CSV
+  import-csv <path> [--yes]  Add sessions from a CSV file
   help                 Show this message
   version              Show the version
 
@@ -132,8 +132,8 @@ fn confirm(prompt: &str) -> Result<bool> {
 }
 
 /// The path argument of an import command, or the exit code if it's missing.
-fn existing_file(args: &[String], usage: &str) -> Result<std::path::PathBuf, i32> {
-    let Some(raw) = args.get(2) else {
+fn existing_file(raw: Option<&String>, usage: &str) -> Result<std::path::PathBuf, i32> {
+    let Some(raw) = raw else {
         eprintln!("{usage}");
         return Err(EXIT_USAGE);
     };
@@ -145,8 +145,8 @@ fn existing_file(args: &[String], usage: &str) -> Result<std::path::PathBuf, i32
     Ok(path)
 }
 
-fn import_csv_file(path: &std::path::Path) -> Result<i32> {
-    if !confirm("Import sessions from CSV into your current database?")? {
+fn import_csv_file(path: &std::path::Path, yes: bool) -> Result<i32> {
+    if !yes && !confirm("Import sessions from CSV into your current database?")? {
         println!("Import cancelled.");
         return Ok(EXIT_FAILED);
     }
@@ -164,13 +164,42 @@ fn import_csv_file(path: &std::path::Path) -> Result<i32> {
 }
 
 fn export_csv_to(db: &void::db::Database, dest: Option<&String>) -> Result<std::path::PathBuf> {
-    let exported = db.export_csv()?;
     let Some(dest) = dest else {
-        return Ok(exported);
+        return db.export_csv();
     };
     let dest = std::path::PathBuf::from(dest);
-    std::fs::copy(&exported, &dest)?;
+    db.export_csv_to(&dest)?;
     Ok(dest)
+}
+
+fn is_csv_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("csv"))
+}
+
+fn is_yes_flag(arg: &str) -> bool {
+    arg == "--yes" || arg == "-y"
+}
+
+/// Fits `text` to exactly `width` terminal columns, padding or cutting with `…`.
+fn pad_to_width(text: &str, width: usize) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    if text.width() <= width {
+        return format!("{text}{}", " ".repeat(width - text.width()));
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for ch in text.chars() {
+        let w = ch.width().unwrap_or(1);
+        if used + w + 1 > width {
+            break;
+        }
+        out.push(ch);
+        used += w;
+    }
+    format!("{out}…{}", " ".repeat(width - used - 1))
 }
 
 /// Runs a CLI command. `None` means the TUI should open.
@@ -214,16 +243,19 @@ fn handle_cli(args: Vec<String>) -> Result<Option<i32>> {
                 println!("No pending tasks. You're all caught up!");
             } else {
                 println!(
-                    "{:<5} | {:<40} | {:<10} | {:<10}",
-                    "ID", "TITLE", "PRIORITY", "DUE DATE"
+                    "{:<5} | {} | {:<10} | {:<10}",
+                    "ID",
+                    pad_to_width("TITLE", 40),
+                    "PRIORITY",
+                    "DUE DATE"
                 );
                 println!("{:-<5}-+-{:-<40}-+-{:-<10}-+-{:-<10}", "", "", "", "");
                 for t in pending {
                     let due = t.due_date.as_deref().unwrap_or("-");
                     println!(
-                        "{:<5} | {:<40} | {:<10} | {:<10}",
+                        "{:<5} | {} | {:<10} | {:<10}",
                         t.id,
-                        t.title.chars().take(40).collect::<String>(),
+                        pad_to_width(&t.title, 40),
                         t.priority.label(),
                         due
                     );
@@ -291,7 +323,7 @@ fn handle_cli(args: Vec<String>) -> Result<Option<i32>> {
         "export" => {
             let db = void::db::Database::open()?;
             let dest = args.get(2);
-            if dest.is_some_and(|d| d.ends_with(".csv")) {
+            if dest.is_some_and(|d| is_csv_path(d)) {
                 let path = export_csv_to(&db, dest)?;
                 println!("Exported sessions to CSV at {}", path.display());
             } else {
@@ -314,17 +346,19 @@ fn handle_cli(args: Vec<String>) -> Result<Option<i32>> {
             0
         }
         "import" => {
-            let path = match existing_file(&args, "Usage: void import <backup.json|sessions.csv>") {
+            let yes = args[2..].iter().any(|a| is_yes_flag(a));
+            let target = args[2..].iter().find(|a| !is_yes_flag(a));
+            let path = match existing_file(
+                target,
+                "Usage: void import <backup.json|sessions.csv> [--yes]",
+            ) {
                 Ok(path) => path,
                 Err(code) => return Ok(Some(code)),
             };
-            let is_csv = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .is_some_and(|e| e.eq_ignore_ascii_case("csv"));
-            if is_csv {
-                import_csv_file(&path)?
-            } else if !confirm(
+            if is_csv_path(&path.to_string_lossy()) {
+                import_csv_file(&path, yes)?
+            } else if !yes
+                && !confirm(
                 "WARNING: This will completely overwrite your current tasks and focus history.\nAre you sure you want to proceed?",
             )? {
                 println!("Import cancelled.");
@@ -343,10 +377,14 @@ fn handle_cli(args: Vec<String>) -> Result<Option<i32>> {
                 }
             }
         }
-        "import-csv" => match existing_file(&args, "Usage: void import-csv <sessions.csv>") {
-            Ok(path) => import_csv_file(&path)?,
-            Err(code) => code,
-        },
+        "import-csv" => {
+            let yes = args[2..].iter().any(|a| is_yes_flag(a));
+            let target = args[2..].iter().find(|a| !is_yes_flag(a));
+            match existing_file(target, "Usage: void import-csv <sessions.csv> [--yes]") {
+                Ok(path) => import_csv_file(&path, yes)?,
+                Err(code) => code,
+            }
+        }
         unknown => {
             eprintln!("Unknown command: {unknown}\n");
             eprintln!("{USAGE}");
@@ -380,7 +418,8 @@ fn install_panic_hook() {
             LeaveAlternateScreen,
             crossterm::event::DisableMouseCapture,
             crossterm::event::DisableBracketedPaste,
-            crossterm::event::DisableFocusChange
+            crossterm::event::DisableFocusChange,
+            crossterm::terminal::SetTitle("")
         );
         default_hook(info);
     }));
@@ -393,17 +432,15 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
         LeaveAlternateScreen,
         crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
-        crossterm::event::DisableFocusChange
+        crossterm::event::DisableFocusChange,
+        crossterm::terminal::SetTitle("")
     )?;
     terminal.show_cursor()?;
     Ok(())
 }
 
 fn set_window_title(title: &str) {
-    let _ = execute!(
-        io::stdout(),
-        crossterm::style::Print(format!("\x1b]0;{}\x07", title.replace('\x1b', "")))
-    );
+    let _ = execute!(io::stdout(), crossterm::terminal::SetTitle(title));
 }
 
 fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()>
@@ -501,6 +538,25 @@ mod tests {
     #[test]
     fn a_bad_due_date_is_an_error() {
         assert!(parse_add_args(&args(&["Milk", "--due", "someday"])).is_err());
+    }
+
+    #[test]
+    fn list_titles_are_padded_by_display_width() {
+        use unicode_width::UnicodeWidthStr;
+        for title in [
+            "short",
+            "日本語のタスク",
+            "a very long title that will not fit at all here",
+        ] {
+            assert_eq!(pad_to_width(title, 20).width(), 20, "{title}");
+        }
+    }
+
+    #[test]
+    fn csv_paths_are_recognised_in_any_case() {
+        assert!(is_csv_path("out.CSV"));
+        assert!(is_csv_path("dir/sessions.csv"));
+        assert!(!is_csv_path("backup.json"));
     }
 
     #[test]

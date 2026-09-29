@@ -390,6 +390,10 @@ impl Database {
         import_export::export_csv(&self.conn)
     }
 
+    pub fn export_csv_to(&self, path: &std::path::Path) -> Result<()> {
+        import_export::export_csv_to(&self.conn, path)
+    }
+
     pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
         let tx = Atomic::begin(&self.conn)?;
         import_export::import_json(&self.conn, path)?;

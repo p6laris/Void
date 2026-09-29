@@ -61,6 +61,13 @@ pub fn export_json_to(conn: &Connection, path: &std::path::Path) -> Result<()> {
 ///
 /// JSON stays the backup/restore format; this is a one-way reporting export.
 pub fn export_csv(conn: &Connection) -> Result<PathBuf> {
+    let path = data_dir()?.join("sessions.csv");
+    export_csv_to(conn, &path)?;
+    Ok(path)
+}
+
+/// Writes every session as CSV to `path`.
+pub fn export_csv_to(conn: &Connection, path: &std::path::Path) -> Result<()> {
     let sessions = load_all_sessions(conn)?;
 
     let mut out = String::from(
@@ -81,11 +88,12 @@ pub fn export_csv(conn: &Connection) -> Result<PathBuf> {
         ));
     }
 
-    let path = data_dir()?.join("sessions.csv");
-    let tmp = path.with_extension("csv.tmp");
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
     fs::write(&tmp, out.as_bytes()).context("writing csv export temp file")?;
-    fs::rename(&tmp, &path).context("finalizing csv export")?;
-    Ok(path)
+    fs::rename(&tmp, path).context("finalizing csv export")?;
+    Ok(())
 }
 
 /// Quotes a CSV field when it contains a delimiter, quote or newline (RFC 4180).
@@ -582,6 +590,16 @@ mod tests {
         assert_eq!(data.total_focus_minutes, 25);
         assert_eq!(data.total_sessions, 1);
         assert_eq!(load_tasks(&conn).unwrap()[&7].actual_minutes, 25);
+    }
+
+    #[test]
+    fn csv_export_writes_straight_to_the_given_path() {
+        let conn = mem_conn();
+        let path = std::env::temp_dir().join(format!("void-csv-out-{}.csv", std::process::id()));
+        export_csv_to(&conn, &path).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        fs::remove_file(&path).ok();
+        assert!(written.starts_with("date,completed_at,minutes"));
     }
 
     #[test]
