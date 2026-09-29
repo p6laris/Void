@@ -648,7 +648,8 @@ impl Default for AppData {
             timer_presets: default_timer_presets(),
             active_preset: None,
             streak_rest_days: default_rest_days(),
-            streak_freezes: STREAK_FREEZE_MAX,
+            // One to start, so earning more at streak milestones matters.
+            streak_freezes: 1,
             last_freeze_earned_streak: 0,
         }
     }

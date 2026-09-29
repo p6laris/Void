@@ -680,6 +680,11 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
     {
         data.streak_days = data.streak_days.saturating_sub(1);
         data.last_session_date = db.latest_focus_session_date()?;
+        // Undo a freeze earned by the milestone this session reached.
+        if data.streak_days < data.last_freeze_earned_streak {
+            data.streak_freezes = data.streak_freezes.saturating_sub(1);
+            data.last_freeze_earned_streak = data.streak_days / 7 * 7;
+        }
     }
 
     db.persist_session_stats(data)?;
@@ -779,10 +784,10 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
         .values()
         .filter(|t| t.status == TaskStatus::Done && !t.archived)
         .filter_map(|t| {
-            t.completed_at.as_ref().and_then(|completed| {
-                let key = crate::date::format_date(completed.date_naive());
-                (key.as_str() < cutoff.as_str()).then_some(t.id)
-            })
+            // Local date, to match the cutoff; tasks without a completion time use creation.
+            let finished = t.completed_at.unwrap_or(t.created_at);
+            let key = crate::date::format_date(finished.with_timezone(&chrono::Local).date_naive());
+            (key.as_str() < cutoff.as_str()).then_some(t.id)
         })
         .collect();
 
@@ -1246,6 +1251,54 @@ mod tests {
         mark_task_done(&db, &mut data, id).unwrap();
         let next = data.tasks.values().find(|t| t.id != id).unwrap();
         assert!(next.today);
+    }
+
+    #[test]
+    fn old_done_tasks_are_archived_even_without_a_completion_time() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            archive_after_days: 7,
+            ..Default::default()
+        };
+        let mut t = Task::new(1, "Old".into());
+        t.status = TaskStatus::Done;
+        t.completed_at = None;
+        t.created_at = Utc::now() - chrono::Duration::days(30);
+        data.tasks.insert(1, t);
+        assert_eq!(auto_archive_old_tasks(&db, &mut data).unwrap(), 1);
+        assert!(data.task(1).unwrap().archived);
+    }
+
+    #[test]
+    fn deleting_the_session_that_earned_a_freeze_takes_it_back() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 6,
+            streak_freezes: 1,
+            last_session_date: Some(crate::date::format_date(
+                crate::date::today_naive() - chrono::Duration::days(1),
+            )),
+            ..Default::default()
+        };
+        record_focus_session_with_meta(
+            &db,
+            &mut data,
+            25,
+            None,
+            TimerMode::Focus,
+            SessionMeta::default(),
+        )
+        .unwrap();
+        assert_eq!((data.streak_days, data.streak_freezes), (7, 2));
+
+        let id = db.recent_sessions(1).unwrap()[0].id;
+        delete_session(&db, &mut data, id).unwrap();
+        assert_eq!((data.streak_days, data.streak_freezes), (6, 1));
+    }
+
+    #[test]
+    fn new_users_start_with_one_freeze() {
+        assert_eq!(AppData::default().streak_freezes, 1);
     }
 
     #[test]

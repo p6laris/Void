@@ -45,6 +45,8 @@ pub struct Timer {
     pub session_pause_count: u32,
     pub session_pause_seconds: u32,
     pause_started_at: Option<Instant>,
+    /// Exact elapsed time at the last pause, so resuming doesn't round off the fraction.
+    paused_exact: Option<Duration>,
     /// Wall-clock start of the current session, so it can be dated by its start day.
     pub session_started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -64,6 +66,7 @@ impl Timer {
             session_pause_count: 0,
             session_pause_seconds: 0,
             pause_started_at: None,
+            paused_exact: None,
             session_started_at: None,
         }
     }
@@ -125,6 +128,7 @@ impl Timer {
         self.state = crate::model::TimerState::Idle;
         self.started_at = None;
         self.session_started_at = None;
+        self.paused_exact = None;
         self.reset_session_pauses();
     }
 
@@ -164,7 +168,15 @@ impl Timer {
                 return start.elapsed().as_secs_f64().min(self.total_seconds as f64);
             }
         }
-        self.elapsed_seconds as f64
+        self.stopped_elapsed().as_secs_f64()
+    }
+
+    /// Elapsed time while not running; the exact pause value only if `elapsed_seconds` still matches it.
+    fn stopped_elapsed(&self) -> Duration {
+        match self.paused_exact {
+            Some(exact) if exact.as_secs() == self.elapsed_seconds as u64 => exact,
+            _ => Duration::from_secs(self.elapsed_seconds as u64),
+        }
     }
 
     pub fn current_elapsed_seconds(&self) -> u32 {
@@ -187,8 +199,8 @@ impl Timer {
         }
         match self.state {
             crate::model::TimerState::Paused => {
-                self.started_at =
-                    Some(Instant::now() - Duration::from_secs(self.elapsed_seconds as u64));
+                self.started_at = Some(Instant::now() - self.stopped_elapsed());
+                self.paused_exact = None;
             }
             crate::model::TimerState::Finished | crate::model::TimerState::Idle => {
                 if self.state == crate::model::TimerState::Finished {
@@ -208,7 +220,9 @@ impl Timer {
         }
         self.session_pause_count = self.session_pause_count.saturating_add(1);
         self.pause_started_at = Some(Instant::now());
-        self.elapsed_seconds = self.current_elapsed_seconds();
+        let exact = Duration::from_secs_f64(self.current_elapsed_secs_f64());
+        self.elapsed_seconds = exact.as_secs() as u32;
+        self.paused_exact = Some(exact);
         self.started_at = None;
         self.state = crate::model::TimerState::Paused;
     }
@@ -243,6 +257,7 @@ impl Timer {
         self.elapsed_seconds = 0;
         self.started_at = None;
         self.session_started_at = None;
+        self.paused_exact = None;
         self.total_seconds = self.duration_seconds();
         self.reset_session_pauses();
     }
@@ -267,6 +282,7 @@ impl Timer {
 
     pub fn skip(&mut self) {
         self.elapsed_seconds = self.current_elapsed_seconds().max(1);
+        self.paused_exact = None;
         self.state = crate::model::TimerState::Finished;
         self.started_at = None;
     }
@@ -351,6 +367,20 @@ mod tests {
         t.elapsed_seconds = secs;
         t.state = TimerState::Paused;
         t
+    }
+
+    #[test]
+    fn resuming_keeps_the_fraction_of_a_second() {
+        let mut t = Timer::new(TimerConfig::default());
+        t.start();
+        t.started_at = Some(Instant::now() - Duration::from_millis(10_900));
+        t.pause();
+        assert_eq!(t.elapsed_seconds, 10);
+        t.start();
+        assert!(
+            t.current_elapsed_secs_f64() >= 10.9,
+            "resume dropped the fraction"
+        );
     }
 
     #[test]
