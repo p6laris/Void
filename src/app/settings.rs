@@ -352,8 +352,9 @@ impl App {
                     crate::model::ThemeMode::Light => "light",
                 };
                 self.persist_setting("theme_mode", key);
-                self.refresh_theme();
+                // Detected once: on Windows each check starts a `reg query` process.
                 let sys = theme::detect_system_theme();
+                self.refresh_theme_with(|| sys);
                 let sys_label = if sys.is_light() {
                     "Light detected"
                 } else {

@@ -18,6 +18,8 @@ pub struct UiState {
     pub status_error: bool,
     pub last_status_set: Instant,
     pub should_quit: bool,
+    /// Whether the terminal window has focus; ticks slow down while it doesn't.
+    pub focused: bool,
     pub help_scroll: u16,
     pub about_scroll: u16,
     pub about_left_scroll: u16,

@@ -112,11 +112,18 @@ impl App {
         storage::pending_tasks(&self.data).count() as u32
     }
 
+    /// Position of the active task in the "up next" list, from the cached dashboard order.
     pub fn active_task_pending_index(&self) -> Option<u32> {
         let id = self.task_ui.active_task?;
-        storage::sorted_pending_tasks(&self.data)
+        self.task_ui
+            .cached_dashboard_tasks
             .iter()
-            .position(|t| t.id == id)
+            .position(|&i| {
+                self.data
+                    .tasks
+                    .get_index(i)
+                    .is_some_and(|(&tid, _)| tid == id)
+            })
             .map(|i| i as u32)
     }
 
@@ -672,6 +679,24 @@ mod tests {
             .position(|&x| x == id)
             .unwrap();
         app.task_ui.task_state.select(Some(pos));
+    }
+
+    #[test]
+    fn the_active_task_index_matches_the_up_next_order() {
+        use crate::model::Priority;
+        let mut app = app();
+        add(&mut app, "Low", Priority::Low);
+        let high = add(&mut app, "High", Priority::High);
+        let mid = add(&mut app, "Mid", Priority::Medium);
+        app.recompute_task_caches();
+        for id in [high, mid] {
+            app.set_active_task(Some(id));
+            let expected = storage::sorted_pending_tasks(&app.data)
+                .iter()
+                .position(|t| t.id == id)
+                .map(|i| i as u32);
+            assert_eq!(app.active_task_pending_index(), expected);
+        }
     }
 
     #[test]

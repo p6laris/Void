@@ -163,7 +163,10 @@ impl App {
     }
 
     pub fn on_tick(&mut self) {
-        if let Ok(true) = storage::ensure_today_reset(&self.db, &mut self.data) {
+        let minute = chrono::Utc::now().timestamp() / 60;
+        let check_rollover = self.last_rollover_minute.replace(minute) != Some(minute);
+        if check_rollover && storage::ensure_today_reset(&self.db, &mut self.data).unwrap_or(false)
+        {
             if !matches!(self.timer.state, TimerState::Running | TimerState::Paused) {
                 self.timer.completed_focus_sessions = 0;
             }
@@ -701,6 +704,57 @@ mod tests {
         app.on_tick();
         assert_eq!(app.timer.state, TimerState::Running);
         assert_ne!(app.ui.status.as_deref(), Some("1 minute remaining!"));
+    }
+
+    #[test]
+    fn ticks_are_slow_unless_something_on_screen_moves() {
+        let mut app = app();
+        app.data.canvas_mode = crate::model::CanvasMode::Off;
+        app.ui.tab = FocusTab::Settings;
+        assert_eq!(app.tick_rate(), Duration::from_secs(1));
+
+        app.timer.start();
+        assert_eq!(app.tick_rate(), Duration::from_millis(250));
+        app.ui.tab = FocusTab::Dashboard;
+        assert_eq!(app.tick_rate(), Duration::from_millis(100));
+
+        app.ui.focused = false;
+        assert_eq!(app.tick_rate(), Duration::from_millis(500));
+    }
+
+    #[test]
+    fn the_frame_signature_only_changes_with_what_is_shown() {
+        let mut app = app();
+        app.ui.tab = FocusTab::Settings;
+        app.timer.start();
+        app.timer.started_at = Some(Instant::now() - Duration::from_millis(200));
+        let before = app.frame_signature();
+        app.timer.started_at = Some(Instant::now() - Duration::from_millis(600));
+        assert_eq!(
+            app.frame_signature(),
+            before,
+            "sub-second change off the dashboard"
+        );
+
+        app.set_status("hello", false);
+        assert_ne!(app.frame_signature(), before);
+    }
+
+    #[test]
+    fn the_day_rollover_is_checked_once_a_minute() {
+        let mut app = app();
+        app.on_tick();
+        app.data.today_date = Some("2020-01-01".into());
+        app.data.today_focus_minutes = 50;
+        app.on_tick();
+        assert_eq!(
+            app.data.today_focus_minutes, 50,
+            "checked again within the minute"
+        );
+
+        app.last_rollover_minute = None;
+        app.on_tick();
+        assert_eq!(app.data.today_focus_minutes, 0);
     }
 
     #[test]

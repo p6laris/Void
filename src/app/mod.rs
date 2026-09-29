@@ -143,6 +143,8 @@ pub struct App {
     pub warned_session: Option<chrono::DateTime<chrono::Utc>>,
     pub last_activity: Instant,
     pub last_tick_wall: Option<std::time::SystemTime>,
+    /// Wall-clock minute of the last day-rollover check, which runs once a minute.
+    pub last_rollover_minute: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -336,6 +338,7 @@ impl App {
                 status_error: false,
                 last_status_set: Instant::now(),
                 should_quit: false,
+                focused: true,
                 help_scroll: 0,
                 about_scroll: 0,
                 about_left_scroll: 0,
@@ -405,6 +408,7 @@ impl App {
             warned_session: None,
             last_activity: Instant::now(),
             last_tick_wall: None,
+            last_rollover_minute: None,
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();
@@ -432,12 +436,16 @@ impl App {
     pub const SESSIONS_PER_PAGE: usize = 15;
 
     pub fn resolve_effective_theme_id(&self) -> String {
+        self.theme_id_for(theme::detect_system_theme)
+    }
+
+    /// The theme id for the current mode; `system` is only consulted in Auto mode.
+    fn theme_id_for(&self, system: impl FnOnce() -> theme::SystemTheme) -> String {
         match self.data.theme_mode {
             crate::model::ThemeMode::Dark => self.data.dark_theme.clone(),
             crate::model::ThemeMode::Light => self.data.light_theme.clone(),
             crate::model::ThemeMode::Auto => {
-                let sys = theme::detect_system_theme();
-                if sys.is_light() {
+                if system().is_light() {
                     self.data.light_theme.clone()
                 } else {
                     self.data.dark_theme.clone()
@@ -447,7 +455,12 @@ impl App {
     }
 
     pub fn refresh_theme(&mut self) {
-        let effective = self.resolve_effective_theme_id();
+        self.refresh_theme_with(theme::detect_system_theme);
+    }
+
+    /// Like `refresh_theme`, reusing an already detected OS appearance.
+    pub(crate) fn refresh_theme_with(&mut self, system: impl FnOnce() -> theme::SystemTheme) {
+        let effective = self.theme_id_for(system);
         let id = theme::normalize_theme_id(&effective);
         match theme::resolve(&id, &self.theme_catalog) {
             Ok(resolved) => {
@@ -545,11 +558,48 @@ impl App {
         self.stats.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
     }
 
+    /// True while the animated dashboard canvas is on screen.
+    pub fn canvas_animating(&self) -> bool {
+        self.ui.focused
+            && self.ui.tab == FocusTab::Dashboard
+            && self.data.canvas_mode == crate::model::CanvasMode::Animated
+    }
+
+    /// Fast only while something on screen moves; otherwise slow enough to stay idle.
     pub fn tick_rate(&self) -> Duration {
-        match self.timer.state {
-            TimerState::Running | TimerState::Finished => Duration::from_millis(100),
-            TimerState::Idle | TimerState::Paused => Duration::from_millis(150),
-        }
+        let running = self.timer.state == TimerState::Running;
+        let ms = if !self.ui.focused {
+            if running {
+                500
+            } else {
+                1000
+            }
+        } else if self.canvas_animating() || (running && self.ui.tab == FocusTab::Dashboard) {
+            100
+        } else if running {
+            250
+        } else {
+            1000
+        };
+        Duration::from_millis(ms)
+    }
+
+    /// Changes whenever a tick alters something drawn, apart from canvas animation.
+    pub fn frame_signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        // Tenths are only drawn on the dashboard; elsewhere the header shows whole seconds.
+        let per_sec = if self.ui.tab == FocusTab::Dashboard {
+            10.0
+        } else {
+            1.0
+        };
+        ((self.timer.remaining_secs_f64() * per_sec) as u64).hash(&mut h);
+        (self.timer.state as u8, self.timer.mode as u8).hash(&mut h);
+        (self.ui.status.as_deref(), self.ui.status_error).hash(&mut h);
+        (self.data_version, self.ui.tab as u8, self.ui.zen_mode).hash(&mut h);
+        self.data.today_date.hash(&mut h);
+        h.finish()
     }
 
     fn window_title_signature(&self) -> u64 {

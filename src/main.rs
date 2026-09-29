@@ -363,7 +363,8 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
         stdout,
         EnterAlternateScreen,
         crossterm::event::EnableMouseCapture,
-        crossterm::event::EnableBracketedPaste
+        crossterm::event::EnableBracketedPaste,
+        crossterm::event::EnableFocusChange
     )?;
     let backend = CrosstermBackend::new(stdout);
     Ok(Terminal::new(backend)?)
@@ -378,7 +379,8 @@ fn install_panic_hook() {
             io::stdout(),
             LeaveAlternateScreen,
             crossterm::event::DisableMouseCapture,
-            crossterm::event::DisableBracketedPaste
+            crossterm::event::DisableBracketedPaste,
+            crossterm::event::DisableFocusChange
         );
         default_hook(info);
     }));
@@ -390,7 +392,8 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
         terminal.backend_mut(),
         LeaveAlternateScreen,
         crossterm::event::DisableMouseCapture,
-        crossterm::event::DisableBracketedPaste
+        crossterm::event::DisableBracketedPaste,
+        crossterm::event::DisableFocusChange
     )?;
     terminal.show_cursor()?;
     Ok(())
@@ -409,6 +412,7 @@ where
 {
     let mut last_tick = std::time::Instant::now();
     let mut needs_draw = true;
+    let mut drawn_frame = 0;
 
     loop {
         if needs_draw {
@@ -418,6 +422,7 @@ where
             }
             terminal.draw(|f| ui::render(f, app))?;
             needs_draw = false;
+            drawn_frame = app.frame_signature();
         }
 
         let tick_rate = app.tick_rate();
@@ -443,6 +448,11 @@ where
                         needs_draw = true;
                     }
                 }
+                Event::FocusGained => {
+                    app.ui.focused = true;
+                    needs_draw = true;
+                }
+                Event::FocusLost => app.ui.focused = false,
                 Event::Paste(text) => {
                     app.handle_paste(&text);
                     needs_draw = true;
@@ -450,13 +460,12 @@ where
                 Event::Resize(_, _) => {
                     needs_draw = true;
                 }
-                _ => {}
             }
         }
         if last_tick.elapsed() >= tick_rate {
             app.on_tick();
             last_tick = std::time::Instant::now();
-            needs_draw = true;
+            needs_draw |= app.canvas_animating() || app.frame_signature() != drawn_frame;
         }
         if app.ui.should_quit {
             return Ok(());
