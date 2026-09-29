@@ -41,6 +41,8 @@ pub struct InputState {
     pub input_priority: Priority,
     pub input_field: InputField,
     pub popup: Option<Popup>,
+    /// Date highlighted in the task form's due-date calendar.
+    pub calendar_date: chrono::NaiveDate,
 }
 
 #[derive(Debug)]
@@ -85,5 +87,4 @@ pub struct StatsState {
     pub peak_hour_label: String,
     pub tag_analytics: Vec<(String, u32)>,
     pub hourly_distribution: [u32; 24],
-    pub calendar_date: chrono::NaiveDate,
 }

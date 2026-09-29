@@ -232,7 +232,7 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
     f.render_widget(Paragraph::new(form_lines), left_area);
 
     if let Some(r) = right_area {
-        super::calendar::render_due_date_calendar(f, r, app.stats.calendar_date, theme);
+        super::calendar::render_due_date_calendar(f, r, app.input.calendar_date, theme);
     }
 
     if chunks.len() > 1 {
@@ -343,7 +343,14 @@ fn popup_field_row<'a>(
     Line::from(vec![
         active_indicator,
         Span::styled(format!("{} {:<12} ", icon, label), label_style),
-        Span::styled(super::widgets::truncate(value, max_w), val_style),
+        Span::styled(
+            if active {
+                super::widgets::truncate_start(value, max_w)
+            } else {
+                super::widgets::truncate(value, max_w)
+            },
+            val_style,
+        ),
     ])
 }
 

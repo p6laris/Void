@@ -40,7 +40,7 @@ impl App {
                     storage::TaskPayload {
                         title,
                         notes: String::new(),
-                        estimated_minutes: self.input.input_number,
+                        estimated_minutes: self.input.input_number.clamp(1, 480),
                         priority: self.input.input_priority,
                         tags,
                         due_date,
@@ -318,40 +318,40 @@ impl App {
         if self.input.input_field == InputField::DueDate {
             match key.code {
                 KeyCode::Left => {
-                    self.stats.calendar_date -= chrono::Duration::days(1);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.calendar_date -= chrono::Duration::days(1);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Right => {
-                    self.stats.calendar_date += chrono::Duration::days(1);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.calendar_date += chrono::Duration::days(1);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Up => {
-                    self.stats.calendar_date -= chrono::Duration::days(7);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.calendar_date -= chrono::Duration::days(7);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Down => {
-                    self.stats.calendar_date += chrono::Duration::days(7);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.calendar_date += chrono::Duration::days(7);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Char('t') | KeyCode::Char('T') => {
-                    self.stats.calendar_date = crate::date::today_naive();
+                    self.input.calendar_date = crate::date::today_naive();
                     self.input.input_due_date = crate::date::today_str();
                     return;
                 }
                 KeyCode::Char('m') | KeyCode::Char('M') => {
-                    self.stats.calendar_date =
+                    self.input.calendar_date =
                         crate::date::today_naive() + chrono::Duration::days(1);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Char('w') | KeyCode::Char('W') => {
-                    self.stats.calendar_date =
+                    self.input.calendar_date =
                         crate::date::today_naive() + chrono::Duration::days(7);
-                    self.input.input_due_date = crate::date::format_date(self.stats.calendar_date);
+                    self.input.input_due_date = crate::date::format_date(self.input.calendar_date);
                     return;
                 }
                 KeyCode::Char('c') | KeyCode::Char('C') => {
@@ -376,6 +376,18 @@ impl App {
             }
             _ => {}
         }
+        if self.input.input_field == InputField::DueDate {
+            self.sync_calendar_to_due_date();
+        }
+    }
+
+    /// Points the calendar at the typed due date once it parses, else today.
+    pub(crate) fn sync_calendar_to_due_date(&mut self) {
+        self.input.calendar_date = storage::normalize_due_date(&self.input.input_due_date, true)
+            .ok()
+            .flatten()
+            .and_then(|d| chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+            .unwrap_or_else(crate::date::today_naive);
     }
 
     pub(crate) fn handle_field_input(&mut self, key: KeyEvent) {
@@ -386,12 +398,8 @@ impl App {
                     self.input.input_number =
                         (self.input.input_number.saturating_mul(10) + d).min(480);
                 }
-                KeyCode::Backspace => {
-                    self.input.input_number /= 10;
-                    if self.input.input_number == 0 {
-                        self.input.input_number = 1;
-                    }
-                }
+                // May reach 0 while typing; clamped when the form is submitted.
+                KeyCode::Backspace => self.input.input_number /= 10,
                 KeyCode::Up => self.input.input_number = (self.input.input_number + 5).min(480),
                 KeyCode::Down => {
                     self.input.input_number = self.input.input_number.saturating_sub(5).max(1)
@@ -429,6 +437,7 @@ mod tests {
     use super::*;
     use crate::db::Database;
     use crate::storage;
+    use crossterm::event::KeyModifiers;
 
     fn app_with_one_task() -> (App, u64) {
         let db = Database::open_in_memory().unwrap();
@@ -449,6 +458,56 @@ mod tests {
         app.recompute_task_caches();
         app.set_active_task(Some(id));
         (app, id)
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.handle_popup_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn the_estimate_can_be_retyped_from_scratch() {
+        let (mut app, _) = app_with_one_task();
+        app.open_add_task();
+        app.input.input_field = InputField::Estimate;
+        key(&mut app, KeyCode::Backspace);
+        key(&mut app, KeyCode::Backspace);
+        key(&mut app, KeyCode::Char('4'));
+        key(&mut app, KeyCode::Char('7'));
+        assert_eq!(app.input.input_number, 47);
+    }
+
+    #[test]
+    fn an_emptied_estimate_is_saved_as_one_minute() {
+        let (mut app, _) = app_with_one_task();
+        app.open_add_task();
+        app.input.input_buffer = "Tiny".into();
+        app.input.input_field = InputField::Estimate;
+        key(&mut app, KeyCode::Backspace);
+        key(&mut app, KeyCode::Backspace);
+        app.submit_popup();
+        let t = app.data.tasks.values().find(|t| t.title == "Tiny").unwrap();
+        assert_eq!(t.estimated_minutes, 1);
+    }
+
+    #[test]
+    fn editing_a_task_opens_the_calendar_on_its_due_date() {
+        let (mut app, id) = app_with_one_task();
+        app.data.task_mut(id).unwrap().due_date = Some("2031-05-17".into());
+        app.recompute_task_caches();
+        app.task_ui.task_state.select(Some(0));
+        app.open_edit_task();
+        assert_eq!(app.input.calendar_date.to_string(), "2031-05-17");
+    }
+
+    #[test]
+    fn typing_a_due_date_moves_the_calendar() {
+        let (mut app, _) = app_with_one_task();
+        app.open_add_task();
+        app.input.input_field = InputField::DueDate;
+        for c in "2031-05-17".chars() {
+            key(&mut app, KeyCode::Char(c));
+        }
+        assert_eq!(app.input.calendar_date.to_string(), "2031-05-17");
     }
 
     #[test]

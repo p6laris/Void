@@ -357,6 +357,7 @@ impl App {
                 input_priority: Priority::Medium,
                 input_field: InputField::Title,
                 popup: None,
+                calendar_date: crate::date::today_naive(),
             },
             task_ui: TaskUiState {
                 task_state,
@@ -395,7 +396,6 @@ impl App {
                 stats_view_mode: StatsViewMode::Overview,
                 tag_analytics,
                 hourly_distribution,
-                calendar_date: crate::date::today_naive(),
             },
             settings_state: SettingsState::new(),
             theme,
@@ -766,6 +766,7 @@ impl App {
         self.input.input_number = 25;
         self.input.input_priority = Priority::Medium;
         self.input.input_field = InputField::Title;
+        self.input.calendar_date = crate::date::today_naive();
         self.input.popup = Some(Popup::AddTask);
         self.input.input_mode = InputMode::Editing;
     }
@@ -782,6 +783,7 @@ impl App {
             self.input.input_number = t.estimated_minutes;
             self.input.input_priority = t.priority;
             self.input.input_field = InputField::Title;
+            self.sync_calendar_to_due_date();
             self.input.popup = Some(Popup::EditTask(id));
             self.input.input_mode = InputMode::Editing;
         }
