@@ -179,9 +179,14 @@ fn draw_task_list(f: &mut Frame, app: &mut App, area: Rect) {
 
     let title_spans = vec![Span::styled(
         format!(
-            " {} tasks ({}){} ",
+            " {} tasks ({}){}{} ",
             icons.tasks,
             filtered_count,
+            app.task_ui
+                .active_tag_filter
+                .as_ref()
+                .map(|t| format!(" · #{t}"))
+                .unwrap_or_default(),
             if app.task_ui.bulk_mode {
                 " · bulk"
             } else {

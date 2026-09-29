@@ -15,3 +15,7 @@ test_backup.json
 *.rs.bk
 *.swp
 *~
+
+# Generated
+graphify-out/
+RELEASE_NOTES.md

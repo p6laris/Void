@@ -25,6 +25,10 @@ pub fn resolve_color(
 }
 
 fn parse_hex(hex: &str) -> Result<Color> {
+    // Byte slicing below would panic on a multi-byte character.
+    if !hex.is_ascii() {
+        bail!("invalid hex color `#{hex}`: expected ASCII hex digits");
+    }
     match hex.len() {
         3 => {
             let r = hex_digit(hex.as_bytes()[0])?;
@@ -74,6 +78,12 @@ mod tests {
     #[test]
     fn parses_six_digit_hex() {
         assert_eq!(parse_color("#1e1e2e").unwrap(), Color::Rgb(30, 30, 46));
+    }
+
+    #[test]
+    fn rejects_non_ascii_hex_instead_of_panicking() {
+        // 6 bytes but not 6 characters: slicing by byte would split "é" (2 bytes).
+        assert!(parse_color("#aé€").is_err());
     }
 
     #[test]

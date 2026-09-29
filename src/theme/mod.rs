@@ -128,7 +128,7 @@ pub struct Theme {
 /// Fills every derived token from the required ones. Themes that set a token explicitly
 /// overwrite the derived value afterwards.
 pub(crate) fn derive_defaults(base: &mut Theme) {
-    base.comment = mix(base.bg, base.dim, 190);
+    base.comment = legible(mix(base.bg, base.dim, 190), base.bg, base.text);
     base.surface = mix(base.bg, base.panel, 200);
     base.surface_alt = mix(base.panel, base.text, 20);
     base.heat = derive_heat(base.bg, base.accent, base.task_track);
@@ -327,6 +327,36 @@ pub fn resolve(id: &str, catalog: &ThemeCatalog) -> Result<Theme> {
 
 pub fn normalize_theme_id(raw: &str) -> String {
     raw.trim().to_ascii_lowercase()
+}
+
+/// Lowest contrast against the background that secondary text may have (WCAG AA, large text).
+const MIN_SECONDARY_CONTRAST: f64 = 3.0;
+
+/// `color`, moved toward `text` only as far as needed to stay readable on `bg`.
+fn legible(color: Color, bg: Color, text: Color) -> Color {
+    (0..=255u16)
+        .step_by(8)
+        .map(|t| mix(color, text, t as u8))
+        .find(|c| contrast(*c, bg) >= MIN_SECONDARY_CONTRAST)
+        .unwrap_or(text)
+}
+
+/// WCAG contrast ratio between two colours, from 1 (identical) to 21.
+fn contrast(a: Color, b: Color) -> f64 {
+    fn luminance(c: Color) -> f64 {
+        let (r, g, b) = rgb(c);
+        let channel = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.03928 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
 fn mix(a: Color, b: Color, t: u8) -> Color {

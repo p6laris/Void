@@ -78,32 +78,28 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         app.timer.format_remaining()
     };
 
-    let mut chips: Vec<Span> = chip(timer_icon, timer_text, timer_color, theme.comment);
-    chips.push(Span::raw(" "));
-    chips.extend(streak_goal_chips(app, theme, icons));
-
+    // Most important first; on narrow terminals groups drop from the end until they fit.
+    let mut groups: Vec<Vec<Span>> = vec![
+        chip(timer_icon, timer_text, timer_color, theme.comment),
+        streak_goal_chips(app, theme, icons),
+    ];
     if app.timer.state != TimerState::Idle {
-        chips.push(Span::raw(" "));
-        chips.extend(chip(
+        groups.push(chip(
             icons.cycle,
             app.timer.cycle_label(),
             theme.info,
             theme.comment,
         ));
     }
-
     if app.queue_empty() && !app.data.tasks.is_empty() {
-        chips.push(Span::raw(" "));
-        chips.extend(chip(
+        groups.push(chip(
             icons.check,
             "queue clear".into(),
             theme.success,
             theme.comment,
         ));
     }
-
-    chips.push(Span::raw(" "));
-    chips.extend(session_total_spans(app, theme, icons, false));
+    groups.push(session_total_spans(app, theme, icons, false));
 
     let title = Line::from(vec![
         Span::styled(
@@ -115,6 +111,18 @@ pub fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(format!("v{version}"), Style::default().fg(theme.dim)),
     ]);
 
+    let group_width = |g: &Vec<Span>| g.iter().map(|s| s.width()).sum::<usize>() + 1;
+    let room = (area.width as usize).saturating_sub(title.width() + 2);
+    while groups.len() > 1 && groups.iter().map(group_width).sum::<usize>() > room {
+        groups.pop();
+    }
+    let mut chips: Vec<Span> = Vec::new();
+    for (i, group) in groups.into_iter().enumerate() {
+        if i > 0 {
+            chips.push(Span::raw(" "));
+        }
+        chips.extend(group);
+    }
     let right = Line::from(chips);
 
     let block = Block::default()
@@ -258,6 +266,18 @@ fn tab_icon(icons: IconSet, tab: FocusTab) -> &'static str {
 pub fn draw_zen_footer(f: &mut Frame, app: &App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
+
+    // A pending status message (errors especially) takes the stats' place until it expires.
+    if let Some(msg) = &app.ui.status {
+        let color = if app.ui.status_error {
+            theme.error
+        } else {
+            theme.dim
+        };
+        let line = Line::from(Span::styled(format!(" {msg}"), Style::default().fg(color)));
+        draw_footer_bar(f, app, area, line);
+        return;
+    }
 
     let mut chips = streak_goal_chips(app, theme, icons);
     chips.push(Span::raw(" "));

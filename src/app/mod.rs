@@ -65,6 +65,7 @@ pub enum Popup {
     EditTask(u64),
     ConfirmDelete(u64),
     EmptyQueueChoice,
+    ConfirmQuit,
     AddSubtask(u64),
     EditSubtask(u64, u64), // (task_id, subtask_id)
     BulkConfirm(BulkAction),
@@ -138,8 +139,12 @@ pub struct App {
     pub theme_catalog: ThemeCatalog,
     pub icons: IconSet,
     pub data_version: u64,
-    pub end_warning_shown: bool,
+    /// Start time of the session the one-minute warning last fired for.
+    pub warned_session: Option<chrono::DateTime<chrono::Utc>>,
     pub last_activity: Instant,
+    pub last_tick_wall: Option<std::time::SystemTime>,
+    /// Wall-clock minute of the last day-rollover check, which runs once a minute.
+    pub last_rollover_minute: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,7 +251,7 @@ impl App {
     /// Builds an app around an already-open database, so tests can drive the full UI
     /// against an in-memory database instead of the user's real data directory.
     pub fn with_database(db: Database) -> Result<Self> {
-        let mut data = db.load_app_data().unwrap_or_default();
+        let mut data = db.load_app_data()?;
         let _ = storage::ensure_today_reset(&db, &mut data);
         let config = TimerConfig::from_app_data(&data);
         let mut timer = Timer::new(config);
@@ -289,7 +294,14 @@ impl App {
         };
         let theme_id = theme::normalize_theme_id(&effective_theme_id);
         data.theme = theme_id.clone();
-        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::dark());
+        let mut theme_problems: Vec<String> = theme_catalog.errors().to_vec();
+        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|e| {
+            theme_problems.push(format!("theme `{theme_id}` unavailable, using Dark: {e:#}"));
+            Theme::dark()
+        });
+        for problem in &theme_problems {
+            crate::log::log_error(problem);
+        }
         let icons = IconSet::detect();
         let active_task = data.active_task_id.filter(|id| {
             data.tasks
@@ -322,6 +334,12 @@ impl App {
             }
             status_msg = format!("{} · {}", parts.join(", "), status_msg);
         }
+        if !theme_problems.is_empty() {
+            status_msg = format!(
+                "{} theme problem(s), see void.log · {status_msg}",
+                theme_problems.len()
+            );
+        }
         let mut app = Self {
             db,
             data,
@@ -333,7 +351,12 @@ impl App {
                 status_error: false,
                 last_status_set: Instant::now(),
                 should_quit: false,
+                focused: true,
                 help_scroll: 0,
+                help_scroll_max: std::cell::Cell::new(u16::MAX),
+                about_left_max: std::cell::Cell::new(u16::MAX),
+                about_right_max: std::cell::Cell::new(u16::MAX),
+                about_scroll_max: std::cell::Cell::new(u16::MAX),
                 about_scroll: 0,
                 about_left_scroll: 0,
                 about_right_scroll: 0,
@@ -354,6 +377,7 @@ impl App {
                 input_priority: Priority::Medium,
                 input_field: InputField::Title,
                 popup: None,
+                calendar_date: crate::date::today_naive(),
             },
             task_ui: TaskUiState {
                 task_state,
@@ -392,15 +416,16 @@ impl App {
                 stats_view_mode: StatsViewMode::Overview,
                 tag_analytics,
                 hourly_distribution,
-                calendar_date: crate::date::today_naive(),
             },
             settings_state: SettingsState::new(),
             theme,
             theme_catalog,
             icons,
             data_version: 0,
-            end_warning_shown: false,
+            warned_session: None,
             last_activity: Instant::now(),
+            last_tick_wall: None,
+            last_rollover_minute: None,
         };
         app.recompute_task_caches();
         app.refresh_frame_today_cache();
@@ -428,12 +453,16 @@ impl App {
     pub const SESSIONS_PER_PAGE: usize = 15;
 
     pub fn resolve_effective_theme_id(&self) -> String {
+        self.theme_id_for(theme::detect_system_theme)
+    }
+
+    /// The theme id for the current mode; `system` is only consulted in Auto mode.
+    fn theme_id_for(&self, system: impl FnOnce() -> theme::SystemTheme) -> String {
         match self.data.theme_mode {
             crate::model::ThemeMode::Dark => self.data.dark_theme.clone(),
             crate::model::ThemeMode::Light => self.data.light_theme.clone(),
             crate::model::ThemeMode::Auto => {
-                let sys = theme::detect_system_theme();
-                if sys.is_light() {
+                if system().is_light() {
                     self.data.light_theme.clone()
                 } else {
                     self.data.dark_theme.clone()
@@ -443,7 +472,12 @@ impl App {
     }
 
     pub fn refresh_theme(&mut self) {
-        let effective = self.resolve_effective_theme_id();
+        self.refresh_theme_with(theme::detect_system_theme);
+    }
+
+    /// Like `refresh_theme`, reusing an already detected OS appearance.
+    pub(crate) fn refresh_theme_with(&mut self, system: impl FnOnce() -> theme::SystemTheme) {
+        let effective = self.theme_id_for(system);
         let id = theme::normalize_theme_id(&effective);
         match theme::resolve(&id, &self.theme_catalog) {
             Ok(resolved) => {
@@ -541,11 +575,48 @@ impl App {
         self.stats.timeline_sessions = self.db.sessions_on_date(&today).unwrap_or_default();
     }
 
+    /// True while the animated dashboard canvas is on screen.
+    pub fn canvas_animating(&self) -> bool {
+        self.ui.focused
+            && self.ui.tab == FocusTab::Dashboard
+            && self.data.canvas_mode == crate::model::CanvasMode::Animated
+    }
+
+    /// Fast only while something on screen moves; otherwise slow enough to stay idle.
     pub fn tick_rate(&self) -> Duration {
-        match self.timer.state {
-            TimerState::Running | TimerState::Finished => Duration::from_millis(100),
-            TimerState::Idle | TimerState::Paused => Duration::from_millis(150),
-        }
+        let running = self.timer.state == TimerState::Running;
+        let ms = if !self.ui.focused {
+            if running {
+                500
+            } else {
+                1000
+            }
+        } else if self.canvas_animating() || (running && self.ui.tab == FocusTab::Dashboard) {
+            100
+        } else if running {
+            250
+        } else {
+            1000
+        };
+        Duration::from_millis(ms)
+    }
+
+    /// Changes whenever a tick alters something drawn, apart from canvas animation.
+    pub fn frame_signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        // Tenths are only drawn on the dashboard; elsewhere the header shows whole seconds.
+        let per_sec = if self.ui.tab == FocusTab::Dashboard {
+            10.0
+        } else {
+            1.0
+        };
+        ((self.timer.remaining_secs_f64() * per_sec) as u64).hash(&mut h);
+        (self.timer.state as u8, self.timer.mode as u8).hash(&mut h);
+        (self.ui.status.as_deref(), self.ui.status_error).hash(&mut h);
+        (self.data_version, self.ui.tab as u8, self.ui.zen_mode).hash(&mut h);
+        self.data.today_date.hash(&mut h);
+        h.finish()
     }
 
     fn window_title_signature(&self) -> u64 {
@@ -575,10 +646,13 @@ impl App {
     /// Rebuilds and returns the window title when timer state/mode/seconds change (~1/sec while running).
     pub fn poll_window_title(&mut self) -> Option<&str> {
         if !self.data.show_terminal_title {
-            if self.ui.window_title_sig != u64::MAX {
-                self.ui.window_title_sig = u64::MAX;
+            if self.ui.window_title_sig == u64::MAX {
+                return None;
             }
-            return None;
+            // Clear the title once, so turning the setting off doesn't leave a stale timer.
+            self.ui.window_title_sig = u64::MAX;
+            self.ui.cached_window_title.clear();
+            return Some(&self.ui.cached_window_title);
         }
         let sig = self.window_title_signature();
         if sig == self.ui.window_title_sig {
@@ -668,13 +742,8 @@ impl App {
         self.data.long_break_every = self.timer.config.long_break_every;
     }
 
-    fn elapsed_minutes(&self, skipped: bool) -> u32 {
-        let secs = self.timer.current_elapsed_seconds();
-        if skipped {
-            secs.div_ceil(60).max(1)
-        } else {
-            (secs / 60).max(1)
-        }
+    fn elapsed_minutes(&self) -> u32 {
+        (self.timer.current_elapsed_seconds() / 60).max(1)
     }
 
     pub fn hint(&self) -> String {
@@ -767,6 +836,7 @@ impl App {
         self.input.input_number = 25;
         self.input.input_priority = Priority::Medium;
         self.input.input_field = InputField::Title;
+        self.input.calendar_date = crate::date::today_naive();
         self.input.popup = Some(Popup::AddTask);
         self.input.input_mode = InputMode::Editing;
     }
@@ -783,6 +853,7 @@ impl App {
             self.input.input_number = t.estimated_minutes;
             self.input.input_priority = t.priority;
             self.input.input_field = InputField::Title;
+            self.sync_calendar_to_due_date();
             self.input.popup = Some(Popup::EditTask(id));
             self.input.input_mode = InputMode::Editing;
         }
@@ -829,15 +900,8 @@ impl App {
             None => "Tag filter cleared.".to_string(),
         };
         self.set_status(msg, false);
-
-        self.clamp_dashboard_task_selection();
-        let len = self.filtered_task_indices().len();
-        if len == 0 {
-            self.task_ui.task_state.select(None);
-        } else {
-            let sel = self.task_ui.task_state.selected().unwrap_or(0).min(len - 1);
-            self.task_ui.task_state.select(Some(sel));
-        }
+        self.recompute_task_caches();
+        self.clamp_task_selection_after_mutation();
     }
 
     fn popup_tags(&self) -> Vec<String> {

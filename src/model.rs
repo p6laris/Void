@@ -174,12 +174,11 @@ impl Task {
         self.subtasks.iter_mut().find(|s| s.id == id)
     }
 
+    /// Blocked while any blocker is still open; done or archived blockers don't count.
     pub fn is_blocked(&self, tasks: &IndexMap<u64, Task>) -> bool {
-        self.blocked_by.iter().any(|&blocker_id| {
-            tasks
-                .get(&blocker_id)
-                .is_some_and(|t| t.status != TaskStatus::Done)
-        })
+        self.blocked_by
+            .iter()
+            .any(|&blocker_id| tasks.get(&blocker_id).is_some_and(Task::is_open))
     }
 
     pub fn subtask_progress(&self) -> Option<(usize, usize)> {
@@ -252,9 +251,14 @@ pub struct FocusSessionRecord {
     pub task_id: Option<u64>,
     pub mode: TimerMode,
     pub completed_at: DateTime<Utc>,
+    // Defaulted so backups made before these fields existed still import.
+    #[serde(default)]
     pub note: String,
+    #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
     pub pause_count: u32,
+    #[serde(default)]
     pub pause_seconds: u32,
 }
 
@@ -644,7 +648,8 @@ impl Default for AppData {
             timer_presets: default_timer_presets(),
             active_preset: None,
             streak_rest_days: default_rest_days(),
-            streak_freezes: STREAK_FREEZE_MAX,
+            // One to start, so earning more at streak milestones matters.
+            streak_freezes: 1,
             last_freeze_earned_streak: 0,
         }
     }

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{Datelike, NaiveDate, Utc, Weekday};
 
 use crate::db::Database;
@@ -16,7 +16,11 @@ pub fn next_id(db: &Database, data: &mut AppData) -> Result<u64> {
 
 pub fn ensure_today_reset(db: &Database, data: &mut AppData) -> Result<bool> {
     let today = crate::date::today_str();
-    let is_new_day = data.today_date.as_deref() != Some(today.as_str());
+    // Only a forward date change starts a new day; a clock set back keeps today's totals.
+    let is_new_day = data
+        .today_date
+        .as_deref()
+        .is_none_or(|last| last < today.as_str());
     if is_new_day {
         data.today_focus_minutes = 0;
         data.today_date = Some(today.clone());
@@ -92,11 +96,13 @@ pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Resu
     Ok(())
 }
 
+/// Splits comma-separated tags, dropping blanks and case-insensitive repeats.
 pub fn parse_tags(input: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
     input
         .split(',')
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && seen.insert(s.to_lowercase()))
         .collect()
 }
 
@@ -126,6 +132,8 @@ pub struct SessionMeta {
     pub tags: Vec<String>,
     pub pause_count: u32,
     pub pause_seconds: u32,
+    /// When the session began; it is dated by this day, not the completion day.
+    pub started_at: Option<chrono::DateTime<Utc>>,
 }
 
 pub struct TaskPayload {
@@ -187,8 +195,20 @@ pub fn promote_task_on_activate(db: &Database, data: &mut AppData, id: u64) -> R
 }
 
 pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    let (recurrence, title, notes, priority, tags, due_date, estimated, subtasks, blocked_by) = {
-        let Some(t) = data.task(id) else {
+    let (
+        recurrence,
+        title,
+        notes,
+        priority,
+        tags,
+        due_date,
+        estimated,
+        subtasks,
+        blocked_by,
+        today,
+    ) = {
+        // Already-done tasks are left alone so a recurrence never spawns twice.
+        let Some(t) = data.task(id).filter(|t| t.status != TaskStatus::Done) else {
             return Ok(());
         };
         (
@@ -201,6 +221,7 @@ pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> 
             t.estimated_minutes,
             t.subtasks.clone(),
             t.blocked_by.clone(),
+            t.today,
         )
     };
     if let Some(t) = data.task_mut(id) {
@@ -222,6 +243,7 @@ pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> 
                 estimated,
                 subtasks,
                 blocked_by,
+                today,
             },
         )?;
     }
@@ -238,6 +260,7 @@ struct RecurringSpawn {
     estimated: u32,
     subtasks: Vec<Subtask>,
     blocked_by: Vec<u64>,
+    today: bool,
 }
 
 fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn) -> Result<()> {
@@ -251,6 +274,7 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
         estimated,
         subtasks,
         blocked_by,
+        today,
     } = spawn;
     let id = next_id(db, data)?;
     let mut task = Task::new(id, title);
@@ -260,6 +284,7 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
     task.estimated_minutes = estimated;
     task.recurrence = recurrence;
     task.blocked_by = blocked_by;
+    task.today = today;
     let mut respawned_subtasks = Vec::with_capacity(subtasks.len());
     for mut subtask in subtasks {
         subtask.id = next_id(db, data)?;
@@ -276,40 +301,41 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
 fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<String> {
     use chrono::{Datelike, NaiveDate, Weekday};
     let today = crate::date::today_naive();
-    match recurrence {
-        TaskRecurrence::None => current.map(String::from),
-        TaskRecurrence::Daily => Some(crate::date::format_date(today + chrono::Duration::days(1))),
-        TaskRecurrence::Weekly => {
-            let base = current
-                .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-                .unwrap_or(today);
-            Some(crate::date::format_date(base + chrono::Duration::days(7)))
-        }
+    // From the later of due date and today, so it's never overdue and early completion keeps the schedule.
+    let base = current
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+        .map_or(today, |due| due.max(today));
+    let next = match recurrence {
+        TaskRecurrence::None => return current.map(String::from),
+        TaskRecurrence::Daily => base + chrono::Duration::days(1),
+        TaskRecurrence::Weekly => base + chrono::Duration::days(7),
         TaskRecurrence::Weekdays => {
-            let mut d = today + chrono::Duration::days(1);
+            let mut d = base + chrono::Duration::days(1);
             while matches!(d.weekday(), Weekday::Sat | Weekday::Sun) {
                 d += chrono::Duration::days(1);
             }
-            Some(crate::date::format_date(d))
+            d
         }
-    }
+    };
+    Some(crate::date::format_date(next))
 }
 
 pub fn cycle_task_status(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    if let Some(t) = data.task_mut(id) {
-        match t.status {
-            TaskStatus::Pending => t.status = TaskStatus::InProgress,
-            TaskStatus::InProgress => {
-                t.status = TaskStatus::Done;
-                t.completed_at = Some(Utc::now());
-            }
-            TaskStatus::Done => {
-                t.status = TaskStatus::Pending;
-                t.completed_at = None;
-            }
+    let Some(t) = data.task_mut(id) else {
+        return Ok(());
+    };
+    match t.status {
+        TaskStatus::Pending => t.status = TaskStatus::InProgress,
+        TaskStatus::InProgress => return mark_task_done(db, data, id),
+        TaskStatus::Done if t.recurrence != TaskRecurrence::None => {
+            bail!("recurring task already has a next occurrence; reopen that one instead")
         }
-        db.upsert_task(t)?;
+        TaskStatus::Done => {
+            t.status = TaskStatus::Pending;
+            t.completed_at = None;
+        }
     }
+    db.upsert_task(t)?;
     Ok(())
 }
 
@@ -329,47 +355,40 @@ pub fn set_priority(db: &Database, data: &mut AppData, id: u64, priority: Priori
     Ok(())
 }
 
-pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Result<()> {
-    let Some(idx) = data.tasks.get_index_of(&id) else {
+/// Moves task `id` into `neighbor`'s position, so the two swap in any list kept in stored order.
+pub fn move_task_to(db: &Database, data: &mut AppData, id: u64, neighbor: u64) -> Result<()> {
+    let (Some(from), Some(to)) = (
+        data.tasks.get_index_of(&id),
+        data.tasks.get_index_of(&neighbor),
+    ) else {
         return Ok(());
     };
-    let new_idx = (idx as i32 + delta).clamp(0, data.tasks.len() as i32 - 1) as usize;
-    if idx != new_idx {
-        data.tasks.move_index(idx, new_idx);
-        for (i, (_, t)) in data.tasks.iter_mut().enumerate() {
-            t.sort_order = i as u32;
-        }
-        db.sync_sort_orders(&data.tasks)?;
+    data.tasks.move_index(from, to);
+    for (i, (_, t)) in data.tasks.iter_mut().enumerate() {
+        t.sort_order = i as u32;
     }
-    Ok(())
+    db.sync_sort_orders(&data.tasks)
 }
 
+/// First unblocked task in the same order the "up next" list shows.
 pub fn pick_best_task(data: &AppData) -> Option<u64> {
-    data.tasks
-        .values()
-        .filter(|t| t.is_open())
-        .max_by(|a, b| {
-            a.priority
-                .rank()
-                .cmp(&b.priority.rank())
-                .then(b.today.cmp(&a.today))
-                .then(a.sort_order.cmp(&b.sort_order))
-        })
+    sorted_pending_tasks(data)
+        .into_iter()
+        .find(|t| !t.is_blocked(&data.tasks))
         .map(|t| t.id)
 }
 
+/// The unblocked task after `current` in "up next" order, wrapping around.
 pub fn advance_to_next_task(data: &AppData, current: Option<u64>) -> Option<u64> {
-    let pending: Vec<&Task> = pending_tasks(data).collect();
-    if pending.is_empty() {
-        return None;
+    let ready: Vec<u64> = sorted_pending_tasks(data)
+        .into_iter()
+        .filter(|t| !t.is_blocked(&data.tasks))
+        .map(|t| t.id)
+        .collect();
+    if let Some(pos) = current.and_then(|cur| ready.iter().position(|&id| id == cur)) {
+        return ready.get(pos + 1).or(ready.first()).copied();
     }
-    if let Some(cur) = current {
-        if let Some(pos) = pending.iter().position(|t| t.id == cur) {
-            let next = (pos + 1) % pending.len();
-            return Some(pending[next].id);
-        }
-    }
-    pick_best_task(data)
+    ready.first().copied()
 }
 
 pub fn record_focus_session(
@@ -382,7 +401,24 @@ pub fn record_focus_session(
     record_focus_session_with_meta(db, data, minutes, task_id, mode, SessionMeta::default())
 }
 
+/// Records a focus session; its database writes and `data` changes apply together or not at all.
 pub fn record_focus_session_with_meta(
+    db: &Database,
+    data: &mut AppData,
+    minutes: u32,
+    task_id: Option<u64>,
+    mode: TimerMode,
+    meta: SessionMeta,
+) -> Result<()> {
+    let before = data.clone();
+    let result = db.atomically(|| record_session_inner(db, data, minutes, task_id, mode, meta));
+    if result.is_err() {
+        *data = before;
+    }
+    result
+}
+
+fn record_session_inner(
     db: &Database,
     data: &mut AppData,
     minutes: u32,
@@ -392,16 +428,38 @@ pub fn record_focus_session_with_meta(
 ) -> Result<()> {
     ensure_today_reset(db, data)?;
     let mins = minutes.max(1);
+    let today = crate::date::today_str();
+    // A session that crosses midnight belongs to the day it started.
+    let session_day = meta
+        .started_at
+        .map(|t| crate::date::format_date(t.with_timezone(&chrono::Local).date_naive()))
+        .unwrap_or_else(|| today.clone());
+
+    // Insert first so a failed write leaves counters and streaks untouched.
+    let record = FocusSessionRecord {
+        date: session_day.clone(),
+        minutes: mins,
+        task_id,
+        mode,
+        completed_at: Utc::now(),
+        note: meta.note,
+        tags: meta.tags,
+        pause_count: meta.pause_count,
+        pause_seconds: meta.pause_seconds,
+    };
+    db.insert_focus_session(&record)?;
+
     data.total_focus_minutes = data.total_focus_minutes.saturating_add(mins);
-    data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
+    if session_day == today {
+        data.today_focus_minutes = data.today_focus_minutes.saturating_add(mins);
+    }
     data.total_sessions = data.total_sessions.saturating_add(1);
 
-    let today = crate::date::today_str();
     match &data.last_session_date {
-        Some(last) if last == &today => {}
+        Some(last) if last.as_str() >= session_day.as_str() => {}
         Some(last) => {
             let last_date = chrono::NaiveDate::parse_from_str(last, "%Y-%m-%d").ok();
-            let today_date = chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").ok();
+            let today_date = chrono::NaiveDate::parse_from_str(&session_day, "%Y-%m-%d").ok();
             if let (Some(l), Some(t)) = (last_date, today_date) {
                 let gap = count_active_gap(l, t, &data.streak_rest_days);
                 if gap == 0 {
@@ -434,23 +492,17 @@ pub fn record_focus_session_with_meta(
             .min(crate::model::STREAK_FREEZE_MAX);
         data.last_freeze_earned_streak = data.streak_days;
     }
-    data.last_session_date = Some(today.clone());
+    if data
+        .last_session_date
+        .as_deref()
+        .is_none_or(|last| last < session_day.as_str())
+    {
+        data.last_session_date = Some(session_day.clone());
+    }
     data.today_date = Some(today.clone());
 
-    let record = FocusSessionRecord {
-        date: today.clone(),
-        minutes: mins,
-        task_id,
-        mode,
-        completed_at: Utc::now(),
-        note: meta.note,
-        tags: meta.tags,
-        pause_count: meta.pause_count,
-        pause_seconds: meta.pause_seconds,
-    };
-    db.insert_focus_session(&record)?;
     update_goal_streak(data)?;
-    update_period_streaks(data, &today)?;
+    update_period_streaks(data, &session_day)?;
     db.persist_session_stats(data)?;
 
     if let Some(id) = task_id {
@@ -628,6 +680,11 @@ pub fn delete_session(db: &Database, data: &mut AppData, id: i64) -> Result<()> 
     {
         data.streak_days = data.streak_days.saturating_sub(1);
         data.last_session_date = db.latest_focus_session_date()?;
+        // Undo a freeze earned by the milestone this session reached.
+        if data.streak_days < data.last_freeze_earned_streak {
+            data.streak_freezes = data.streak_freezes.saturating_sub(1);
+            data.last_freeze_earned_streak = data.streak_days / 7 * 7;
+        }
     }
 
     db.persist_session_stats(data)?;
@@ -727,10 +784,10 @@ pub fn auto_archive_old_tasks(db: &Database, data: &mut AppData) -> Result<u32> 
         .values()
         .filter(|t| t.status == TaskStatus::Done && !t.archived)
         .filter_map(|t| {
-            t.completed_at.as_ref().and_then(|completed| {
-                let key = crate::date::format_date(completed.date_naive());
-                (key.as_str() < cutoff.as_str()).then_some(t.id)
-            })
+            // Local date, to match the cutoff; tasks without a completion time use creation.
+            let finished = t.completed_at.unwrap_or(t.created_at);
+            let key = crate::date::format_date(finished.with_timezone(&chrono::Local).date_naive());
+            (key.as_str() < cutoff.as_str()).then_some(t.id)
         })
         .collect();
 
@@ -1058,6 +1115,211 @@ mod tests {
         assert_eq!(sorted.len(), 2);
         assert_eq!(sorted[0].id, 2); // High priority first
         assert_eq!(sorted[1].id, 1);
+    }
+
+    fn daily_task(db: &Database, data: &mut AppData) -> u64 {
+        let id = add_task_full(
+            db,
+            data,
+            TaskPayload {
+                title: "Stretch".into(),
+                notes: String::new(),
+                estimated_minutes: 25,
+                priority: Priority::Medium,
+                tags: Vec::new(),
+                due_date: None,
+            },
+        )
+        .unwrap();
+        data.task_mut(id).unwrap().recurrence = TaskRecurrence::Daily;
+        id
+    }
+
+    #[test]
+    fn completing_a_recurring_task_via_status_cycle_spawns_the_next() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+
+        cycle_task_status(&db, &mut data, id).unwrap(); // -> in progress
+        cycle_task_status(&db, &mut data, id).unwrap(); // -> done
+
+        assert_eq!(data.tasks.len(), 2);
+        let next = data.tasks.values().find(|t| t.id != id).unwrap();
+        assert_eq!(next.status, TaskStatus::Pending);
+        let tomorrow =
+            crate::date::format_date(crate::date::today_naive() + chrono::Duration::days(1));
+        assert_eq!(next.due_date.as_deref(), Some(tomorrow.as_str()));
+    }
+
+    #[test]
+    fn marking_a_recurring_task_done_twice_spawns_once() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+
+        mark_task_done(&db, &mut data, id).unwrap();
+        mark_task_done(&db, &mut data, id).unwrap();
+
+        assert_eq!(data.tasks.len(), 2);
+    }
+
+    #[test]
+    fn reopening_a_done_recurring_task_is_refused() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        mark_task_done(&db, &mut data, id).unwrap();
+
+        assert!(cycle_task_status(&db, &mut data, id).is_err());
+        assert_eq!(data.task(id).unwrap().status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn pick_best_task_follows_the_up_next_order_and_skips_blocked() {
+        let mut data = AppData::default();
+        let first = Task::new(1, "First in list".into());
+        let mut today = Task::new(2, "Flagged today".into());
+        today.today = true;
+        let mut blocked = Task::new(3, "Blocked high".into());
+        blocked.priority = Priority::High;
+        blocked.blocked_by = vec![1];
+        for t in [first, today, blocked] {
+            data.tasks.insert(t.id, t);
+        }
+
+        // Same priority: the task flagged for today wins; the blocked one is skipped.
+        assert_eq!(pick_best_task(&data), Some(2));
+        assert_eq!(advance_to_next_task(&data, Some(2)), Some(1));
+        assert_eq!(advance_to_next_task(&data, Some(1)), Some(2));
+    }
+
+    #[test]
+    fn parse_tags_drops_blanks_and_repeats() {
+        assert_eq!(parse_tags("rust, Rust, a,, a"), vec!["rust", "a"]);
+    }
+
+    #[test]
+    fn saving_duplicate_tags_succeeds() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        data.task_mut(id).unwrap().tags = vec!["a".into(), "a".into()];
+        db.upsert_task(data.task(id).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn an_archived_blocker_does_not_block() {
+        let mut data = AppData::default();
+        let mut blocker = Task::new(1, "Blocker".into());
+        blocker.archived = true;
+        let mut blocked = Task::new(2, "Blocked".into());
+        blocked.blocked_by = vec![1];
+        data.tasks.insert(1, blocker);
+        data.tasks.insert(2, blocked);
+        assert!(!data.task(2).unwrap().is_blocked(&data.tasks));
+    }
+
+    fn days_from_today(n: i64) -> String {
+        crate::date::format_date(crate::date::today_naive() + chrono::Duration::days(n))
+    }
+
+    #[test]
+    fn a_late_weekly_task_is_next_due_a_week_from_today() {
+        let stale = days_from_today(-30);
+        assert_eq!(
+            next_due_date(TaskRecurrence::Weekly, Some(&stale)),
+            Some(days_from_today(7))
+        );
+    }
+
+    #[test]
+    fn an_early_daily_task_keeps_its_schedule() {
+        let due = days_from_today(3);
+        assert_eq!(
+            next_due_date(TaskRecurrence::Daily, Some(&due)),
+            Some(days_from_today(4))
+        );
+    }
+
+    #[test]
+    fn the_next_occurrence_keeps_the_today_flag() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        data.task_mut(id).unwrap().today = true;
+        mark_task_done(&db, &mut data, id).unwrap();
+        let next = data.tasks.values().find(|t| t.id != id).unwrap();
+        assert!(next.today);
+    }
+
+    #[test]
+    fn old_done_tasks_are_archived_even_without_a_completion_time() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            archive_after_days: 7,
+            ..Default::default()
+        };
+        let mut t = Task::new(1, "Old".into());
+        t.status = TaskStatus::Done;
+        t.completed_at = None;
+        t.created_at = Utc::now() - chrono::Duration::days(30);
+        data.tasks.insert(1, t);
+        assert_eq!(auto_archive_old_tasks(&db, &mut data).unwrap(), 1);
+        assert!(data.task(1).unwrap().archived);
+    }
+
+    #[test]
+    fn deleting_the_session_that_earned_a_freeze_takes_it_back() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData {
+            streak_days: 6,
+            streak_freezes: 1,
+            last_session_date: Some(crate::date::format_date(
+                crate::date::today_naive() - chrono::Duration::days(1),
+            )),
+            ..Default::default()
+        };
+        record_focus_session_with_meta(
+            &db,
+            &mut data,
+            25,
+            None,
+            TimerMode::Focus,
+            SessionMeta::default(),
+        )
+        .unwrap();
+        assert_eq!((data.streak_days, data.streak_freezes), (7, 2));
+
+        let id = db.recent_sessions(1).unwrap()[0].id;
+        delete_session(&db, &mut data, id).unwrap();
+        assert_eq!((data.streak_days, data.streak_freezes), (6, 1));
+    }
+
+    #[test]
+    fn new_users_start_with_one_freeze() {
+        assert_eq!(AppData::default().streak_freezes, 1);
+    }
+
+    #[test]
+    fn a_failed_session_insert_leaves_data_unchanged() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let before = data.total_sessions;
+
+        let err = record_focus_session_with_meta(
+            &db,
+            &mut data,
+            25,
+            Some(999), // no such task
+            TimerMode::Focus,
+            SessionMeta::default(),
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().to_lowercase().contains("foreign key"));
+        assert_eq!(data.total_sessions, before);
+        assert_eq!(data.today_focus_minutes, 0);
     }
 
     #[test]

@@ -692,7 +692,7 @@ fn draw_tag_analytics(f: &mut Frame, app: &App, area: Rect) {
 
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{:<width$} ", tag_truncated, width = LABEL_W),
+                format!("{} ", super::widgets::pad_to_width(&tag_truncated, LABEL_W)),
                 dim_style,
             ),
             Span::styled("█".repeat(fill), Style::default().fg(theme.accent)),

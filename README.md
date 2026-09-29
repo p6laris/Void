@@ -4,87 +4,110 @@
 
 # Void
 
-<img src="./assets/void.png" alt="Void logo" width="250" />
+A focus timer and task manager that lives in your terminal. Void runs Pomodoro-style focus and
+break cycles, keeps a queue of what you're working on, and shows where your time went. It's
+keyboard-driven and fast, and it works completely offline.
 
-Void is a simple, no-nonsense terminal focus timer and task manager. Keyboard-driven, fast, and completely offline.
+![Void's dashboard, stats and zen mode in the terminal](assets/showcase.png)
 
----
+![Every tab of Void, and the built-in themes](assets/screens.png)
 
-## 📸 Look & Feel
+## Features
 
-**Dashboard** — Your current timer, active task, and daily queue.
-![Dashboard](./assets/dashboard.png)
+**Timer**
+- Focus, short break and long break intervals, plus a custom timer and saved presets.
+- Animated canvas art on the dashboard, or a static version, or none at all.
+- A daily goal, with day, week and month streaks and streak freezes for the days you miss.
+- Desktop notifications and a sound when a session ends.
 
-**Tasks** — Priorities, tags, subtasks, and quick filtering.
-![Tasks](./assets/tasks.png)
+**Tasks**
+- Priorities, tags, due dates, estimates and subtasks.
+- Filter by status or tag, search with `/`, and edit several tasks at once in bulk mode.
+- Void can pick the next task for you and move on when you finish one.
+- Old finished tasks are archived automatically.
 
-**Stats** — Track your focus time, streaks, and recent activity.
-![Stats](./assets/stats.png)
+**Zen mode**
+- Hides everything except the timer and the task you're on. Press `z` on the dashboard.
 
-**Zen Mode** — Hide the noise. Focus only on the timer and your active task.
-![Zen Mode](./assets/zen_mode.png)
+**Stats**
+- A year-long focus heatmap, with the sessions for any day you select.
+- Your last 7 days, tag analytics, and focus by weekday and time of day.
+- A paged history of every session.
 
----
+**Everywhere**
+- Built-in themes (Catppuccin Mocha and Latte, Matrix, Polaris, Dark and Light), plus your own in TOML.
+- Nerd Font icons, with plain ASCII on terminals that can't show them. Set `VOID_ICONS=ascii` or
+  `VOID_ICONS=nerd` to choose.
+- Everything lives in one SQLite file on your machine. No account, no cloud, no tracking.
 
-## ✨ What's inside?
+## Install
 
-- **Pomodoro Timer**: Classic focus, short break, and long break intervals. 
-- **Task Queue**: Keep track of what you're working on. Add tags, priorities, estimates, and subtasks.
-- **Zen Mode**: Hide the noise. Shows only the timer and your current task for deep focus.
-- **Stats & History**: Look back at your weekly charts, daily streaks, and everything you've completed.
-- **Themes**: Switch between dark, light, and a few custom color palettes built right in.
-- **Offline First**: Your data is yours. Everything lives in a standard SQLite database on your machine. No cloud accounts, no tracking.
+### Cargo (recommended)
 
----
-
-## 📦 Install
-
-### Cargo (Recommended)
-If you have Rust installed, just run:
 ```bash
 cargo install void-focus
 ```
 
 ### Homebrew (macOS / Linux)
+
 ```bash
 brew tap p6laris/tap
 brew install void
 ```
 
 ### Winget (Windows)
+
 ```powershell
 winget install p6laris.Void
 ```
 
 ### Binaries
-You can also grab pre-compiled binaries for macOS, Linux, and Windows straight from the [Releases](https://github.com/p6laris/Void/releases) page.
 
----
+Pre-compiled binaries for macOS, Linux and Windows are on the
+[Releases](https://github.com/p6laris/Void/releases) page.
 
-## ⌨️ How to use it
+## Usage
 
-Press `5` in the app to open the Help menu anytime.
+Run `void` to open the app. Press `?` (or `5`, or `h`) at any time for the full list of keys.
 
-**The basics:**
-* `Tab` or `1-5`: Switch views
-* `q` or `Esc`: Quit (everything saves automatically)
-* `Space`: Start/Resume timer
-* `p`: Pause timer
-* `a`: Add a new task
-* `/`: Search tasks
+| Key | Action |
+| --- | --- |
+| `1`–`6` | Switch tabs (`Tab` also works, except on Tasks and About where it moves focus) |
+| `Space` | Start or resume the timer |
+| `p` | Pause (on the Tasks tab: cycle the selected task's priority) |
+| `n` | Skip to the next session (logs the time if at least a minute has passed) |
+| `e` | End the session, logging the time so far |
+| `z` | Zen mode (`1`–`9` tick off the active task's subtasks) |
+| `a` | Add a task |
+| `/` | Search tasks |
+| `T` | Filter tasks by tag |
+| `A` | Archive a task (restores it in the Archive filter) |
+| `Ctrl-S` | Export a backup |
+| `Esc` | Back to the dashboard, or leave Zen mode; quits from the dashboard |
+| `q` or `Ctrl-C` | Quit (`q` asks first if a session is running; `Ctrl-C` saves it) |
 
-Everything is stored locally in `~/.local/share/void/void.db` (or your OS equivalent). No cloud, no tracking.
+You can also manage tasks without opening the app:
 
----
+```bash
+void add "Write the release notes" --due tomorrow --tags writing,void
+void list
+void done 3
+void start 3
+```
 
-## 🎨 Custom Themes
+`void help` lists every command and `void --version` prints the version. Commands exit with a
+non-zero status when they fail, so they're safe to use in scripts. Your data is stored in `~/.local/share/void/void.db`, or your OS
+equivalent.
 
-Void supports completely custom themes via TOML files. Just drop a `.toml` file into your themes directory:
-* **Linux:** `~/.config/void/themes/`
-* **macOS:** `~/Library/Application Support/void/themes/`
-* **Windows:** `%APPDATA%\void\themes\`
+## Custom themes
 
-Here is an example `cyber.toml` theme:
+Void loads themes from TOML files. Drop a `.toml` file into your themes directory:
+
+- **Linux:** `~/.config/void/themes/`
+- **macOS:** `~/Library/Application Support/void/themes/`
+- **Windows:** `%APPDATA%\void\themes\`
+
+Here's an example `cyber.toml`:
 
 ```toml
 name = "Cyberpunk"
@@ -115,52 +138,60 @@ active_bg = "gray"
 active_fg = "neon_blue"
 ```
 
----
+The [Catppuccin themes](themes/) that ship with Void are good starting points.
 
-## 💾 Data Import & Export
-
-Your data is always yours. Void makes it easy to back up, restore, or migrate your entire database.
+## Import and export
 
 ### Export
-You can export your tasks, settings, and focus history to a JSON file at any time:
 
-**From the CLI:**
+Export your tasks, settings and focus history to a JSON file at any time.
+
+From the command line:
+
 ```bash
 # Export to the default location
 void --export
 
 # Export to a specific file
 void --export ~/my_backup.json
+
+# Export your sessions as CSV
+void --export-csv ~/sessions.csv
 ```
 
-**From the app:**
-* Press `Ctrl-S` at any time, or
-* Press `e` in the Settings tab
+From the app, press `Ctrl-S` anywhere, or `e` in the Settings tab.
 
-### Import (Restore)
-To restore a previous backup or migrate your data to a new machine:
+### Import
+
+To restore a backup or move your data to a new machine:
+
 ```bash
 void --import ~/my_backup.json
 ```
 
-> ⚠️ **Heads up:** Importing will completely replace your current data with the contents of the backup file. You'll be asked to confirm before anything changes.
+> **Heads up:** importing replaces your current data with the contents of the backup. Void asks
+> you to confirm before anything changes; add `--yes` to skip the prompt in scripts.
 
----
+Importing a `.csv` file adds its sessions to your history instead of replacing anything. Rows that
+were already imported are skipped.
 
-## 🛠 Development
+## Development
 
-Want to hack on it?
 ```bash
 git clone https://github.com/p6laris/Void.git
 cd Void
 cargo run
 ```
 
-Before submitting a pull request, please ensure the code is formatted and passes all lints:
+Before opening a pull request, format the code and make sure it passes the lints:
+
 ```bash
 cargo fmt
 cargo clippy --all-targets -- -D warnings
 ```
 
-## 📄 License
-MIT License. See [LICENSE](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

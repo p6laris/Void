@@ -10,6 +10,10 @@ pub(crate) struct CachedSettingsLabel {
     pub desc: &'static str,
 }
 
+fn on_off(enabled: bool) -> String {
+    if enabled { "on" } else { "off" }.into()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsItem {
     FocusMinutes,
@@ -40,6 +44,16 @@ pub enum SettingsItem {
     ExportBackupJson,
     ExportSessionsCsv,
 }
+
+/// Items that open a new section in the Settings table, in display order.
+pub(crate) const SECTION_STARTS: [SettingsItem; 6] = [
+    SettingsItem::FocusMinutes,
+    SettingsItem::DailyGoal,
+    SettingsItem::ActiveTaskCycle,
+    SettingsItem::ThemeMode,
+    SettingsItem::LogBreaks,
+    SettingsItem::ExportBackupJson,
+];
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct NumericSettingSpec<'a> {
@@ -190,14 +204,21 @@ impl App {
         }
     }
 
-    pub fn settings_visual_row(selected: usize) -> usize {
-        const HEADERS: [usize; 6] = [0, 5, 9, 10, 14, 17];
-        selected + HEADERS.iter().filter(|h| **h <= selected).count()
+    /// Row of item `selected` in the table, counting the section headers above it.
+    pub fn settings_visual_row(&self, selected: usize) -> usize {
+        let headers = self
+            .settings_state
+            .items
+            .iter()
+            .take(selected + 1)
+            .filter(|item| SECTION_STARTS.contains(item))
+            .count();
+        selected + headers
     }
 
     pub fn sync_settings_scroll(&mut self) {
-        let visible = self.settings_state.page_size.max(4);
-        let visual = Self::settings_visual_row(self.settings_state.selected);
+        let visible = self.settings_state.page_size.max(1);
+        let visual = self.settings_visual_row(self.settings_state.selected);
         if visual < self.settings_state.scroll_offset {
             self.settings_state.scroll_offset = visual;
         } else if visual >= self.settings_state.scroll_offset + visible {
@@ -228,7 +249,7 @@ impl App {
                     60,
                     |app| app.timer.config.short_break_minutes,
                     |app, v| {
-                        app.timer.config.short_break_minutes = v;
+                        app.timer.set_short_break_minutes(v);
                         app.data.short_break_minutes = v;
                     },
                     |v| format!("Short break: {} min", v),
@@ -241,7 +262,7 @@ impl App {
                     120,
                     |app| app.timer.config.long_break_minutes,
                     |app, v| {
-                        app.timer.config.long_break_minutes = v;
+                        app.timer.set_long_break_minutes(v);
                         app.data.long_break_minutes = v;
                     },
                     |v| format!("Long break: {} min", v),
@@ -331,8 +352,9 @@ impl App {
                     crate::model::ThemeMode::Light => "light",
                 };
                 self.persist_setting("theme_mode", key);
-                self.refresh_theme();
+                // Detected once: on Windows each check starts a `reg query` process.
                 let sys = theme::detect_system_theme();
+                self.refresh_theme_with(|| sys);
                 let sys_label = if sys.is_light() {
                     "Light detected"
                 } else {
@@ -556,67 +578,67 @@ impl App {
         hasher.finish()
     }
 
-    fn build_settings_labels(&self) -> Vec<CachedSettingsLabel> {
-        fn on_off(enabled: bool) -> String {
-            if enabled {
-                "on".into()
-            } else {
-                "off".into()
-            }
-        }
+    pub(crate) fn build_settings_labels(&self) -> Vec<CachedSettingsLabel> {
+        self.settings_state
+            .items
+            .iter()
+            .map(|&item| self.settings_label(item))
+            .collect()
+    }
 
-        vec![
-            CachedSettingsLabel {
+    fn settings_label(&self, item: SettingsItem) -> CachedSettingsLabel {
+        match item {
+            SettingsItem::FocusMinutes => CachedSettingsLabel {
                 key: "Focus minutes",
                 value: format!("{} min", self.data.focus_minutes),
                 desc: "per focus session",
             },
-            CachedSettingsLabel {
+            SettingsItem::ShortBreak => CachedSettingsLabel {
                 key: "Short break",
                 value: format!("{} min", self.data.short_break_minutes),
                 desc: "between sessions",
             },
-            CachedSettingsLabel {
+            SettingsItem::LongBreak => CachedSettingsLabel {
                 key: "Long break",
                 value: format!("{} min", self.data.long_break_minutes),
                 desc: "after cycle",
             },
-            CachedSettingsLabel {
+            SettingsItem::LongBreakEvery => CachedSettingsLabel {
                 key: "Long break every",
                 value: format!("{} sessions", self.data.long_break_every),
                 desc: "focus sessions per cycle",
             },
-            CachedSettingsLabel {
+            SettingsItem::CustomMinutes => CachedSettingsLabel {
                 key: "Custom timer",
                 value: format!("{} min", self.timer.custom_minutes),
                 desc: "freeform session",
             },
-            CachedSettingsLabel {
+            SettingsItem::DailyGoal => CachedSettingsLabel {
                 key: "Daily goal",
                 value: format!("{} min", self.data.daily_goal_minutes),
                 desc: "+/-15 per step",
             },
-            CachedSettingsLabel {
+            SettingsItem::Sound => CachedSettingsLabel {
                 key: "Sound on finish",
                 value: on_off(self.data.sound_enabled),
                 desc: "plays on completion",
             },
-            CachedSettingsLabel {
+            SettingsItem::Notifications => CachedSettingsLabel {
                 key: "Notifications",
                 value: on_off(self.data.notify_on_finish),
                 desc: "desktop alerts",
             },
-            CachedSettingsLabel {
+            SettingsItem::AutoStartBreaks => CachedSettingsLabel {
                 key: "Auto-start breaks",
                 value: on_off(self.data.auto_start_breaks),
                 desc: "begin break automatically",
             },
-            CachedSettingsLabel {
+            SettingsItem::AutoStartFocus => CachedSettingsLabel {
                 key: "Auto-start focus",
                 value: on_off(self.data.auto_start_focus),
                 desc: "begin focus after break",
             },
-            CachedSettingsLabel {
+            SettingsItem::ActiveTaskCycle => CachedSettingsLabel {
                 key: "Active task",
                 value: self
                     .task_ui
@@ -626,62 +648,62 @@ impl App {
                     .unwrap_or_else(|| "(none)".into()),
                 desc: "cycle with Enter",
             },
-            CachedSettingsLabel {
+            SettingsItem::AutoPickTask => CachedSettingsLabel {
                 key: "Auto-pick task",
                 value: on_off(self.data.auto_pick_task),
                 desc: "pick best task on start",
             },
-            CachedSettingsLabel {
+            SettingsItem::AutoAdvanceTask => CachedSettingsLabel {
                 key: "Auto-advance task",
                 value: on_off(self.data.auto_advance_task),
                 desc: "next task after focus",
             },
-            CachedSettingsLabel {
+            SettingsItem::EmptyQueueBehavior => CachedSettingsLabel {
                 key: "When queue empty",
                 value: self.data.empty_queue_behavior.label().to_string(),
                 desc: "free focus / pause / ask",
             },
-            CachedSettingsLabel {
+            SettingsItem::EstimateComplete => CachedSettingsLabel {
                 key: "Estimate reached",
                 value: self.data.estimate_complete.label().to_string(),
                 desc: "nudge / off / auto-done",
             },
-            CachedSettingsLabel {
+            SettingsItem::ThemeMode => CachedSettingsLabel {
                 key: "Theme mode",
                 value: self.data.theme_mode.label().to_string(),
                 desc: "Auto / Dark / Light",
             },
-            CachedSettingsLabel {
+            SettingsItem::DarkTheme => CachedSettingsLabel {
                 key: "Dark theme",
                 value: self.theme_catalog.label(&self.data.dark_theme),
                 desc: "preferred dark palette",
             },
-            CachedSettingsLabel {
+            SettingsItem::LightTheme => CachedSettingsLabel {
                 key: "Light theme",
                 value: self.theme_catalog.label(&self.data.light_theme),
                 desc: "preferred light palette",
             },
-            CachedSettingsLabel {
+            SettingsItem::CanvasMode => CachedSettingsLabel {
                 key: "Dashboard art",
                 value: self.data.canvas_mode.label().to_string(),
                 desc: "animated / static / off",
             },
-            CachedSettingsLabel {
+            SettingsItem::LogBreaks => CachedSettingsLabel {
                 key: "Log breaks",
                 value: on_off(self.data.log_breaks),
                 desc: "record break sessions",
             },
-            CachedSettingsLabel {
+            SettingsItem::TerminalTitle => CachedSettingsLabel {
                 key: "Terminal title",
                 value: on_off(self.data.show_terminal_title),
                 desc: "show timer in window bar",
             },
-            CachedSettingsLabel {
+            SettingsItem::WarnOneMinute => CachedSettingsLabel {
                 key: "1-min warning",
                 value: on_off(self.data.warn_one_minute),
                 desc: "alert before timer ends",
             },
-            CachedSettingsLabel {
+            SettingsItem::AutoPauseIdle => CachedSettingsLabel {
                 key: "Auto-pause idle",
                 value: if self.data.auto_pause_idle_minutes == 0 {
                     "off".into()
@@ -690,12 +712,12 @@ impl App {
                 },
                 desc: "pause on inactivity",
             },
-            CachedSettingsLabel {
+            SettingsItem::ArchiveAfterDays => CachedSettingsLabel {
                 key: "Archive after",
                 value: format!("{} days", self.data.archive_after_days),
                 desc: "auto-archive completed",
             },
-            {
+            SettingsItem::RestDays => {
                 const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
                 let names: Vec<&str> = self
                     .data
@@ -713,18 +735,18 @@ impl App {
                     value: rest_val,
                     desc: "+/- to toggle days",
                 }
-            },
-            CachedSettingsLabel {
+            }
+            SettingsItem::ExportBackupJson => CachedSettingsLabel {
                 key: "Export JSON",
                 value: "Enter to export".into(),
                 desc: "writes data.json backup",
             },
-            CachedSettingsLabel {
+            SettingsItem::ExportSessionsCsv => CachedSettingsLabel {
                 key: "Export CSV",
                 value: "Enter to export".into(),
                 desc: "writes sessions.csv for sheets",
             },
-        ]
+        }
     }
 
     pub(crate) fn refresh_settings_labels_cache(&mut self) {

@@ -40,6 +40,8 @@ pub enum ThemeSource {
 #[derive(Debug, Clone, Default)]
 pub struct ThemeCatalog {
     entries: Vec<ThemeEntry>,
+    /// Theme files that couldn't be used, with the reason.
+    errors: Vec<String>,
 }
 
 impl ThemeCatalog {
@@ -68,6 +70,10 @@ impl ThemeCatalog {
             catalog.scan_dir(Path::new(&extra));
         }
         catalog
+    }
+
+    pub fn errors(&self) -> &[String] {
+        &self.errors
     }
 
     pub fn entries(&self) -> &[ThemeEntry] {
@@ -175,15 +181,26 @@ impl ThemeCatalog {
             if path.extension().is_none_or(|ext| ext != "toml") {
                 continue;
             }
-            let Ok(file) = ThemeFile::from_path(&path) else {
-                continue;
+            let file = match ThemeFile::from_path(&path) {
+                Ok(file) => file,
+                Err(e) => {
+                    self.errors.push(format!("{}: {e:#}", path.display()));
+                    continue;
+                }
             };
             let id = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
-            if id.is_empty() || self.entries.iter().any(|e| e.id == id) {
+            if id.is_empty() {
+                continue;
+            }
+            if self.entries.iter().any(|e| e.id == id) {
+                self.errors.push(format!(
+                    "{}: ignored, a theme named \"{id}\" already exists",
+                    path.display()
+                ));
                 continue;
             }
             let variant = file.detect_variant();
@@ -208,6 +225,27 @@ pub fn themes_dir() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unusable_theme_files_are_reported_not_skipped_silently() {
+        let dir = std::env::temp_dir().join(format!("void-themes-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("broken.toml"), "this is not = [valid toml").unwrap();
+        let valid = include_str!("../../themes/catppuccin-mocha.toml");
+        fs::write(dir.join("dark.toml"), valid).unwrap();
+
+        let mut catalog = ThemeCatalog::load();
+        let before = catalog.errors().len();
+        catalog.scan_dir(&dir);
+        fs::remove_dir_all(&dir).ok();
+
+        let new: Vec<&String> = catalog.errors().iter().skip(before).collect();
+        assert_eq!(new.len(), 2, "{new:?}");
+        assert!(new.iter().any(|e| e.contains("broken.toml")));
+        assert!(new
+            .iter()
+            .any(|e| e.contains("dark.toml") && e.contains("already exists")));
+    }
 
     #[test]
     fn catalog_includes_catppuccin_embedded() {
