@@ -60,7 +60,7 @@ pub struct IconSet {
 }
 
 const NERD: IconSet = IconSet {
-    logo: md::MD_WEATHER_NIGHT,
+    logo: md::MD_DOTS_CIRCLE,
     dashboard: md::MD_VIEW_DASHBOARD,
     tasks: md::MD_FORMAT_LIST_BULLETED,
     stats: md::MD_CHART_LINE,
