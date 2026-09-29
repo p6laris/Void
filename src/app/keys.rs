@@ -172,24 +172,8 @@ impl App {
                     false,
                 );
             }
-            KeyCode::Down | KeyCode::Char('j') if ctrl => {
-                if let Some(id) = self.dashboard_selected_task_id() {
-                    self.task_ui.reordering_task = Some(id);
-                    self.persist_data(|db, data| storage::move_task(db, data, id, 1));
-                    self.bump_tasks();
-                    self.task_ui.reordering_task = None;
-                    self.move_dashboard_task_selection(1);
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') if ctrl => {
-                if let Some(id) = self.dashboard_selected_task_id() {
-                    self.task_ui.reordering_task = Some(id);
-                    self.persist_data(|db, data| storage::move_task(db, data, id, -1));
-                    self.bump_tasks();
-                    self.task_ui.reordering_task = None;
-                    self.move_dashboard_task_selection(-1);
-                }
-            }
+            KeyCode::Down | KeyCode::Char('j') if ctrl => self.reorder_dashboard_task(1),
+            KeyCode::Up | KeyCode::Char('k') if ctrl => self.reorder_dashboard_task(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_dashboard_task_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_dashboard_task_selection(-1),
             KeyCode::Enter => {
@@ -493,22 +477,8 @@ impl App {
             }
             KeyCode::Down | KeyCode::Char('j') if !ctrl => self.move_task_selection(1),
             KeyCode::Up | KeyCode::Char('k') if !ctrl => self.move_task_selection(-1),
-            KeyCode::Down | KeyCode::Char('j') if ctrl => {
-                if let Some(id) = self.selected_task_id() {
-                    self.task_ui.reordering_task = Some(id);
-                    self.persist_data(|db, data| storage::move_task(db, data, id, 1));
-                    self.bump_tasks();
-                    self.task_ui.reordering_task = None;
-                }
-            }
-            KeyCode::Up | KeyCode::Char('k') if ctrl => {
-                if let Some(id) = self.selected_task_id() {
-                    self.task_ui.reordering_task = Some(id);
-                    self.persist_data(|db, data| storage::move_task(db, data, id, -1));
-                    self.bump_tasks();
-                    self.task_ui.reordering_task = None;
-                }
-            }
+            KeyCode::Down | KeyCode::Char('j') if ctrl => self.reorder_selected_task(1),
+            KeyCode::Up | KeyCode::Char('k') if ctrl => self.reorder_selected_task(-1),
             KeyCode::PageDown => self.move_task_selection(8),
             KeyCode::PageUp => self.move_task_selection(-8),
             KeyCode::Home => {

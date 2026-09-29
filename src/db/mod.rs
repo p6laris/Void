@@ -3,6 +3,8 @@ mod import_export;
 mod schema;
 mod sessions;
 
+pub use import_export::CsvImportSummary;
+
 use encoding::{decode_timer_mode, encode_timer_mode};
 use sessions::{focus_session_from_row, focus_session_id_and_record};
 
@@ -407,7 +409,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn import_csv(&self, path: &std::path::Path) -> Result<usize> {
+    pub fn import_csv(&self, path: &std::path::Path) -> Result<CsvImportSummary> {
         let tx = Atomic::begin(&self.conn)?;
         let count = import_export::import_csv(&self.conn, path)?;
         tx.commit()?;
@@ -954,7 +956,7 @@ fn upsert_task_core(conn: &Connection, task: &Task) -> Result<()> {
     )?;
     for tag in &task.tags {
         conn.execute(
-            "INSERT INTO task_tags (task_id, tag) VALUES (?1, ?2)",
+            "INSERT OR IGNORE INTO task_tags (task_id, tag) VALUES (?1, ?2)",
             params![task.id as i64, tag],
         )?;
     }

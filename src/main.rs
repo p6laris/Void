@@ -33,6 +33,20 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn print_csv_import(summary: &void::db::CsvImportSummary, path: &std::path::Path) {
+    println!(
+        "Imported {} session(s) from {}",
+        summary.imported,
+        path.display()
+    );
+    if summary.skipped > 0 {
+        println!(
+            "Skipped {} row(s) with an invalid date or already imported.",
+            summary.skipped
+        );
+    }
+}
+
 fn parse_cli_task_id(raw: &str, command: &str) -> Option<u64> {
     match raw.parse() {
         Ok(id) => Some(id),
@@ -273,10 +287,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
 
                 let db = void::db::Database::open()?;
                 match db.import_csv(&path) {
-                    Ok(count) => println!(
-                        "Successfully imported {count} session(s) from {}",
-                        path.display()
-                    ),
+                    Ok(summary) => print_csv_import(&summary, &path),
                     Err(e) => eprintln!("CSV import failed: {e:#}"),
                 }
             } else {
@@ -326,10 +337,7 @@ fn handle_cli(args: Vec<String>) -> Result<bool> {
 
             let db = void::db::Database::open()?;
             match db.import_csv(&path) {
-                Ok(count) => println!(
-                    "Successfully imported {count} session(s) from {}",
-                    path.display()
-                ),
+                Ok(summary) => print_csv_import(&summary, &path),
                 Err(e) => eprintln!("CSV import failed: {e:#}"),
             }
             Ok(true)

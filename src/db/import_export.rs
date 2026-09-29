@@ -12,8 +12,12 @@ use super::{
     sessions::focus_session_id_and_record,
 };
 
+/// Backup format version; bump when a change would break older readers.
+const EXPORT_VERSION: u32 = 2;
+
 #[derive(Serialize)]
 struct ExportSnapshot<'a> {
+    version: u32,
     #[serde(flatten)]
     data: &'a AppData,
     session_history: Vec<FocusSessionRecord>,
@@ -39,6 +43,7 @@ pub fn export_json_to(conn: &Connection, path: &std::path::Path) -> Result<()> {
     load_settings(conn, &mut data)?;
     data.tasks = load_tasks(conn)?;
     let snapshot = ExportSnapshot {
+        version: EXPORT_VERSION,
         data: &data,
         session_history: load_all_sessions(conn)?,
     };
@@ -111,6 +116,20 @@ fn load_all_sessions(conn: &Connection) -> Result<Vec<FocusSessionRecord>> {
 
 pub fn import_json(conn: &Connection, path: &std::path::Path) -> Result<()> {
     let raw = fs::read_to_string(path).context("reading import file")?;
+    // Read the version alone first, so a newer backup gets a clear error rather than a parse failure.
+    #[derive(Deserialize)]
+    struct VersionProbe {
+        // Missing in backups made before versioning, which are compatible.
+        #[serde(default)]
+        version: u32,
+    }
+    let probe: VersionProbe = serde_json::from_str(&raw).context("parsing import file")?;
+    if probe.version > EXPORT_VERSION {
+        anyhow::bail!(
+            "this backup is from a newer version of Void (format {}); update Void to import it",
+            probe.version
+        );
+    }
     let snapshot: ImportSnapshot = serde_json::from_str(&raw).context("parsing import file")?;
 
     super::sync_tasks(conn, &snapshot.data.tasks).context("syncing tasks during import")?;
@@ -131,11 +150,18 @@ pub fn import_json(conn: &Connection, path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
+/// Outcome of a CSV import; skipped rows had an invalid date or were already present.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CsvImportSummary {
+    pub imported: usize,
+    pub skipped: usize,
+}
+
+pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<CsvImportSummary> {
     let raw = fs::read_to_string(path).context("reading csv import file")?;
     let records = parse_csv_records(&raw);
     if records.is_empty() {
-        return Ok(0);
+        return Ok(CsvImportSummary::default());
     }
 
     let first_row = &records[0];
@@ -178,7 +204,12 @@ pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
         }
     }
 
-    let mut imported = 0;
+    let mut summary = CsvImportSummary::default();
+    let mut added_minutes = 0u32;
+    let mut added_sessions = 0u32;
+    let mut added_today = 0u32;
+    let mut per_task: std::collections::HashMap<u64, (u32, u32)> = Default::default();
+    let today = crate::date::today_str();
     for row in data_rows {
         if row.is_empty() || row.iter().all(|c| c.trim().is_empty()) {
             continue;
@@ -187,7 +218,8 @@ pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
             .get(col_date)
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
-        if date.is_empty() {
+        if chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_err() {
+            summary.skipped += 1;
             continue;
         }
 
@@ -251,12 +283,70 @@ pub fn import_csv(conn: &Connection, path: &std::path::Path) -> Result<usize> {
             pause_seconds,
         };
 
+        let duplicate: bool = conn
+            .query_row(
+                "SELECT 1 FROM focus_sessions
+                 WHERE date = ?1 AND completed_at = ?2 AND minutes = ?3 AND mode = ?4",
+                rusqlite::params![
+                    record.date,
+                    record.completed_at.to_rfc3339(),
+                    record.minutes,
+                    super::encode_timer_mode(record.mode),
+                ],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if duplicate {
+            summary.skipped += 1;
+            continue;
+        }
+
         insert_focus_session_conn(conn, &record)?;
-        imported += 1;
+        summary.imported += 1;
+        if matches!(record.mode, TimerMode::Focus | TimerMode::Custom) {
+            added_minutes = added_minutes.saturating_add(record.minutes);
+            added_sessions += 1;
+            if record.date == today {
+                added_today = added_today.saturating_add(record.minutes);
+            }
+            if let Some(id) = record.task_id {
+                let entry = per_task.entry(id).or_default();
+                entry.0 = entry.0.saturating_add(record.minutes);
+                entry.1 += 1;
+            }
+        }
+    }
+
+    // Fold the imported sessions into the stored totals, which don't recount history.
+    let mut totals = AppData::default();
+    load_settings(conn, &mut totals)?;
+    let totals_pairs = [
+        (
+            "total_focus_minutes",
+            totals.total_focus_minutes.saturating_add(added_minutes),
+        ),
+        (
+            "total_sessions",
+            totals.total_sessions.saturating_add(added_sessions),
+        ),
+    ];
+    for (key, value) in totals_pairs {
+        super::set_setting_conn(conn, key, value.to_string())?;
+    }
+    if added_today > 0 && totals.today_date.as_deref() == Some(today.as_str()) {
+        let value = totals.today_focus_minutes.saturating_add(added_today);
+        super::set_setting_conn(conn, "today_focus_minutes", value.to_string())?;
+    }
+    for (id, (minutes, sessions)) in per_task {
+        conn.execute(
+            "UPDATE tasks SET actual_minutes = actual_minutes + ?1, sessions = sessions + ?2
+             WHERE id = ?3",
+            rusqlite::params![minutes, sessions, id as i64],
+        )?;
     }
 
     super::schema::optimize(conn).context("optimizing database after csv import")?;
-    Ok(imported)
+    Ok(summary)
 }
 
 fn parse_mode_str(s: &str) -> TimerMode {
@@ -418,6 +508,7 @@ mod tests {
         let mut data = AppData::default();
         data.tasks.insert(1, Task::new(1, "Kept".into()));
         let snapshot = ExportSnapshot {
+            version: EXPORT_VERSION,
             data: &data,
             session_history: vec![FocusSessionRecord {
                 date: "2026-07-02".into(),
@@ -439,6 +530,58 @@ mod tests {
             })
             .unwrap();
         assert_eq!(task_id, None);
+    }
+
+    #[test]
+    fn import_json_refuses_a_newer_backup_format() {
+        let conn = mem_conn();
+        let json = serde_json::json!({ "version": EXPORT_VERSION + 1, "tasks": [] });
+        let path = std::env::temp_dir().join(format!("void-newer-{}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
+        let err = import_json(&conn, &path).unwrap_err();
+        std::fs::remove_file(path).ok();
+        assert!(err.to_string().contains("newer version"));
+    }
+
+    #[test]
+    fn csv_import_skips_bad_and_repeated_rows_and_updates_totals() {
+        let conn = mem_conn();
+        super::super::sync_tasks(&conn, &{
+            let mut tasks = indexmap::IndexMap::new();
+            tasks.insert(7, Task::new(7, "Write".into()));
+            tasks
+        })
+        .unwrap();
+        let csv = "date,completed_at,minutes,mode,task_id
+                   2026-08-15,2026-08-15T10:00:00Z,25,Focus,7
+                   not-a-date,2026-08-15T11:00:00Z,25,Focus,
+";
+        let path = std::env::temp_dir().join(format!("void-csv-{}.csv", std::process::id()));
+        fs::write(&path, csv).unwrap();
+
+        let first = import_csv(&conn, &path).unwrap();
+        let again = import_csv(&conn, &path).unwrap();
+        fs::remove_file(&path).ok();
+
+        assert_eq!(
+            first,
+            CsvImportSummary {
+                imported: 1,
+                skipped: 1
+            }
+        );
+        assert_eq!(
+            again,
+            CsvImportSummary {
+                imported: 0,
+                skipped: 2
+            }
+        );
+        let mut data = AppData::default();
+        load_settings(&conn, &mut data).unwrap();
+        assert_eq!(data.total_focus_minutes, 25);
+        assert_eq!(data.total_sessions, 1);
+        assert_eq!(load_tasks(&conn).unwrap()[&7].actual_minutes, 25);
     }
 
     #[test]
@@ -513,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn import_json_rejects_legacy_session_format() {
+    fn import_json_accepts_legacy_session_format() {
         let conn = mem_conn();
         let json = serde_json::json!({
             "tasks": [],
@@ -537,10 +680,13 @@ mod tests {
         let path = std::env::temp_dir().join("void_legacy_import_test.json");
         std::fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
 
-        let err = import_json(&conn, &path).unwrap_err();
-        assert!(err.to_string().contains("parsing import file"));
-
+        import_json(&conn, &path).expect("a pre-v2 backup should import");
         std::fs::remove_file(path).ok();
+
+        let loaded = load_all_sessions(&conn).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].pause_count, 0);
+        assert!(loaded[0].tags.is_empty());
     }
 
     #[test]
@@ -573,8 +719,8 @@ mod tests {
         let path = std::env::temp_dir().join("void_import_csv_test.csv");
         std::fs::write(&path, csv_data).unwrap();
 
-        let count = import_csv(&conn, &path).unwrap();
-        assert_eq!(count, 2);
+        let summary = import_csv(&conn, &path).unwrap();
+        assert_eq!(summary.imported, 2);
 
         let loaded = load_all_sessions(&conn).unwrap();
         assert_eq!(loaded.len(), 2);

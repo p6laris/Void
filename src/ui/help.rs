@@ -173,6 +173,11 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         ));
         lines.push(shortcut_row(
             theme,
+            "A",
+            "Archive task (restores one in the Archive filter)",
+        ));
+        lines.push(shortcut_row(
+            theme,
             "/",
             "Instant fuzzy search by title & tags",
         ));
@@ -277,6 +282,7 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
         shortcut_row(theme, "Space / f", "Set task as active for focus timer"),
         shortcut_row(theme, "t", "Toggle today focus queue"),
         shortcut_row(theme, "g", "Cycle filters (Open / Today / Done / All)"),
+        shortcut_row(theme, "A", "Archive task (restores in Archive filter)"),
         shortcut_row(theme, "/", "Instant fuzzy search by title & tags"),
         shortcut_row(theme, "p", "Cycle priority: Low / Med / High"),
         Line::from(Span::styled(" ", st_dim)),

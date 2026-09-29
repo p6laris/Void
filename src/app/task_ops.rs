@@ -59,6 +59,55 @@ impl App {
         self.task_ui.dashboard_task_state.select(Some(next));
     }
 
+    fn ids_at(&self, indices: &[usize]) -> Vec<u64> {
+        indices
+            .iter()
+            .filter_map(|&i| self.data.tasks.get_index(i).map(|(id, _)| *id))
+            .collect()
+    }
+
+    /// Swaps the selected task with its visible neighbour on the Tasks tab.
+    pub(crate) fn reorder_selected_task(&mut self, delta: i32) {
+        let Some(id) = self.selected_task_id() else {
+            return;
+        };
+        let visible = self.ids_at(&self.task_ui.cached_filtered_tasks);
+        let Some(neighbor) = neighbor_in(&visible, id, delta) else {
+            return;
+        };
+        self.persist_data(|db, data| storage::move_task_to(db, data, id, neighbor));
+        self.bump_tasks();
+        let visible = self.ids_at(&self.task_ui.cached_filtered_tasks);
+        if let Some(pos) = visible.iter().position(|&x| x == id) {
+            self.task_ui.task_state.select(Some(pos));
+        }
+    }
+
+    /// Swaps the selected dashboard task with its neighbour, within the same priority group.
+    pub(crate) fn reorder_dashboard_task(&mut self, delta: i32) {
+        let Some(id) = self.dashboard_selected_task_id() else {
+            return;
+        };
+        let visible = self.ids_at(&self.task_ui.cached_dashboard_tasks);
+        let Some(neighbor) = neighbor_in(&visible, id, delta) else {
+            return;
+        };
+        let group = |id: u64| self.data.task(id).map(|t| (t.priority, t.today));
+        if group(id) != group(neighbor) {
+            self.set_status(
+                "This list is ordered by priority first; change it with p on Tasks.",
+                false,
+            );
+            return;
+        }
+        self.persist_data(|db, data| storage::move_task_to(db, data, id, neighbor));
+        self.bump_tasks();
+        let visible = self.ids_at(&self.task_ui.cached_dashboard_tasks);
+        if let Some(pos) = visible.iter().position(|&x| x == id) {
+            self.task_ui.dashboard_task_state.select(Some(pos));
+        }
+    }
+
     pub fn pending_task_count(&self) -> u32 {
         storage::pending_tasks(&self.data).count() as u32
     }
@@ -143,7 +192,7 @@ impl App {
             .data
             .tasks
             .values()
-            .filter(|t| t.status != crate::model::TaskStatus::Done)
+            .filter(|t| t.is_open())
             .map(|t| t.id)
             .collect();
         self.task_ui.cached_task_blocked = self
@@ -525,10 +574,25 @@ impl App {
             self.set_status("No task selected.", true);
             return;
         };
-        self.persist_data(|db, data| storage::archive_task(db, data, id));
+        let archived = self.data.task(id).is_some_and(|t| t.archived);
+        if archived {
+            self.persist_data(|db, data| storage::unarchive_task(db, data, id));
+        } else {
+            self.persist_data(|db, data| storage::archive_task(db, data, id));
+            if self.task_ui.active_task == Some(id) {
+                self.set_active_task(None);
+            }
+        }
         self.bump_tasks();
         self.clamp_task_selection_after_mutation();
-        self.set_status("Task archived.", false);
+        self.set_status(
+            if archived {
+                "Task restored."
+            } else {
+                "Task archived."
+            },
+            false,
+        );
     }
 
     pub fn reorder_subtask(&mut self, dir: i32) {
@@ -569,6 +633,12 @@ impl App {
     }
 }
 
+/// The id `delta` places away from `id` in `ids`, if there is one.
+fn neighbor_in(ids: &[u64], id: u64, delta: i32) -> Option<u64> {
+    let pos = ids.iter().position(|&x| x == id)? as i32 + delta;
+    usize::try_from(pos).ok().and_then(|p| ids.get(p)).copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,6 +646,84 @@ mod tests {
 
     fn app() -> App {
         App::with_database(Database::open_in_memory().unwrap()).unwrap()
+    }
+
+    fn add(app: &mut App, title: &str, priority: crate::model::Priority) -> u64 {
+        storage::add_task_full(
+            &app.db,
+            &mut app.data,
+            storage::TaskPayload {
+                title: title.into(),
+                notes: String::new(),
+                estimated_minutes: 25,
+                priority,
+                tags: Vec::new(),
+                due_date: None,
+            },
+        )
+        .unwrap()
+    }
+
+    fn select(app: &mut App, id: u64) {
+        app.recompute_task_caches();
+        let pos = app
+            .ids_at(&app.task_ui.cached_filtered_tasks)
+            .iter()
+            .position(|&x| x == id)
+            .unwrap();
+        app.task_ui.task_state.select(Some(pos));
+    }
+
+    #[test]
+    fn archiving_the_active_task_clears_it_and_a_restores_it() {
+        use crate::model::Priority;
+        let mut app = app();
+        let id = add(&mut app, "Park me", Priority::Medium);
+        app.set_active_task(Some(id));
+        select(&mut app, id);
+
+        app.archive_selected_task();
+        assert!(app.data.task(id).unwrap().archived);
+        assert_eq!(app.task_ui.active_task, None);
+
+        app.task_ui.task_filter = TaskFilter::Archived;
+        select(&mut app, id);
+        app.archive_selected_task();
+        assert!(!app.data.task(id).unwrap().archived);
+    }
+
+    #[test]
+    fn reordering_a_filtered_list_moves_past_the_visible_neighbour() {
+        use crate::model::Priority;
+        let mut app = app();
+        let a = add(&mut app, "A", Priority::Medium);
+        let hidden = add(&mut app, "Done", Priority::Medium);
+        let c = add(&mut app, "C", Priority::Medium);
+        storage::mark_task_done(&app.db, &mut app.data, hidden).unwrap();
+        app.task_ui.task_filter = TaskFilter::Pending;
+        select(&mut app, a);
+
+        app.reorder_selected_task(1);
+
+        let visible = app.ids_at(&app.task_ui.cached_filtered_tasks);
+        assert_eq!(visible, vec![c, a]);
+        assert_eq!(app.selected_task_id(), Some(a));
+    }
+
+    #[test]
+    fn dashboard_reorder_stops_at_a_priority_boundary() {
+        use crate::model::Priority;
+        let mut app = app();
+        let high = add(&mut app, "High", Priority::High);
+        add(&mut app, "Low", Priority::Low);
+        app.recompute_task_caches();
+        app.task_ui.dashboard_task_state.select(Some(0));
+        assert_eq!(app.dashboard_selected_task_id(), Some(high));
+
+        app.reorder_dashboard_task(1);
+
+        assert_eq!(app.dashboard_selected_task_id(), Some(high));
+        assert!(app.ui.status.as_deref().unwrap_or("").contains("priority"));
     }
 
     #[test]

@@ -96,11 +96,13 @@ pub fn reconcile_streaks(db: &Database, data: &mut AppData, today: &str) -> Resu
     Ok(())
 }
 
+/// Splits comma-separated tags, dropping blanks and case-insensitive repeats.
 pub fn parse_tags(input: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
     input
         .split(',')
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.is_empty() && seen.insert(s.to_lowercase()))
         .collect()
 }
 
@@ -193,7 +195,18 @@ pub fn promote_task_on_activate(db: &Database, data: &mut AppData, id: u64) -> R
 }
 
 pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
-    let (recurrence, title, notes, priority, tags, due_date, estimated, subtasks, blocked_by) = {
+    let (
+        recurrence,
+        title,
+        notes,
+        priority,
+        tags,
+        due_date,
+        estimated,
+        subtasks,
+        blocked_by,
+        today,
+    ) = {
         // Already-done tasks are left alone so a recurrence never spawns twice.
         let Some(t) = data.task(id).filter(|t| t.status != TaskStatus::Done) else {
             return Ok(());
@@ -208,6 +221,7 @@ pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> 
             t.estimated_minutes,
             t.subtasks.clone(),
             t.blocked_by.clone(),
+            t.today,
         )
     };
     if let Some(t) = data.task_mut(id) {
@@ -229,6 +243,7 @@ pub fn mark_task_done(db: &Database, data: &mut AppData, id: u64) -> Result<()> 
                 estimated,
                 subtasks,
                 blocked_by,
+                today,
             },
         )?;
     }
@@ -245,6 +260,7 @@ struct RecurringSpawn {
     estimated: u32,
     subtasks: Vec<Subtask>,
     blocked_by: Vec<u64>,
+    today: bool,
 }
 
 fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn) -> Result<()> {
@@ -258,6 +274,7 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
         estimated,
         subtasks,
         blocked_by,
+        today,
     } = spawn;
     let id = next_id(db, data)?;
     let mut task = Task::new(id, title);
@@ -267,6 +284,7 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
     task.estimated_minutes = estimated;
     task.recurrence = recurrence;
     task.blocked_by = blocked_by;
+    task.today = today;
     let mut respawned_subtasks = Vec::with_capacity(subtasks.len());
     for mut subtask in subtasks {
         subtask.id = next_id(db, data)?;
@@ -283,23 +301,23 @@ fn spawn_recurring_task(db: &Database, data: &mut AppData, spawn: RecurringSpawn
 fn next_due_date(recurrence: TaskRecurrence, current: Option<&str>) -> Option<String> {
     use chrono::{Datelike, NaiveDate, Weekday};
     let today = crate::date::today_naive();
-    match recurrence {
-        TaskRecurrence::None => current.map(String::from),
-        TaskRecurrence::Daily => Some(crate::date::format_date(today + chrono::Duration::days(1))),
-        TaskRecurrence::Weekly => {
-            let base = current
-                .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-                .unwrap_or(today);
-            Some(crate::date::format_date(base + chrono::Duration::days(7)))
-        }
+    // From the later of due date and today, so it's never overdue and early completion keeps the schedule.
+    let base = current
+        .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
+        .map_or(today, |due| due.max(today));
+    let next = match recurrence {
+        TaskRecurrence::None => return current.map(String::from),
+        TaskRecurrence::Daily => base + chrono::Duration::days(1),
+        TaskRecurrence::Weekly => base + chrono::Duration::days(7),
         TaskRecurrence::Weekdays => {
-            let mut d = today + chrono::Duration::days(1);
+            let mut d = base + chrono::Duration::days(1);
             while matches!(d.weekday(), Weekday::Sat | Weekday::Sun) {
                 d += chrono::Duration::days(1);
             }
-            Some(crate::date::format_date(d))
+            d
         }
-    }
+    };
+    Some(crate::date::format_date(next))
 }
 
 pub fn cycle_task_status(db: &Database, data: &mut AppData, id: u64) -> Result<()> {
@@ -337,19 +355,19 @@ pub fn set_priority(db: &Database, data: &mut AppData, id: u64, priority: Priori
     Ok(())
 }
 
-pub fn move_task(db: &Database, data: &mut AppData, id: u64, delta: i32) -> Result<()> {
-    let Some(idx) = data.tasks.get_index_of(&id) else {
+/// Moves task `id` into `neighbor`'s position, so the two swap in any list kept in stored order.
+pub fn move_task_to(db: &Database, data: &mut AppData, id: u64, neighbor: u64) -> Result<()> {
+    let (Some(from), Some(to)) = (
+        data.tasks.get_index_of(&id),
+        data.tasks.get_index_of(&neighbor),
+    ) else {
         return Ok(());
     };
-    let new_idx = (idx as i32 + delta).clamp(0, data.tasks.len() as i32 - 1) as usize;
-    if idx != new_idx {
-        data.tasks.move_index(idx, new_idx);
-        for (i, (_, t)) in data.tasks.iter_mut().enumerate() {
-            t.sort_order = i as u32;
-        }
-        db.sync_sort_orders(&data.tasks)?;
+    data.tasks.move_index(from, to);
+    for (i, (_, t)) in data.tasks.iter_mut().enumerate() {
+        t.sort_order = i as u32;
     }
-    Ok(())
+    db.sync_sort_orders(&data.tasks)
 }
 
 /// First unblocked task in the same order the "up next" list shows.
@@ -1169,6 +1187,65 @@ mod tests {
         assert_eq!(pick_best_task(&data), Some(2));
         assert_eq!(advance_to_next_task(&data, Some(2)), Some(1));
         assert_eq!(advance_to_next_task(&data, Some(1)), Some(2));
+    }
+
+    #[test]
+    fn parse_tags_drops_blanks_and_repeats() {
+        assert_eq!(parse_tags("rust, Rust, a,, a"), vec!["rust", "a"]);
+    }
+
+    #[test]
+    fn saving_duplicate_tags_succeeds() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        data.task_mut(id).unwrap().tags = vec!["a".into(), "a".into()];
+        db.upsert_task(data.task(id).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn an_archived_blocker_does_not_block() {
+        let mut data = AppData::default();
+        let mut blocker = Task::new(1, "Blocker".into());
+        blocker.archived = true;
+        let mut blocked = Task::new(2, "Blocked".into());
+        blocked.blocked_by = vec![1];
+        data.tasks.insert(1, blocker);
+        data.tasks.insert(2, blocked);
+        assert!(!data.task(2).unwrap().is_blocked(&data.tasks));
+    }
+
+    fn days_from_today(n: i64) -> String {
+        crate::date::format_date(crate::date::today_naive() + chrono::Duration::days(n))
+    }
+
+    #[test]
+    fn a_late_weekly_task_is_next_due_a_week_from_today() {
+        let stale = days_from_today(-30);
+        assert_eq!(
+            next_due_date(TaskRecurrence::Weekly, Some(&stale)),
+            Some(days_from_today(7))
+        );
+    }
+
+    #[test]
+    fn an_early_daily_task_keeps_its_schedule() {
+        let due = days_from_today(3);
+        assert_eq!(
+            next_due_date(TaskRecurrence::Daily, Some(&due)),
+            Some(days_from_today(4))
+        );
+    }
+
+    #[test]
+    fn the_next_occurrence_keeps_the_today_flag() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        let id = daily_task(&db, &mut data);
+        data.task_mut(id).unwrap().today = true;
+        mark_task_done(&db, &mut data, id).unwrap();
+        let next = data.tasks.values().find(|t| t.id != id).unwrap();
+        assert!(next.today);
     }
 
     #[test]
