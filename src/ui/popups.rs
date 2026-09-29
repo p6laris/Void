@@ -24,6 +24,11 @@ fn popup_size(popup: &Popup, area: Rect) -> (u16, u16) {
             let h = 14u16.min(area.height);
             (w, h)
         }
+        Popup::ConfirmQuit => {
+            let w = (area.width.saturating_mul(55) / 100).clamp(52, 68);
+            let h = 11u16.min(area.height);
+            (w, h)
+        }
         Popup::EmptyQueueChoice => {
             let w = (area.width.saturating_mul(55) / 100).clamp(52, 68);
             let h = 15u16.min(area.height);
@@ -66,6 +71,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
             app.theme.error,
             format!(" {} Confirm Delete ", icons.delete),
         ),
+        Popup::ConfirmQuit => (app.theme.warning, format!(" {} Quit Void ", icons.timer)),
         Popup::EmptyQueueChoice => (
             app.theme.success,
             format!(" {} Queue Cleared ", icons.check),
@@ -104,6 +110,7 @@ pub(crate) fn draw_popup(f: &mut Frame, app: &mut App) {
         Popup::EditTask(_) => draw_task_form_popup(f, app, body, true),
         Popup::ConfirmDelete(id) => draw_confirm_delete_popup(f, app, body, *id),
         Popup::EmptyQueueChoice => draw_empty_queue_popup(f, app, body),
+        Popup::ConfirmQuit => draw_confirm_quit_popup(f, app, body),
         Popup::AddSubtask(id) => draw_subtask_popup(f, app, body, *id, false),
         Popup::EditSubtask(task_id, _) => draw_subtask_popup(f, app, body, *task_id, true),
         Popup::BulkConfirm(action) => draw_bulk_confirm_popup(f, app, body, action),
@@ -225,7 +232,7 @@ fn draw_task_form_popup(f: &mut Frame, app: &App, body: Rect, _is_edit: bool) {
     f.render_widget(Paragraph::new(form_lines), left_area);
 
     if let Some(r) = right_area {
-        super::calendar::render_due_date_calendar(f, r, app.stats.calendar_date, theme);
+        super::calendar::render_due_date_calendar(f, r, app.input.calendar_date, theme);
     }
 
     if chunks.len() > 1 {
@@ -336,7 +343,14 @@ fn popup_field_row<'a>(
     Line::from(vec![
         active_indicator,
         Span::styled(format!("{} {:<12} ", icon, label), label_style),
-        Span::styled(super::widgets::truncate(value, max_w), val_style),
+        Span::styled(
+            if active {
+                super::widgets::truncate_start(value, max_w)
+            } else {
+                super::widgets::truncate(value, max_w)
+            },
+            val_style,
+        ),
     ])
 }
 
@@ -714,6 +728,58 @@ fn draw_bulk_confirm_popup(f: &mut Frame, app: &App, body: Rect, action: &BulkAc
         Paragraph::new(buttons).alignment(Alignment::Center),
         chunks[3],
     );
+}
+
+fn draw_confirm_quit_popup(f: &mut Frame, app: &App, body: Rect) {
+    let theme = &app.theme;
+    let mins = app.timer.current_elapsed_seconds() / 60;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([Constraint::Length(2), Constraint::Min(5)])
+        .split(body);
+
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!("{} min ", mins),
+                Style::default()
+                    .fg(theme.warning)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "of focus in progress. Save it before quitting?",
+                Style::default().fg(theme.text),
+            ),
+        ])),
+        chunks[0],
+    );
+
+    let option = |key: &str, color, label: &str, detail: &str| {
+        Line::from(vec![
+            Span::styled(
+                format!(" [{key}] "),
+                Style::default()
+                    .fg(color)
+                    .bg(theme.panel)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" {label:<9}"),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!("— {detail}"), Style::default().fg(theme.dim)),
+        ])
+    };
+    let options = vec![
+        option("  l  ", theme.success, "Log", "save the session and quit"),
+        Line::from(""),
+        option("  d  ", theme.error, "Discard", "quit without saving"),
+        Line::from(""),
+        option(" Esc ", theme.dim, "Cancel", "keep focusing"),
+    ];
+    f.render_widget(Paragraph::new(options), chunks[1]);
 }
 
 fn draw_empty_queue_popup(f: &mut Frame, app: &App, body: Rect) {

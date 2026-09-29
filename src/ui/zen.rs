@@ -187,6 +187,12 @@ pub(crate) fn draw_zen_dashboard(f: &mut Frame, app: &App, area: Rect) {
             width: chunks[0].width,
             height: 1,
         };
+        // Cleared first: the animated art can drift onto this row.
+        f.render_widget(Clear, tip_area);
+        f.render_widget(
+            Block::default().style(Style::default().bg(theme.bg)),
+            tip_area,
+        );
         draw_break_tip(f, tip_area, t, mc, theme.text, theme.dim, icons.heart);
     }
 

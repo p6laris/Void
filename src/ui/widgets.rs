@@ -271,6 +271,39 @@ pub fn truncate(s: &str, max: usize) -> String {
     out
 }
 
+/// Pads `s` with spaces to `width` terminal columns; wide characters count double.
+pub fn pad_to_width(s: &str, width: usize) -> String {
+    let used = unicode_width::UnicodeWidthStr::width(s);
+    format!("{s}{}", " ".repeat(width.saturating_sub(used)))
+}
+
+/// Largest useful scroll for `lines` rows shown in a bordered `area`.
+pub fn scroll_limit(lines: usize, area: Rect) -> u16 {
+    let visible = area.height.saturating_sub(2) as usize;
+    lines.saturating_sub(visible).min(u16::MAX as usize) as u16
+}
+
+/// The end of `s` that fits in `max` columns, led by `…` when cut; keeps a cursor at the end visible.
+pub fn truncate_start(s: &str, max: usize) -> String {
+    if unicode_width::UnicodeWidthStr::width(s) <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let mut width = 1;
+    let mut start = s.len();
+    for (i, ch) in s.char_indices().rev() {
+        let cw = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1);
+        if width + cw > max {
+            break;
+        }
+        width += cw;
+        start = i;
+    }
+    format!("…{}", &s[start..])
+}
+
 pub fn centered_rect(
     percent_x: u16,
     percent_y: u16,
@@ -292,4 +325,19 @@ pub fn centered_rect(
             ratatui::layout::Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_start_keeps_the_end_of_long_text() {
+        assert_eq!(truncate_start("short", 10), "short");
+        assert_eq!(truncate_start("a long task title|", 8), "… title|");
+        assert_eq!(
+            unicode_width::UnicodeWidthStr::width(truncate_start("日本語のタイトル|", 6).as_str()),
+            6
+        );
+    }
 }

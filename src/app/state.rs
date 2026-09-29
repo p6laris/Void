@@ -18,11 +18,18 @@ pub struct UiState {
     pub status_error: bool,
     pub last_status_set: Instant,
     pub should_quit: bool,
+    /// Whether the terminal window has focus; ticks slow down while it doesn't.
+    pub focused: bool,
     pub help_scroll: u16,
     pub about_scroll: u16,
     pub about_left_scroll: u16,
     pub about_right_scroll: u16,
     pub about_active_column: usize,
+    /// Furthest each scrollable view can scroll, recorded when it is drawn.
+    pub(crate) help_scroll_max: std::cell::Cell<u16>,
+    pub(crate) about_left_max: std::cell::Cell<u16>,
+    pub(crate) about_right_max: std::cell::Cell<u16>,
+    pub(crate) about_scroll_max: std::cell::Cell<u16>,
     pub(crate) frame_today: String,
     pub(crate) frame_today_focus_mins: u32,
     pub(crate) window_title_sig: u64,
@@ -41,6 +48,8 @@ pub struct InputState {
     pub input_priority: Priority,
     pub input_field: InputField,
     pub popup: Option<Popup>,
+    /// Date highlighted in the task form's due-date calendar.
+    pub calendar_date: chrono::NaiveDate,
 }
 
 #[derive(Debug)]
@@ -85,5 +94,4 @@ pub struct StatsState {
     pub peak_hour_label: String,
     pub tag_analytics: Vec<(String, u32)>,
     pub hourly_distribution: [u32; 24],
-    pub calendar_date: chrono::NaiveDate,
 }

@@ -3,6 +3,8 @@ mod import_export;
 mod schema;
 mod sessions;
 
+pub use import_export::CsvImportSummary;
+
 use encoding::{decode_timer_mode, encode_timer_mode};
 use sessions::{focus_session_from_row, focus_session_id_and_record};
 
@@ -16,9 +18,46 @@ use rusqlite::{params, Connection};
 
 use crate::model::{
     AppData, EmptyQueueBehavior, EstimateCompleteBehavior, FocusSessionRecord, Priority,
-    StoredSession, Subtask, Task, TaskRecurrence, TaskStatus, TimerMode,
+    StoredSession, Subtask, Task, TaskRecurrence, TaskStatus, ThemeMode, TimerMode,
 };
 use crate::theme;
+
+/// A savepoint that rolls back on drop unless committed; unlike `BEGIN`, it nests.
+pub(crate) struct Atomic<'a> {
+    conn: &'a Connection,
+    open: bool,
+}
+
+impl<'a> Atomic<'a> {
+    pub(crate) fn begin(conn: &'a Connection) -> Result<Self> {
+        conn.execute_batch("SAVEPOINT atomic")?;
+        Ok(Self { conn, open: true })
+    }
+
+    pub(crate) fn commit(mut self) -> Result<()> {
+        self.open = false;
+        self.conn.execute_batch("RELEASE atomic")?;
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for Atomic<'_> {
+    type Target = Connection;
+
+    fn deref(&self) -> &Connection {
+        self.conn
+    }
+}
+
+impl Drop for Atomic<'_> {
+    fn drop(&mut self) {
+        if self.open {
+            let _ = self
+                .conn
+                .execute_batch("ROLLBACK TO atomic; RELEASE atomic");
+        }
+    }
+}
 
 pub struct Database {
     conn: Connection,
@@ -39,6 +78,7 @@ impl Database {
 
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
         schema::migrate(&conn)?;
         Ok(Self { conn })
     }
@@ -47,11 +87,31 @@ impl Database {
         let mut data = AppData::default();
         load_settings(&self.conn, &mut data)?;
         data.tasks = load_tasks(&self.conn)?;
+
+        // A stale or imported `next_id` could otherwise collide with an existing id.
+        let max_task_id = data.tasks.keys().copied().max().unwrap_or(0);
+        let max_subtask_id = data
+            .tasks
+            .values()
+            .flat_map(|t| t.subtasks.iter())
+            .map(|s| s.id)
+            .max()
+            .unwrap_or(0);
+        data.next_id = data.next_id.max(max_task_id + 1).max(max_subtask_id + 1);
+
         Ok(data)
     }
 
+    /// Runs `f` so that all of its writes land together or not at all.
+    pub fn atomically<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
+        let tx = Atomic::begin(&self.conn)?;
+        let value = f()?;
+        tx.commit()?;
+        Ok(value)
+    }
+
     pub fn save_app_data(&self, data: &AppData) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         save_settings(&tx, data)?;
         sync_tasks(&tx, &data.tasks)?;
         tx.commit()?;
@@ -107,14 +167,8 @@ impl Database {
             params![limit as i64, offset as i64],
             focus_session_id_and_record,
         )?;
-        let tags_by_session = load_all_session_tags(&self.conn)?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (id, mut record) = row?;
-            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
-            out.push(StoredSession { id, record });
-        }
-        Ok(out)
+        let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        with_session_tags(&self.conn, rows)
     }
 
     pub fn session_count(&self) -> Result<usize> {
@@ -161,14 +215,8 @@ impl Database {
              ORDER BY completed_at ASC",
         )?;
         let rows = stmt.query_map(params![date], focus_session_id_and_record)?;
-        let tags_by_session = load_all_session_tags(&self.conn)?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (id, mut record) = row?;
-            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
-            out.push(StoredSession { id, record });
-        }
-        Ok(out)
+        let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        with_session_tags(&self.conn, rows)
     }
 
     pub fn session_counts_by_mode(&self) -> Result<(u32, u32, u32)> {
@@ -242,7 +290,7 @@ impl Database {
         if tasks.is_empty() {
             return Ok(());
         }
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         for task in tasks {
             upsert_task_row(&tx, task)?;
         }
@@ -257,7 +305,7 @@ impl Database {
     }
 
     pub fn sync_sort_orders(&self, tasks: &IndexMap<u64, Task>) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         {
             let mut stmt = tx.prepare("UPDATE tasks SET sort_order = ?1 WHERE id = ?2")?;
             for task in tasks.values() {
@@ -269,7 +317,7 @@ impl Database {
     }
 
     pub fn persist_session_stats(&self, data: &AppData) -> Result<()> {
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Atomic::begin(&self.conn)?;
         set_setting_conn(
             &tx,
             "total_focus_minutes",
@@ -334,21 +382,29 @@ impl Database {
         import_export::export_json(&self.conn)
     }
 
+    pub fn export_json_to(&self, path: &std::path::Path) -> Result<()> {
+        import_export::export_json_to(&self.conn, path)
+    }
+
     pub fn export_csv(&self) -> Result<PathBuf> {
         import_export::export_csv(&self.conn)
     }
 
+    pub fn export_csv_to(&self, path: &std::path::Path) -> Result<()> {
+        import_export::export_csv_to(&self.conn, path)
+    }
+
     pub fn import_json(&self, path: &std::path::Path) -> Result<()> {
-        let conn = self.conn.unchecked_transaction()?;
-        import_export::import_json(&conn, path)?;
-        conn.commit()?;
+        let tx = Atomic::begin(&self.conn)?;
+        import_export::import_json(&self.conn, path)?;
+        tx.commit()?;
         Ok(())
     }
 
-    pub fn import_csv(&self, path: &std::path::Path) -> Result<usize> {
-        let conn = self.conn.unchecked_transaction()?;
-        let count = import_export::import_csv(&conn, path)?;
-        conn.commit()?;
+    pub fn import_csv(&self, path: &std::path::Path) -> Result<CsvImportSummary> {
+        let tx = Atomic::begin(&self.conn)?;
+        let count = import_export::import_csv(&self.conn, path)?;
+        tx.commit()?;
         Ok(count)
     }
 
@@ -490,7 +546,7 @@ pub fn db_path() -> Result<PathBuf> {
     Ok(dir.join("void.db"))
 }
 
-fn data_dir() -> Result<PathBuf> {
+pub(crate) fn data_dir() -> Result<PathBuf> {
     let dir = dirs::data_local_dir()
         .or_else(dirs::config_dir)
         .context("could not resolve local data directory")?;
@@ -535,6 +591,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
     let long_break_minutes = data.long_break_minutes.to_string();
     let long_break_every = data.long_break_every.to_string();
     let theme = data.theme.clone();
+    let theme_mode = encode_theme_mode(data.theme_mode);
+    let dark_theme = data.dark_theme.clone();
+    let light_theme = data.light_theme.clone();
     let active_task_id = data
         .active_task_id
         .map(|id| id.to_string())
@@ -577,6 +636,9 @@ fn save_settings(conn: &Connection, data: &AppData) -> Result<()> {
         ("auto_pick_task", bool_str(data.auto_pick_task)),
         ("auto_advance_task", bool_str(data.auto_advance_task)),
         ("theme", &theme),
+        ("theme_mode", theme_mode),
+        ("dark_theme", &dark_theme),
+        ("light_theme", &light_theme),
         ("active_task_id", &active_task_id),
         ("notify_on_finish", bool_str(data.notify_on_finish)),
         ("goal_streak_days", &goal_streak_days),
@@ -637,16 +699,32 @@ fn apply_setting(data: &mut AppData, key: &str, value: &str) {
             data.today_focus_minutes = parse_u32(value, data.today_focus_minutes)
         }
         "today_date" => data.today_date = opt_string(value),
-        "focus_minutes" => data.focus_minutes = parse_u32(value, data.focus_minutes),
+        // Clamped to the Settings tab's ranges, so a zero or huge stored value can't break the timer.
+        "focus_minutes" => data.focus_minutes = parse_u32(value, data.focus_minutes).clamp(1, 240),
         "short_break_minutes" => {
-            data.short_break_minutes = parse_u32(value, data.short_break_minutes)
+            data.short_break_minutes = parse_u32(value, data.short_break_minutes).clamp(1, 60)
         }
-        "long_break_minutes" => data.long_break_minutes = parse_u32(value, data.long_break_minutes),
-        "long_break_every" => data.long_break_every = parse_u32(value, data.long_break_every),
+        "long_break_minutes" => {
+            data.long_break_minutes = parse_u32(value, data.long_break_minutes).clamp(1, 120)
+        }
+        "long_break_every" => {
+            data.long_break_every = parse_u32(value, data.long_break_every).clamp(1, 12)
+        }
         "auto_pick_task" => data.auto_pick_task = parse_bool(value, data.auto_pick_task),
         "auto_advance_task" => data.auto_advance_task = parse_bool(value, data.auto_advance_task),
         "theme" if !value.is_empty() => {
             data.theme = theme::normalize_theme_id(value);
+        }
+        "theme_mode" => {
+            if let Some(mode) = decode_theme_mode(value) {
+                data.theme_mode = mode;
+            }
+        }
+        "dark_theme" if !value.is_empty() => {
+            data.dark_theme = theme::normalize_theme_id(value);
+        }
+        "light_theme" if !value.is_empty() => {
+            data.light_theme = theme::normalize_theme_id(value);
         }
         "active_task_id" => data.active_task_id = value.parse().ok(),
         "notify_on_finish" => data.notify_on_finish = parse_bool(value, data.notify_on_finish),
@@ -808,13 +886,23 @@ fn sync_tasks(conn: &Connection, tasks: &IndexMap<u64, Task>) -> Result<()> {
     conn.execute("DELETE FROM task_blocked_by", [])?;
     conn.execute("DELETE FROM subtasks", [])?;
     conn.execute("DELETE FROM tasks", [])?;
+    // Insert every task before any `blocked_by` row can reference it.
     for task in tasks.values() {
-        upsert_task_row(conn, task)?;
+        upsert_task_core(conn, task)?;
+    }
+    for task in tasks.values() {
+        upsert_task_blocked_by(conn, task)?;
     }
     Ok(())
 }
 
 fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
+    upsert_task_core(conn, task)?;
+    upsert_task_blocked_by(conn, task)?;
+    Ok(())
+}
+
+fn upsert_task_core(conn: &Connection, task: &Task) -> Result<()> {
     conn.execute(
         "INSERT INTO tasks (
             id, title, notes, priority, status, estimated_minutes, actual_minutes,
@@ -860,7 +948,7 @@ fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
     )?;
     for tag in &task.tags {
         conn.execute(
-            "INSERT INTO task_tags (task_id, tag) VALUES (?1, ?2)",
+            "INSERT OR IGNORE INTO task_tags (task_id, tag) VALUES (?1, ?2)",
             params![task.id as i64, tag],
         )?;
     }
@@ -880,6 +968,10 @@ fn upsert_task_row(conn: &Connection, task: &Task) -> Result<()> {
             ],
         )?;
     }
+    Ok(())
+}
+
+fn upsert_task_blocked_by(conn: &Connection, task: &Task) -> Result<()> {
     conn.execute(
         "DELETE FROM task_blocked_by WHERE task_id = ?1",
         params![task.id as i64],
@@ -925,6 +1017,36 @@ fn load_session_tags(conn: &Connection, session_id: i64) -> Result<Vec<String>> 
         .query_map(params![session_id], |row| row.get(0))?
         .collect::<Result<Vec<String>, _>>()?;
     Ok(tags)
+}
+
+/// Attaches each session's tags, loading only the tags for these sessions.
+fn with_session_tags(
+    conn: &Connection,
+    rows: Vec<(i64, FocusSessionRecord)>,
+) -> Result<Vec<StoredSession>> {
+    let mut tags: HashMap<i64, Vec<String>> = HashMap::new();
+    if !rows.is_empty() {
+        let placeholders = vec!["?"; rows.len()].join(",");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT session_id, tag FROM session_tags
+             WHERE session_id IN ({placeholders}) ORDER BY session_id, tag"
+        ))?;
+        let found = stmt.query_map(
+            rusqlite::params_from_iter(rows.iter().map(|(id, _)| id)),
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )?;
+        for row in found {
+            let (id, tag) = row?;
+            tags.entry(id).or_default().push(tag);
+        }
+    }
+    Ok(rows
+        .into_iter()
+        .map(|(id, mut record)| {
+            record.tags = tags.remove(&id).unwrap_or_default();
+            StoredSession { id, record }
+        })
+        .collect())
 }
 
 fn load_all_session_tags(conn: &Connection) -> Result<HashMap<i64, Vec<String>>> {
@@ -991,6 +1113,23 @@ fn decode_task_status(s: &str) -> TaskStatus {
         "inprogress" | "in_progress" => TaskStatus::InProgress,
         _ => TaskStatus::Pending,
     }
+}
+
+fn encode_theme_mode(m: ThemeMode) -> &'static str {
+    match m {
+        ThemeMode::Auto => "auto",
+        ThemeMode::Dark => "dark",
+        ThemeMode::Light => "light",
+    }
+}
+
+fn decode_theme_mode(s: &str) -> Option<ThemeMode> {
+    Some(match s {
+        "dark" => ThemeMode::Dark,
+        "light" => ThemeMode::Light,
+        "auto" => ThemeMode::Auto,
+        _ => return None,
+    })
 }
 
 fn encode_empty_queue(b: EmptyQueueBehavior) -> &'static str {
@@ -1096,6 +1235,123 @@ mod tests {
         let db = Database::open_in_memory().expect("failed to open in memory db");
         let data = db.load_app_data().expect("failed to load app data");
         assert_eq!(data.tasks.len(), 0);
+    }
+
+    #[test]
+    fn load_app_data_reconciles_next_id_above_existing_tasks() {
+        let db = Database::open_in_memory().unwrap();
+        let mut data = AppData::default();
+        for id in 1..=3u64 {
+            data.tasks.insert(id, Task::new(id, format!("Task {id}")));
+        }
+        // A stale/imported counter that undercounts what's already in use.
+        data.next_id = 1;
+        db.save_app_data(&data).unwrap();
+
+        let loaded = db.load_app_data().unwrap();
+        assert_eq!(
+            loaded.next_id, 4,
+            "next_id must clear every existing task id"
+        );
+    }
+
+    fn session_count(db: &Database) -> i64 {
+        db.conn
+            .query_row("SELECT COUNT(*) FROM focus_sessions", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn session_queries_attach_each_sessions_own_tags() {
+        let db = Database::open_in_memory().unwrap();
+        for (tags, minute) in [(vec!["a", "b"], 10), (vec![], 20), (vec!["c"], 30)] {
+            db.insert_focus_session(&FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                tags: tags.into_iter().map(String::from).collect(),
+                completed_at: format!("2026-07-02T10:{minute}:00Z").parse().unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let day: Vec<Vec<String>> = db
+            .sessions_on_date("2026-07-02")
+            .unwrap()
+            .into_iter()
+            .map(|s| s.record.tags)
+            .collect();
+        assert_eq!(day, vec![vec!["a", "b"], vec![], vec!["c"]]);
+        let recent = db.recent_sessions_paged(0, 2).unwrap();
+        assert_eq!(recent[0].record.tags, vec!["c"]);
+        assert!(recent[1].record.tags.is_empty());
+    }
+
+    #[test]
+    fn migrations_add_the_session_indexes() {
+        let db = Database::open_in_memory().unwrap();
+        let n: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'
+                 AND name IN ('idx_focus_sessions_completed', 'idx_focus_sessions_task')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn atomically_rolls_back_every_write_on_error() {
+        let db = Database::open_in_memory().unwrap();
+        let result: Result<()> = db.atomically(|| {
+            db.insert_focus_session(&FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                ..Default::default()
+            })?;
+            // A nested atomic write inside the outer one.
+            db.upsert_task(&Task::new(1, "Nested".into()))?;
+            anyhow::bail!("fail after both writes")
+        });
+        assert!(result.is_err());
+        assert_eq!(session_count(&db), 0);
+        assert!(db.load_app_data().unwrap().tasks.is_empty());
+    }
+
+    #[test]
+    fn atomically_commits_on_success() {
+        let db = Database::open_in_memory().unwrap();
+        db.atomically(|| db.upsert_task(&Task::new(1, "Kept".into())))
+            .unwrap();
+        assert_eq!(db.load_app_data().unwrap().tasks.len(), 1);
+    }
+
+    #[test]
+    fn out_of_range_timer_settings_are_clamped_on_load() {
+        let db = Database::open_in_memory().unwrap();
+        db.set_setting("focus_minutes", "0").unwrap();
+        db.set_setting("long_break_minutes", "999999999").unwrap();
+        let data = db.load_app_data().unwrap();
+        assert_eq!(data.focus_minutes, 1);
+        assert_eq!(data.long_break_minutes, 120);
+    }
+
+    #[test]
+    fn theme_preferences_round_trip() {
+        let db = Database::open_in_memory().unwrap();
+        let data = AppData {
+            theme_mode: ThemeMode::Dark,
+            dark_theme: "matrix".into(),
+            light_theme: "light".into(),
+            ..Default::default()
+        };
+        db.save_app_data(&data).unwrap();
+
+        let loaded = db.load_app_data().unwrap();
+        assert_eq!(loaded.theme_mode, ThemeMode::Dark);
+        assert_eq!(loaded.dark_theme, "matrix");
+        assert_eq!(loaded.light_theme, "light");
     }
 
     #[test]

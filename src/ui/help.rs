@@ -1,6 +1,8 @@
 use super::*;
 
 pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
+    // Each column raises this to its own limit, so the shared scroll reaches the longer one.
+    app.ui.help_scroll_max.set(0);
     let theme = &app.theme;
     let icons = app.icons;
 
@@ -34,9 +36,9 @@ pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
             " switch tabs  ",
             Style::default().bg(theme.bg).fg(theme.dim),
         ),
-        Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+        Span::styled("Esc", Style::default().bg(theme.bg).fg(theme.accent)),
         Span::styled(
-            " close / return to dashboard",
+            " return to dashboard",
             Style::default().bg(theme.bg).fg(theme.dim),
         ),
     ]))
@@ -82,11 +84,20 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
             icons.dashboard,
             "Global & Navigation",
         ));
-        lines.push(shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"));
         lines.push(shortcut_row(
             theme,
-            "q / Esc",
-            "Quit Void (auto-saves all state)",
+            "1-6 / Tab",
+            "Switch tabs (Tab moves focus on Tasks, About)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "q",
+            "Quit Void (asks if a session is running)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "Esc",
+            "Back to dashboard; quits from there",
         ));
         lines.push(shortcut_row(theme, "Ctrl-S", "Export instant JSON backup"));
         lines.push(shortcut_row(theme, "h / ?", "Open this help cheat sheet"));
@@ -97,6 +108,11 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         lines.push(shortcut_row(theme, "z", "Toggle distraction-free Zen mode"));
         lines.push(shortcut_row(
             theme,
+            "1-9 (Zen)",
+            "Tick a subtask of the active task",
+        ));
+        lines.push(shortcut_row(
+            theme,
             "m",
             "Toggle mode (Focus / Custom timer)",
         ));
@@ -105,9 +121,17 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
             "+ / -",
             "Adjust timer duration (+/- 1 min)",
         ));
-        lines.push(shortcut_row(theme, "n", "Skip session (logs elapsed time)"));
+        lines.push(shortcut_row(
+            theme,
+            "n",
+            "Skip session (logs it if over a minute)",
+        ));
         lines.push(shortcut_row(theme, "r", "Reset timer to full duration"));
-        lines.push(shortcut_row(theme, "E", "End session early with summary"));
+        lines.push(shortcut_row(
+            theme,
+            "E",
+            "End session, logging the time so far",
+        ));
         lines.push(Line::from(Span::styled(" ", st_dim)));
 
         lines.push(section_header(
@@ -144,8 +168,13 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         ));
         lines.push(shortcut_row(
             theme,
-            "Space / f",
+            "Space",
             "Set task as active for focus timer",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "f",
+            "Start a focus session on the task",
         ));
         lines.push(shortcut_row(theme, "t", "Toggle today focus queue"));
         lines.push(shortcut_row(
@@ -155,13 +184,23 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         ));
         lines.push(shortcut_row(
             theme,
-            "/",
-            "Instant fuzzy search by title & tags",
+            "A",
+            "Archive task (restores one in the Archive filter)",
         ));
         lines.push(shortcut_row(
             theme,
-            "1 / 2 / 3",
-            "Set priority: Low (·) / Med (◆) / High (★)",
+            "T",
+            "Filter by tag (cycles through tags, then off)",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "/",
+            "Search titles and tags as you type",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "p",
+            "Cycle priority: Low (·) / Med (◆) / High (★)",
         ));
         lines.push(Line::from(Span::styled(" ", st_dim)));
 
@@ -219,7 +258,11 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.help_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui
+        .help_scroll_max
+        .set(app.ui.help_scroll_max.get().max(limit));
+    let scroll = app.ui.help_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))
@@ -236,29 +279,38 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
 
     let lines = vec![
         section_header(theme, icons.dashboard, "Global & Navigation"),
-        shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"),
-        shortcut_row(theme, "q / Esc", "Quit Void (auto-saves all state)"),
+        shortcut_row(
+            theme,
+            "1-6 / Tab",
+            "Switch tabs (Tab moves focus on Tasks, About)",
+        ),
+        shortcut_row(theme, "q", "Quit Void (asks if a session is running)"),
+        shortcut_row(theme, "Esc", "Back to dashboard; quits from there"),
         shortcut_row(theme, "Ctrl-S", "Export instant JSON backup"),
         Line::from(Span::styled(" ", st_dim)),
         section_header(theme, icons.timer, "Timer & Focus"),
         shortcut_row(theme, "Space / s", "Start / pause timer"),
         shortcut_row(theme, "z", "Toggle distraction-free Zen mode"),
+        shortcut_row(theme, "1-9 (Zen)", "Tick a subtask of the active task"),
         shortcut_row(theme, "m", "Toggle mode (Focus / Custom timer)"),
         shortcut_row(theme, "+ / -", "Adjust timer duration (+/- 1 min)"),
-        shortcut_row(theme, "n", "Skip session (logs elapsed time)"),
+        shortcut_row(theme, "n", "Skip session (logs it if over a minute)"),
         shortcut_row(theme, "r", "Reset timer to full duration"),
-        shortcut_row(theme, "E", "End session early with summary"),
+        shortcut_row(theme, "E", "End session, logging the time so far"),
         Line::from(Span::styled(" ", st_dim)),
         section_header(theme, icons.tasks, "Task Management"),
         shortcut_row(theme, "a", "Add new task (title, estimate, due, tags)"),
         shortcut_row(theme, "e", "Edit selected task properties"),
         shortcut_row(theme, "d", "Delete selected task"),
         shortcut_row(theme, "Enter", "Cycle status (Pending → Active → Done)"),
-        shortcut_row(theme, "Space / f", "Set task as active for focus timer"),
+        shortcut_row(theme, "Space", "Set task as active for focus timer"),
+        shortcut_row(theme, "f", "Start a focus session on the task"),
         shortcut_row(theme, "t", "Toggle today focus queue"),
         shortcut_row(theme, "g", "Cycle filters (Open / Today / Done / All)"),
-        shortcut_row(theme, "/", "Instant fuzzy search by title & tags"),
-        shortcut_row(theme, "1 / 2 / 3", "Set priority: Low / Med / High"),
+        shortcut_row(theme, "A", "Archive task (restores in Archive filter)"),
+        shortcut_row(theme, "T", "Filter by tag (cycles tags, then off)"),
+        shortcut_row(theme, "/", "Search titles and tags as you type"),
+        shortcut_row(theme, "p", "Cycle priority: Low / Med / High"),
         Line::from(Span::styled(" ", st_dim)),
         section_header(theme, icons.tasks, "Subtasks Panel"),
         shortcut_row(theme, "c", "Quick-add subtask to current task"),
@@ -290,7 +342,11 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.help_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui
+        .help_scroll_max
+        .set(app.ui.help_scroll_max.get().max(limit));
+    let scroll = app.ui.help_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))

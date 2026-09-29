@@ -11,12 +11,17 @@ use crate::ui::widgets::{
 ///   today         — full-width goal bar, the day's headline number
 ///   tasks│details — everything left, split into two real columns
 pub(crate) fn draw_dashboard(f: &mut Frame, app: &mut App, area: Rect) {
+    // Rows the timer band needs to show the clock; on short terminals the task list gives way first.
+    const TIMER_MIN_ROWS: u16 = 5;
+    let timer_rows = (area.height * 46 / 100)
+        .max(TIMER_MIN_ROWS)
+        .min(area.height);
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(46),
+            Constraint::Length(timer_rows),
             Constraint::Length(4),
-            Constraint::Min(6),
+            Constraint::Min(0),
         ])
         .split(area);
 
@@ -447,11 +452,12 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
+    // The canvas fills what's left, so on short terminals it shrinks before the clock does.
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(if on_break {
             [
-                Constraint::Min(5),
+                Constraint::Fill(1),
                 Constraint::Length(3),
                 Constraint::Length(1),
                 Constraint::Length(1),
@@ -459,7 +465,7 @@ pub(crate) fn draw_compact_timer_block(f: &mut Frame, app: &App, area: Rect) {
             ]
         } else {
             [
-                Constraint::Min(5),
+                Constraint::Fill(1),
                 Constraint::Length(3),
                 Constraint::Length(1),
                 Constraint::Length(1),

@@ -43,7 +43,7 @@ pub(crate) fn draw_about(f: &mut Frame, app: &App, area: Rect) {
                 " switch tabs  ",
                 Style::default().bg(theme.bg).fg(theme.dim),
             ),
-            Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("Esc", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " return to dashboard",
                 Style::default().bg(theme.bg).fg(theme.dim),
@@ -58,12 +58,12 @@ pub(crate) fn draw_about(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().bg(theme.bg).fg(theme.accent),
             ),
             Span::styled(" scroll  ", Style::default().bg(theme.bg).fg(theme.dim)),
-            Span::styled("Tab / 1-6", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("1-6", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " switch tabs  ",
                 Style::default().bg(theme.bg).fg(theme.dim),
             ),
-            Span::styled("q / Esc", Style::default().bg(theme.bg).fg(theme.accent)),
+            Span::styled("Esc", Style::default().bg(theme.bg).fg(theme.accent)),
             Span::styled(
                 " return to dashboard",
                 Style::default().bg(theme.bg).fg(theme.dim),
@@ -236,7 +236,9 @@ fn draw_about_left(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().bg(theme.bg).fg(border_color))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.about_left_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui.about_left_max.set(limit);
+    let scroll = app.ui.about_left_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))
@@ -324,7 +326,9 @@ fn draw_about_right(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().bg(theme.bg).fg(border_color))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.about_right_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui.about_right_max.set(limit);
+    let scroll = app.ui.about_right_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))
@@ -397,7 +401,9 @@ fn draw_about_single(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.about_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui.about_scroll_max.set(limit);
+    let scroll = app.ui.about_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))

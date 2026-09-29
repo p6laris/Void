@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::settings::SECTION_STARTS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SettingsRow {
@@ -14,7 +15,7 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
 
     let visible_height = chunks[0].height.saturating_sub(3) as usize;
     let selected = app.settings_state.selected;
-    app.settings_state.page_size = visible_height.max(6);
+    app.settings_state.page_size = visible_height;
     app.sync_settings_scroll();
     let scroll_offset = app.settings_state.scroll_offset;
 
@@ -24,21 +25,21 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     let theme = &app.theme;
     let icons = app.icons;
 
-    let section_headers: &[(usize, &str, &str)] = &[
-        (0, icons.timer, "Timer"),
-        (5, icons.cycle, "Behavior"),
-        (10, icons.tasks, "Tasks"),
-        (15, icons.star, "Appearance"),
-        (19, icons.play, "Sessions"),
-        (25, icons.export, "Data"),
+    // One entry per `SECTION_STARTS` item, in the same order.
+    let section_names: [(&str, &str); 6] = [
+        (icons.timer, "Timer"),
+        (icons.cycle, "Behavior"),
+        (icons.tasks, "Tasks"),
+        (icons.star, "Appearance"),
+        (icons.play, "Sessions"),
+        (icons.export, "Data"),
     ];
 
     let mut layout: Vec<SettingsRow> = Vec::new();
-    for (i, _) in settings_labels.iter().enumerate() {
-        for &(at, icon, name) in section_headers {
-            if at == i {
-                layout.push(SettingsRow::Header(icon, name));
-            }
+    for (i, item) in app.settings_state.items.iter().enumerate() {
+        if let Some(pos) = SECTION_STARTS.iter().position(|s| s == item) {
+            let (icon, name) = section_names[pos];
+            layout.push(SettingsRow::Header(icon, name));
         }
         layout.push(SettingsRow::Item(i));
     }
@@ -150,4 +151,43 @@ pub(crate) fn draw_settings(f: &mut Frame, app: &mut App, area: Rect) {
     .style(Style::default().bg(theme.bg))
     .alignment(Alignment::Center);
     f.render_widget(hint, chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::app::{App, FocusTab};
+    use crate::db::Database;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn screen(term: &mut Terminal<TestBackend>, app: &mut App) -> String {
+        term.draw(|f| crate::ui::render(f, app)).unwrap();
+        let buf = term.backend().buffer();
+        (0..buf.area.height)
+            .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
+            .map(|(x, y)| buf[(x, y)].symbol().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_selected_setting_stays_visible_on_a_short_terminal() {
+        let mut app = App::with_database(Database::open_in_memory().unwrap()).unwrap();
+        app.ui.tab = FocusTab::Settings;
+        let labels = app.build_settings_labels();
+        let n = labels.len();
+        let mut term = Terminal::new(TestBackend::new(100, 18)).unwrap();
+        screen(&mut term, &mut app);
+
+        let keys = std::iter::repeat_n(KeyCode::Char('j'), n - 1)
+            .chain(std::iter::repeat_n(KeyCode::Char('k'), n - 1));
+        for code in keys {
+            app.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+            let selected = app.settings_state.selected;
+            assert!(
+                screen(&mut term, &mut app).contains(labels[selected].key),
+                "row {selected} ({}) scrolled out of view",
+                labels[selected].key
+            );
+        }
+    }
 }

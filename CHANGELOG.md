@@ -5,11 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0-beta.2] - 2026-07-21
+## [0.6.0-beta.1] - 2026-08-16
+
+### 🚀 Features
+
+- *(core)* Initial UI restructuring, contribution heatmap, and theme foundation
+- *(ui)* Modernize activity heatmap tiles and cursor styling
+- *(ui)* Modernize stats dashboard with view tabs, hourly breakdown, and ranked tag bars
+- *(ui)* Modernize task list rows and add interactive subtask workspace in details panel
+- *(ui)* Add dedicated subtasks panel and 3-panel tasks layout
+- *(ui)* Lock task row columns to fixed grid and switch to top-bottom split layout
+- *(ui)* Modernize dashboard with mode icons, goal chips, and aligned task rows
+- *(ui)* Enlarge dashboard timer ring and refine zen mode canvas art
+- *(theme)* Add OS appearance detection and separate dark/light theme catalogs
+- *(settings)* Add auto theme mode and dark/light palette pickers
+- *(ui)* Redesign Help tab as a categorized 2-column shortcut cheat sheet
+- *(ui)* Modernize About tab with 2-panel architecture and tech stack overview
+- *(db)* Implement RFC 4180 CSV parser and session import engine
+- *(cli)* Add CSV session import and export CLI commands
+- *(settings)* Add separate JSON and CSV export actions in data section
+- *(ui)* Add dashboard art animation toggle and minimal mode ([#5](https://github.com/p6laris/Void/issues/5))
+- *(ui)* Restore Ursa Minor constellation and add independent section scrolling to About tab
+- *(app)* Add quick date shortcuts (today, tomorrow, week, clear) for due date input
+- *(ui)* Redesign task form, subtask, danger, and celebration popups
 
 ### 🐛 Bug Fixes
 
 - Include assets/sounds in published crate tarball
+- *(storage)* Resolve streak gaps, rest day handling, and day-rollover reconciliation
+- *(storage)* Ensure daily metrics and caches reset on midnight rollover during long sessions ([#6](https://github.com/p6laris/Void/issues/6))
+- *(ui)* Prevent title and submode tab collision in stats middle panel
+- *(ui)* Remove redundant constellation subtitle text from About tab
+- *(ui)* Balance vertical layout on Stats tab to lower the bottom section
+
+### ⚡ Performance
+
+- *(core)* Throttle UI redraws on passive mouse movement and eliminate canvas per-frame allocations
+
+### 🎨 Styling
+
+- *(core)* Apply rustfmt and fix clippy warnings for CI pipeline
+
+### 🧪 Testing
+
+- *(ui)* Add multi-resolution render tests for all popups
 
 ## [0.5.0-beta.1] - 2026-07-13
 

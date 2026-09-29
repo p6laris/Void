@@ -1,4 +1,5 @@
 use std::io::Cursor;
+#[cfg(not(target_os = "windows"))]
 use std::process::Command;
 #[cfg(target_os = "windows")]
 use std::time::Duration;
@@ -10,7 +11,10 @@ use std::sync::mpsc;
 use std::sync::OnceLock;
 use std::thread;
 
-static AUDIO_TX: OnceLock<mpsc::Sender<&'static [u8]>> = OnceLock::new();
+/// A sound to play, and the system-beep fallback if audio output is unavailable.
+type SoundRequest = (&'static [u8], fn());
+
+static AUDIO_TX: OnceLock<mpsc::Sender<SoundRequest>> = OnceLock::new();
 
 pub fn init_audio() {
     // Just register the channel — audio thread starts lazily on first sound
@@ -21,36 +25,30 @@ pub fn init_audio() {
 
     thread::spawn(move || {
         // Block until the very first sound request arrives
-        let first = match rx.recv() {
-            Ok(bytes) => bytes,
-            Err(_) => return,
+        let Ok(first) = rx.recv() else {
+            return;
         };
 
         #[cfg(target_os = "linux")]
         let _silencer = StderrSilencer::new();
 
-        let (_stream, stream_handle) = match OutputStream::try_default() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
+        let stream = OutputStream::try_default();
 
         #[cfg(target_os = "linux")]
         drop(_silencer);
 
-        // Play the first sound that triggered initialization
-        if let Ok(sink) = Sink::try_new(&stream_handle) {
-            let cursor = Cursor::new(first);
-            if let Ok(decoder) = Decoder::new(cursor) {
-                sink.append(decoder);
-                sink.detach();
+        let Ok((_stream, stream_handle)) = stream else {
+            // No audio device: keep serving requests with system beeps, first included.
+            crate::log::log_error("audio output unavailable; using system beeps");
+            for (_, fallback) in std::iter::once(first).chain(rx.iter()) {
+                fallback();
             }
-        }
+            return;
+        };
 
-        // Keep receiving sounds as long as the app runs
-        while let Ok(bytes) = rx.recv() {
+        for (bytes, _) in std::iter::once(first).chain(rx.iter()) {
             if let Ok(sink) = Sink::try_new(&stream_handle) {
-                let cursor = Cursor::new(bytes);
-                if let Ok(decoder) = Decoder::new(cursor) {
+                if let Ok(decoder) = Decoder::new(Cursor::new(bytes)) {
                     sink.append(decoder);
                     sink.detach();
                 }
@@ -98,19 +96,13 @@ impl Drop for StderrSilencer {
     }
 }
 
-fn play_embedded_sound(bytes: &'static [u8]) -> bool {
-    if let Some(tx) = AUDIO_TX.get() {
-        tx.send(bytes).is_ok()
-    } else {
-        false
-    }
-}
-
 fn play_sound(bytes: &'static [u8], fallback: fn()) {
-    if play_embedded_sound(bytes) {
-        return;
+    let sent = AUDIO_TX
+        .get()
+        .is_some_and(|tx| tx.send((bytes, fallback)).is_ok());
+    if !sent {
+        thread::spawn(fallback);
     }
-    thread::spawn(fallback);
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,14 +114,17 @@ pub enum NotifyKind {
 }
 
 #[cfg(target_os = "windows")]
+#[link(name = "kernel32")]
+extern "system" {
+    fn Beep(frequency: u32, duration_ms: u32) -> i32;
+}
+
+#[cfg(target_os = "windows")]
 fn beep_windows(freq: u32, duration_ms: u32) {
-    let _ = Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!("[console]::Beep({},{})", freq, duration_ms),
-        ])
-        .output();
+    // SAFETY: Beep takes two plain integers and has no memory preconditions.
+    unsafe {
+        Beep(freq, duration_ms);
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -294,7 +289,7 @@ pub fn notify_typed(kind: NotifyKind, title: &str, body: &str) {
         let _ = kind;
 
         if let Err(e) = n.show() {
-            eprintln!("Void notification error: {e}");
+            crate::log::log_error(&format!("notification failed: {e}"));
         }
     });
 }
