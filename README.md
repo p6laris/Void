@@ -57,9 +57,14 @@ brew install void
 
 ### Winget (Windows)
 
+Coming soon: Void is waiting to be accepted into winget. Once it is, you'll be able to run:
+
 ```powershell
 winget install p6laris.Void
 ```
+
+Until then, use Cargo or the Windows zip from the [Releases](https://github.com/p6laris/Void/releases)
+page.
 
 ### Binaries
 

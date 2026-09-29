@@ -98,7 +98,7 @@ jobs:
 
           Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
 
-          Write-Host "Trying wingetcreate update..."
+          # Only updates an existing package; the first version is submitted by hand.
           & .\wingetcreate.exe update p6laris.Void `
             --version $version `
             --urls $url `
@@ -107,13 +107,5 @@ jobs:
             --no-open
 
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "Package not in winget-pkgs yet; creating initial manifest from installer URL..."
-            & .\wingetcreate.exe new $url `
-              --token $env:WINGET_CREATE_GITHUB_TOKEN `
-              --submit `
-              --no-open
-          }
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "wingetcreate failed with exit code $LASTEXITCODE"
+            throw "wingetcreate update failed (exit $LASTEXITCODE). Check that WINGET_PAT is valid and that p6laris.Void exists in microsoft/winget-pkgs."
           }
