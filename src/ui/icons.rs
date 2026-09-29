@@ -171,7 +171,22 @@ impl IconSet {
     }
 
     fn detect_auto() -> Self {
-        NERD
+        Self::auto_from(|key| std::env::var(key).ok())
+    }
+
+    /// Picks ASCII for terminals that can't draw Nerd Font glyphs, Nerd otherwise.
+    fn auto_from(env: impl Fn(&str) -> Option<String>) -> Self {
+        if matches!(env("TERM").as_deref(), Some("linux") | Some("dumb")) {
+            return ASCII;
+        }
+        // First set locale variable wins, as in POSIX; none set (usual on Windows) means UTF-8.
+        let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+            .into_iter()
+            .find_map(|key| env(key).filter(|v| !v.is_empty()));
+        match locale {
+            Some(value) if !value.to_ascii_lowercase().contains("utf") => ASCII,
+            _ => NERD,
+        }
     }
 }
 
@@ -189,6 +204,41 @@ mod tests {
     #[test]
     fn nerd_set_uses_private_use_glyphs() {
         assert!(NERD.play.chars().any(|c| c as u32 >= 0xe000));
+    }
+
+    fn env<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |key| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    #[test]
+    fn auto_uses_ascii_on_the_linux_console_and_non_utf8_locales() {
+        assert_eq!(
+            IconSet::auto_from(env(&[("TERM", "linux")])).play,
+            ASCII.play
+        );
+        assert_eq!(IconSet::auto_from(env(&[("LANG", "C")])).play, ASCII.play);
+        assert_eq!(
+            IconSet::auto_from(env(&[("LC_ALL", "C"), ("LANG", "en_US.UTF-8")])).play,
+            ASCII.play
+        );
+    }
+
+    #[test]
+    fn auto_uses_nerd_for_utf8_or_no_locale() {
+        assert_eq!(
+            IconSet::auto_from(env(&[("LANG", "en_US.UTF-8")])).play,
+            NERD.play
+        );
+        assert_eq!(IconSet::auto_from(env(&[])).play, NERD.play);
+        assert_eq!(
+            IconSet::auto_from(env(&[("TERM", "xterm-256color")])).play,
+            NERD.play
+        );
     }
 
     #[test]
