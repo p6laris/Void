@@ -554,7 +554,7 @@ pub fn db_path() -> Result<PathBuf> {
     Ok(dir.join("void.db"))
 }
 
-fn data_dir() -> Result<PathBuf> {
+pub(crate) fn data_dir() -> Result<PathBuf> {
     let dir = dirs::data_local_dir()
         .or_else(dirs::config_dir)
         .context("could not resolve local data directory")?;
