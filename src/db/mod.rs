@@ -167,14 +167,8 @@ impl Database {
             params![limit as i64, offset as i64],
             focus_session_id_and_record,
         )?;
-        let tags_by_session = load_all_session_tags(&self.conn)?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (id, mut record) = row?;
-            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
-            out.push(StoredSession { id, record });
-        }
-        Ok(out)
+        let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        with_session_tags(&self.conn, rows)
     }
 
     pub fn session_count(&self) -> Result<usize> {
@@ -221,14 +215,8 @@ impl Database {
              ORDER BY completed_at ASC",
         )?;
         let rows = stmt.query_map(params![date], focus_session_id_and_record)?;
-        let tags_by_session = load_all_session_tags(&self.conn)?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (id, mut record) = row?;
-            record.tags = tags_by_session.get(&id).cloned().unwrap_or_default();
-            out.push(StoredSession { id, record });
-        }
-        Ok(out)
+        let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        with_session_tags(&self.conn, rows)
     }
 
     pub fn session_counts_by_mode(&self) -> Result<(u32, u32, u32)> {
@@ -1027,6 +1015,36 @@ fn load_session_tags(conn: &Connection, session_id: i64) -> Result<Vec<String>> 
     Ok(tags)
 }
 
+/// Attaches each session's tags, loading only the tags for these sessions.
+fn with_session_tags(
+    conn: &Connection,
+    rows: Vec<(i64, FocusSessionRecord)>,
+) -> Result<Vec<StoredSession>> {
+    let mut tags: HashMap<i64, Vec<String>> = HashMap::new();
+    if !rows.is_empty() {
+        let placeholders = vec!["?"; rows.len()].join(",");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT session_id, tag FROM session_tags
+             WHERE session_id IN ({placeholders}) ORDER BY session_id, tag"
+        ))?;
+        let found = stmt.query_map(
+            rusqlite::params_from_iter(rows.iter().map(|(id, _)| id)),
+            |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
+        )?;
+        for row in found {
+            let (id, tag) = row?;
+            tags.entry(id).or_default().push(tag);
+        }
+    }
+    Ok(rows
+        .into_iter()
+        .map(|(id, mut record)| {
+            record.tags = tags.remove(&id).unwrap_or_default();
+            StoredSession { id, record }
+        })
+        .collect())
+}
+
 fn load_all_session_tags(conn: &Connection) -> Result<HashMap<i64, Vec<String>>> {
     let mut stmt =
         conn.prepare("SELECT session_id, tag FROM session_tags ORDER BY session_id ASC, tag ASC")?;
@@ -1237,6 +1255,46 @@ mod tests {
         db.conn
             .query_row("SELECT COUNT(*) FROM focus_sessions", [], |r| r.get(0))
             .unwrap()
+    }
+
+    #[test]
+    fn session_queries_attach_each_sessions_own_tags() {
+        let db = Database::open_in_memory().unwrap();
+        for (tags, minute) in [(vec!["a", "b"], 10), (vec![], 20), (vec!["c"], 30)] {
+            db.insert_focus_session(&FocusSessionRecord {
+                date: "2026-07-02".into(),
+                minutes: 25,
+                tags: tags.into_iter().map(String::from).collect(),
+                completed_at: format!("2026-07-02T10:{minute}:00Z").parse().unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let day: Vec<Vec<String>> = db
+            .sessions_on_date("2026-07-02")
+            .unwrap()
+            .into_iter()
+            .map(|s| s.record.tags)
+            .collect();
+        assert_eq!(day, vec![vec!["a", "b"], vec![], vec!["c"]]);
+        let recent = db.recent_sessions_paged(0, 2).unwrap();
+        assert_eq!(recent[0].record.tags, vec!["c"]);
+        assert!(recent[1].record.tags.is_empty());
+    }
+
+    #[test]
+    fn migrations_add_the_session_indexes() {
+        let db = Database::open_in_memory().unwrap();
+        let n: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'
+                 AND name IN ('idx_focus_sessions_completed', 'idx_focus_sessions_task')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 2);
     }
 
     #[test]

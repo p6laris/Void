@@ -4,6 +4,7 @@ use rusqlite::Connection;
 pub fn migrate(conn: &Connection) -> Result<()> {
     migrate_v1(conn)?;
     migrate_v2(conn)?;
+    migrate_v3(conn)?;
     optimize(conn)?;
     Ok(())
 }
@@ -143,6 +144,25 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Indexes for the recent-sessions list and for task lookups on sessions.
+fn migrate_v3(conn: &Connection) -> Result<()> {
+    const TARGET_VERSION: i32 = 3;
+    let version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version >= TARGET_VERSION {
+        return Ok(());
+    }
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        "
+        CREATE INDEX IF NOT EXISTS idx_focus_sessions_completed ON focus_sessions(completed_at);
+        CREATE INDEX IF NOT EXISTS idx_focus_sessions_task ON focus_sessions(task_id);
+        ",
+    )?;
+    tx.pragma_update(None, "user_version", TARGET_VERSION)?;
+    tx.commit()?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,7 +180,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
         assert!(column_exists(&conn, "tasks", "recurrence").unwrap());
     }
 }
