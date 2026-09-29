@@ -200,10 +200,9 @@ impl App {
         if just_finished {
             self.on_timer_finished(false);
         }
-        if self.ui.status.is_some()
-            && !self.ui.status_error
-            && self.ui.last_status_set.elapsed() > Duration::from_secs(4)
-        {
+        // Errors stay longer so they can be read, but no longer forever.
+        let status_ttl = Duration::from_secs(if self.ui.status_error { 10 } else { 4 });
+        if self.ui.status.is_some() && self.ui.last_status_set.elapsed() > status_ttl {
             self.ui.status = None;
         }
     }

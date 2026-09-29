@@ -4,6 +4,10 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKi
 impl App {
     pub fn handle_key(&mut self, key: KeyEvent) {
         self.last_activity = Instant::now();
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.force_quit();
+            return;
+        }
         if self.task_ui.searching {
             self.handle_search_key(key);
             return;
@@ -36,12 +40,12 @@ impl App {
                 self.handle_stats_key(key);
             }
             KeyCode::Esc => self.ui.tab = FocusTab::Dashboard,
-            KeyCode::Char('c') if ctrl => self.force_quit(),
             KeyCode::Char('s') if ctrl => self.export_backup(),
             KeyCode::Char('e') if ctrl => self.export_sessions_csv(),
             KeyCode::Char(c @ '1'..='6') if !zen => {
                 self.ui.tab = FocusTab::all()[(c as u8 - b'1') as usize];
             }
+            KeyCode::Char('?') => self.ui.tab = FocusTab::Help,
             KeyCode::Char('h') if self.ui.tab != FocusTab::About => {
                 self.ui.tab = FocusTab::Help;
             }
@@ -155,6 +159,7 @@ impl App {
             }
             _ => {}
         }
+        self.clamp_scrolls();
     }
 
     pub(crate) fn next_tab(&mut self) {
@@ -485,6 +490,7 @@ impl App {
                     self.set_status("Task set as active for the timer.", false);
                 }
             }
+            KeyCode::Char('T') => self.cycle_tag_filter(),
             KeyCode::Char('p') => {
                 if let Some(id) = self.selected_task_id() {
                     let next = match self.data.task(id).map(|t| t.priority) {
@@ -562,10 +568,24 @@ impl App {
             }
             _ => {}
         }
+        self.clamp_scrolls();
+    }
+
+    /// Keeps Help and About scroll positions within what was last drawn.
+    fn clamp_scrolls(&mut self) {
+        let ui = &mut self.ui;
+        ui.help_scroll = ui.help_scroll.min(ui.help_scroll_max.get());
+        ui.about_left_scroll = ui.about_left_scroll.min(ui.about_left_max.get());
+        ui.about_right_scroll = ui.about_right_scroll.min(ui.about_right_max.get());
+        ui.about_scroll = ui.about_scroll.min(ui.about_scroll_max.get());
     }
 
     pub fn handle_mouse(&mut self, mouse: MouseEvent) {
         self.last_activity = Instant::now();
+        // Scrolling would otherwise nudge the open popup's fields through arrow keys.
+        if self.input.popup.is_some() {
+            return;
+        }
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 if self.ui.tab == FocusTab::Help {
@@ -597,6 +617,7 @@ impl App {
             }
             _ => {}
         }
+        self.clamp_scrolls();
     }
 }
 
@@ -797,6 +818,98 @@ y",
         );
         assert!(app.input.popup.is_none());
         assert_eq!(app.data.tasks.len(), 1);
+    }
+
+    #[test]
+    fn the_tag_filter_applies_as_soon_as_it_is_chosen() {
+        let mut app = app_with(&["Tagged", "Plain"]);
+        let tagged = app
+            .data
+            .tasks
+            .values()
+            .find(|t| t.title == "Tagged")
+            .unwrap()
+            .id;
+        app.data.task_mut(tagged).unwrap().tags = vec!["work".into()];
+        app.recompute_task_caches();
+        app.ui.tab = FocusTab::Tasks;
+        press(&mut app, KeyCode::Char('T'));
+        assert_eq!(app.filtered_task_indices().len(), 1);
+        assert_eq!(app.selected_task_id(), Some(tagged));
+    }
+
+    #[test]
+    fn bulk_actions_skip_selected_tasks_hidden_by_the_filter() {
+        let mut app = app_with(&["Visible", "Hidden"]);
+        let ids: Vec<u64> = app.data.tasks.keys().copied().collect();
+        storage::mark_task_done(&app.db, &mut app.data, ids[1]).unwrap();
+        app.task_ui.task_filter = crate::app::TaskFilter::Pending;
+        app.recompute_task_caches();
+        app.task_ui.bulk_selected.extend(ids.iter().copied());
+        app.input.popup = Some(Popup::BulkConfirm(crate::app::BulkAction::Delete));
+        app.submit_popup();
+        assert!(app.data.task(ids[0]).is_none());
+        assert!(app.data.task(ids[1]).is_some(), "hidden task was deleted");
+    }
+
+    #[test]
+    fn error_messages_clear_after_ten_seconds() {
+        let mut app = app_with(&[]);
+        app.set_status("Save error: boom", true);
+        app.ui.last_status_set = Instant::now() - std::time::Duration::from_secs(5);
+        app.on_tick();
+        assert!(app.ui.status.is_some());
+        app.ui.last_status_set = Instant::now() - std::time::Duration::from_secs(11);
+        app.on_tick();
+        assert!(app.ui.status.is_none());
+    }
+
+    #[test]
+    fn ctrl_c_quits_even_from_a_popup_or_search() {
+        for searching in [false, true] {
+            let mut app = app_with(&[]);
+            app.task_ui.searching = searching;
+            if !searching {
+                app.open_add_task();
+            }
+            app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+            assert!(app.ui.should_quit);
+        }
+    }
+
+    #[test]
+    fn mouse_scroll_is_ignored_while_a_popup_is_open() {
+        let mut app = app_with(&[]);
+        app.open_add_task();
+        app.input.input_field = crate::app::InputField::Estimate;
+        let before = app.input.input_number;
+        app.handle_mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(app.input.input_number, before);
+    }
+
+    #[test]
+    fn help_scrolling_stops_at_the_end() {
+        let mut app = app_with(&[]);
+        app.ui.tab = FocusTab::Help;
+        app.ui.help_scroll_max.set(5);
+        for _ in 0..20 {
+            press(&mut app, KeyCode::Char('j'));
+        }
+        assert_eq!(app.ui.help_scroll, 5);
+        press(&mut app, KeyCode::Char('k'));
+        assert_eq!(app.ui.help_scroll, 4);
+    }
+
+    #[test]
+    fn question_mark_opens_help() {
+        let mut app = app_with(&[]);
+        press(&mut app, KeyCode::Char('?'));
+        assert_eq!(app.ui.tab, FocusTab::Help);
     }
 
     #[test]

@@ -25,6 +25,11 @@ pub struct UiState {
     pub about_left_scroll: u16,
     pub about_right_scroll: u16,
     pub about_active_column: usize,
+    /// Furthest each scrollable view can scroll, recorded when it is drawn.
+    pub(crate) help_scroll_max: std::cell::Cell<u16>,
+    pub(crate) about_left_max: std::cell::Cell<u16>,
+    pub(crate) about_right_max: std::cell::Cell<u16>,
+    pub(crate) about_scroll_max: std::cell::Cell<u16>,
     pub(crate) frame_today: String,
     pub(crate) frame_today_focus_mins: u32,
     pub(crate) window_title_sig: u64,

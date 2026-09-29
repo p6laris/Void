@@ -1,6 +1,8 @@
 use super::*;
 
 pub(crate) fn draw_help(f: &mut Frame, app: &App, area: Rect) {
+    // Each column raises this to its own limit, so the shared scroll reaches the longer one.
+    app.ui.help_scroll_max.set(0);
     let theme = &app.theme;
     let icons = app.icons;
 
@@ -82,7 +84,11 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
             icons.dashboard,
             "Global & Navigation",
         ));
-        lines.push(shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"));
+        lines.push(shortcut_row(
+            theme,
+            "1-6 / Tab",
+            "Switch tabs (Tab moves focus on Tasks, About)",
+        ));
         lines.push(shortcut_row(
             theme,
             "q",
@@ -162,8 +168,13 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         ));
         lines.push(shortcut_row(
             theme,
-            "Space / f",
+            "Space",
             "Set task as active for focus timer",
+        ));
+        lines.push(shortcut_row(
+            theme,
+            "f",
+            "Start a focus session on the task",
         ));
         lines.push(shortcut_row(theme, "t", "Toggle today focus queue"));
         lines.push(shortcut_row(
@@ -178,8 +189,13 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         ));
         lines.push(shortcut_row(
             theme,
+            "T",
+            "Filter by tag (cycles through tags, then off)",
+        ));
+        lines.push(shortcut_row(
+            theme,
             "/",
-            "Instant fuzzy search by title & tags",
+            "Search titles and tags as you type",
         ));
         lines.push(shortcut_row(
             theme,
@@ -242,7 +258,11 @@ fn draw_help_column(f: &mut Frame, app: &App, area: Rect, left: bool) {
         .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.help_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui
+        .help_scroll_max
+        .set(app.ui.help_scroll_max.get().max(limit));
+    let scroll = app.ui.help_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))
@@ -259,7 +279,11 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
 
     let lines = vec![
         section_header(theme, icons.dashboard, "Global & Navigation"),
-        shortcut_row(theme, "Tab / 1-6", "Switch primary tabs"),
+        shortcut_row(
+            theme,
+            "1-6 / Tab",
+            "Switch tabs (Tab moves focus on Tasks, About)",
+        ),
         shortcut_row(theme, "q", "Quit Void (asks if a session is running)"),
         shortcut_row(theme, "Esc", "Back to dashboard; quits from there"),
         shortcut_row(theme, "Ctrl-S", "Export instant JSON backup"),
@@ -279,11 +303,13 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
         shortcut_row(theme, "e", "Edit selected task properties"),
         shortcut_row(theme, "d", "Delete selected task"),
         shortcut_row(theme, "Enter", "Cycle status (Pending → Active → Done)"),
-        shortcut_row(theme, "Space / f", "Set task as active for focus timer"),
+        shortcut_row(theme, "Space", "Set task as active for focus timer"),
+        shortcut_row(theme, "f", "Start a focus session on the task"),
         shortcut_row(theme, "t", "Toggle today focus queue"),
         shortcut_row(theme, "g", "Cycle filters (Open / Today / Done / All)"),
         shortcut_row(theme, "A", "Archive task (restores in Archive filter)"),
-        shortcut_row(theme, "/", "Instant fuzzy search by title & tags"),
+        shortcut_row(theme, "T", "Filter by tag (cycles tags, then off)"),
+        shortcut_row(theme, "/", "Search titles and tags as you type"),
         shortcut_row(theme, "p", "Cycle priority: Low / Med / High"),
         Line::from(Span::styled(" ", st_dim)),
         section_header(theme, icons.tasks, "Subtasks Panel"),
@@ -316,7 +342,11 @@ fn draw_help_single(f: &mut Frame, app: &App, area: Rect) {
         .border_style(Style::default().bg(theme.bg).fg(theme.panel_border))
         .style(Style::default().bg(theme.bg));
 
-    let scroll = app.ui.help_scroll;
+    let limit = super::widgets::scroll_limit(lines.len(), area);
+    app.ui
+        .help_scroll_max
+        .set(app.ui.help_scroll_max.get().max(limit));
+    let scroll = app.ui.help_scroll.min(limit);
     f.render_widget(
         Paragraph::new(lines)
             .style(Style::default().bg(theme.bg))

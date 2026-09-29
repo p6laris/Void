@@ -271,6 +271,18 @@ pub fn truncate(s: &str, max: usize) -> String {
     out
 }
 
+/// Pads `s` with spaces to `width` terminal columns; wide characters count double.
+pub fn pad_to_width(s: &str, width: usize) -> String {
+    let used = unicode_width::UnicodeWidthStr::width(s);
+    format!("{s}{}", " ".repeat(width.saturating_sub(used)))
+}
+
+/// Largest useful scroll for `lines` rows shown in a bordered `area`.
+pub fn scroll_limit(lines: usize, area: Rect) -> u16 {
+    let visible = area.height.saturating_sub(2) as usize;
+    lines.saturating_sub(visible).min(u16::MAX as usize) as u16
+}
+
 /// The end of `s` that fits in `max` columns, led by `…` when cut; keeps a cursor at the end visible.
 pub fn truncate_start(s: &str, max: usize) -> String {
     if unicode_width::UnicodeWidthStr::width(s) <= max {

@@ -496,3 +496,53 @@ fn zen_mode_shows_status_messages() {
     let screen = render_tab(&mut app, FocusTab::Dashboard, 100, 30).join("\n");
     assert!(screen.contains("Save error: disk full"));
 }
+
+#[test]
+fn help_scrolled_past_the_end_still_shows_content() {
+    let mut app = app_with_tasks();
+    app.ui.help_scroll = 9999;
+    let screen = render_tab(&mut app, FocusTab::Help, 80, 24).join("\n");
+    assert!(
+        screen.contains("Subtask") || screen.contains("Stats"),
+        "help panel was blank"
+    );
+}
+
+#[test]
+fn the_header_title_is_not_overdrawn_on_narrow_terminals() {
+    let mut app = app_with_tasks();
+    app.timer.start();
+    for w in [50u16, 60, 70] {
+        let first = render_tab(&mut app, FocusTab::Dashboard, w, 24)[0].clone();
+        assert!(
+            first.contains("Void v"),
+            "title overdrawn at width {w}: {first}"
+        );
+    }
+}
+
+#[test]
+fn the_zen_break_tip_row_holds_only_the_tip() {
+    let mut app = app_with_tasks();
+    app.ui.zen_mode = true;
+    app.timer.configure(void::model::TimerMode::ShortBreak);
+    app.timer.start();
+    // The art only reaches the tip row at some sizes, so check a spread of them.
+    for (w, h) in [
+        (60u16, 14u16),
+        (80, 16),
+        (80, 20),
+        (100, 24),
+        (100, 30),
+        (120, 36),
+    ] {
+        let lines = render_tab(&mut app, FocusTab::Dashboard, w, h);
+        // The tip is the last canvas row, just above the footer's two rows.
+        let tip = &lines[lines.len() - 3];
+        let braille = tip
+            .chars()
+            .filter(|c| ('\u{2800}'..='\u{28FF}').contains(c))
+            .count();
+        assert_eq!(braille, 0, "canvas art on the tip row at {w}x{h}: {tip}");
+    }
+}

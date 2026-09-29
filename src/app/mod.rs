@@ -294,7 +294,14 @@ impl App {
         };
         let theme_id = theme::normalize_theme_id(&effective_theme_id);
         data.theme = theme_id.clone();
-        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|_| Theme::dark());
+        let mut theme_problems: Vec<String> = theme_catalog.errors().to_vec();
+        let theme = theme::resolve(&theme_id, &theme_catalog).unwrap_or_else(|e| {
+            theme_problems.push(format!("theme `{theme_id}` unavailable, using Dark: {e:#}"));
+            Theme::dark()
+        });
+        for problem in &theme_problems {
+            crate::log::log_error(problem);
+        }
         let icons = IconSet::detect();
         let active_task = data.active_task_id.filter(|id| {
             data.tasks
@@ -327,6 +334,12 @@ impl App {
             }
             status_msg = format!("{} · {}", parts.join(", "), status_msg);
         }
+        if !theme_problems.is_empty() {
+            status_msg = format!(
+                "{} theme problem(s), see void.log · {status_msg}",
+                theme_problems.len()
+            );
+        }
         let mut app = Self {
             db,
             data,
@@ -340,6 +353,10 @@ impl App {
                 should_quit: false,
                 focused: true,
                 help_scroll: 0,
+                help_scroll_max: std::cell::Cell::new(u16::MAX),
+                about_left_max: std::cell::Cell::new(u16::MAX),
+                about_right_max: std::cell::Cell::new(u16::MAX),
+                about_scroll_max: std::cell::Cell::new(u16::MAX),
                 about_scroll: 0,
                 about_left_scroll: 0,
                 about_right_scroll: 0,
@@ -629,10 +646,13 @@ impl App {
     /// Rebuilds and returns the window title when timer state/mode/seconds change (~1/sec while running).
     pub fn poll_window_title(&mut self) -> Option<&str> {
         if !self.data.show_terminal_title {
-            if self.ui.window_title_sig != u64::MAX {
-                self.ui.window_title_sig = u64::MAX;
+            if self.ui.window_title_sig == u64::MAX {
+                return None;
             }
-            return None;
+            // Clear the title once, so turning the setting off doesn't leave a stale timer.
+            self.ui.window_title_sig = u64::MAX;
+            self.ui.cached_window_title.clear();
+            return Some(&self.ui.cached_window_title);
         }
         let sig = self.window_title_signature();
         if sig == self.ui.window_title_sig {
@@ -880,15 +900,8 @@ impl App {
             None => "Tag filter cleared.".to_string(),
         };
         self.set_status(msg, false);
-
-        self.clamp_dashboard_task_selection();
-        let len = self.filtered_task_indices().len();
-        if len == 0 {
-            self.task_ui.task_state.select(None);
-        } else {
-            let sel = self.task_ui.task_state.selected().unwrap_or(0).min(len - 1);
-            self.task_ui.task_state.select(Some(sel));
-        }
+        self.recompute_task_caches();
+        self.clamp_task_selection_after_mutation();
     }
 
     fn popup_tags(&self) -> Vec<String> {

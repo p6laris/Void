@@ -143,7 +143,20 @@ impl App {
                 self.set_status(format!("Subtask renamed to \"{title}\""), false);
             }
             Some(Popup::BulkConfirm(action)) => {
-                let ids: Vec<u64> = self.task_ui.bulk_selected.iter().copied().collect();
+                // Only tasks still visible under the current filter, so hidden picks aren't touched.
+                let visible: std::collections::HashSet<u64> = self
+                    .task_ui
+                    .cached_filtered_tasks
+                    .iter()
+                    .filter_map(|&i| self.data.tasks.get_index(i).map(|(id, _)| *id))
+                    .collect();
+                let ids: Vec<u64> = self
+                    .task_ui
+                    .bulk_selected
+                    .iter()
+                    .copied()
+                    .filter(|id| visible.contains(id))
+                    .collect();
                 let result = match action {
                     BulkAction::MarkDone => storage::bulk_mark_done(&self.db, &mut self.data, &ids),
                     BulkAction::Delete => storage::bulk_delete(&self.db, &mut self.data, &ids),
