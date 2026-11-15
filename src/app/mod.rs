@@ -761,7 +761,7 @@ impl App {
                 "[j/k] nav  [^j/^k] reorder  [e] edit  [x] toggle  [-] remove  [q/Tab] back".into()
             }
             FocusTab::Tasks => {
-                "[c] add task  [enter] edit  [j/k] navigate  [Tab] subtasks  [A] archive".into()
+                "[a] add  [e] edit  [c] subtask  [j/k] nav  [Tab] subtasks  [A] archive".into()
             }
             FocusTab::Stats => format!(
                 "[v] view: {}  [r] range: {}  [←↑↓→] heatmap  [j/k] history  [ [ / ] ] page  [d] delete  [esc] clear",
